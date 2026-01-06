@@ -16,3 +16,5 @@ raven_board.set_motor_speed_factor(Raven.MotorChannel.CH1, 100, reverse=True) # 
 # raven_board.set_motor_torque_factor(Raven.MotorChannel.CH1, 100) # Let it use up to 10% available torque
 while True:
     pass
+
+# hi junhui
