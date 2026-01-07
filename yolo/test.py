@@ -138,7 +138,7 @@ try:
 
         if (changed == False):
             servo.set_angle(0)
-        print("set angle to 0")
+            print("set angle to 0")
 
 
 
