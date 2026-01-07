@@ -116,7 +116,7 @@ else:
 
 try:
     while True:
-        results = model(source=0, stream=True, verbose=False)
+        results = model(source=0, verbose=False)
         detections = results[0].boxes
 
         for i in range(len(detections)):
