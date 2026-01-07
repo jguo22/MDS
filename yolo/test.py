@@ -125,7 +125,7 @@ try:
     for r in results:
         detections = r.boxes
         xywh = detections.xywh
-        print("found object at " + xywh)
+        #print("found object at " + xywh)
         print(xywh)
         changed = False
 
