@@ -45,7 +45,7 @@ class RavenServoController:
 
         print(f"Using Servo: {use_servo}")
         if use_servo:
-            self.raven_board = Raven()
+            self.raven_board = raven_board
 
             # Set servo channel
             if servo_channel == 1:
@@ -116,6 +116,7 @@ print(
 print(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
 print(f"Press Ctrl+C to quit\n")
 
+results = model(source=0, stream=True, verbose=False)
 
 raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
 raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
@@ -127,18 +128,16 @@ raven_board.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.DIRECT)
 bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106),
               (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
 
-cap = cv2.VideoCapture(0)
-frame = cap.read()
-results = model(frame, stream=True, verbose=False)
-
 # Initialize control and status variables
 avg_frame_rate = 0
 frame_rate_buffer = []
 fps_avg_len = 200
 img_count = 0
+object_count = 0
 
 try:
     for r in results:
+        frame = r.plot()
         t_start = time.perf_counter()
 
         detections = r.boxes
