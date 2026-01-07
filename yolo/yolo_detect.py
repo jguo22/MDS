@@ -16,6 +16,35 @@ app = Flask(__name__)
 output_frame = None
 lock = None
 
+@app.route("/")
+def index():
+    return """
+    <html>
+      <head><title>YOLO Stream</title></head>
+      <body>
+        <h1>YOLO Live Stream</h1>
+        <img src="/video" width="640">
+      </body>
+    </html>
+    """
+
+def generate():
+    global output_frame
+    while True:
+        with lock:
+            if output_frame is None:
+                continue
+            ret, buffer = cv2.imencode(".jpg", output_frame)
+            frame = buffer.tobytes()
+
+        yield (b"--frame\r\n"
+               b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+
+@app.route("/video")
+def video():
+    return Response(generate(),
+                    mimetype="multipart/x-mixed-replace; boundary=frame")
+
 lock = threading.Lock()
 
 # Define and parse user input arguments
@@ -225,23 +254,19 @@ while True:
     with lock:
         output_frame = frame.copy()
 
-def generate():
-    global output_frame
-    while True:
-        with lock:
-            if output_frame is None:
-                continue
-            ret, buffer = cv2.imencode(".jpg", output_frame)
-            frame = buffer.tobytes()
+    # Calculate FPS for this frame
+    t_stop = time.perf_counter()
+    frame_rate_calc = float(1/(t_stop - t_start))
 
-        yield (b"--frame\r\n"
-               b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+    # Append FPS result to frame_rate_buffer (for finding average FPS over multiple frames)
+    if len(frame_rate_buffer) >= fps_avg_len:
+        temp = frame_rate_buffer.pop(0)
+        frame_rate_buffer.append(frame_rate_calc)
+    else:
+        frame_rate_buffer.append(frame_rate_calc)
 
-
-@app.route("/video")
-def video():
-    return Response(generate(),
-                    mimetype="multipart/x-mixed-replace; boundary=frame")
+    # Calculate average FPS for past frames
+    avg_frame_rate = np.mean(frame_rate_buffer)
 
 # Clean up
 print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
