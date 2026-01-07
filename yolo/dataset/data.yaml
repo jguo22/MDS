@@ -1,0 +1,7 @@
+path: dataset
+train: images/train
+val: images/val
+
+names:
+  0: red_can
+  1: green_can
