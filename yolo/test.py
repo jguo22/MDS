@@ -140,7 +140,7 @@ try:
             # MOVE TOWARDS CENTER
 
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 50)
-            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 10, reverse=False)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 10, reverse=True)
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
             raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 10, reverse=False)
             changed = True
