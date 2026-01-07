@@ -110,6 +110,17 @@ if not ret:
 frame_height, frame_width = test_frame.shape[:2]
 print(f"Camera resolution: {frame_width}x{frame_height}")
 
+# Check if display is available
+display_available = True
+try:
+    cv2.imshow('Display Test', test_frame)
+    cv2.waitKey(1)
+    cv2.destroyAllWindows()
+except cv2.error as e:
+    print("Warning: Display not available (Qt platform plugin not found)")
+    print("Running in headless mode - no UI will be shown")
+    display_available = False
+
 # Initialize Raven servo controller
 servo = RavenServoController(
     servo_channel=SERVO_CHANNEL,
@@ -135,7 +146,10 @@ print("\nStarting object tracking...")
 print(
     f"Target class: {TARGET_CLASS if TARGET_CLASS else 'Any object'}")
 print(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
-print(f"Press 'q' to quit, 's' to pause\n")
+if display_available:
+    print(f"Press 'q' to quit, 's' to pause\n")
+else:
+    print(f"Press Ctrl+C to quit\n")
 
 try:
     while True:
@@ -274,15 +288,18 @@ try:
         cv2.putText(frame, status_text, (10, 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-        # Show frame
-        cv2.imshow('YOLO Object Tracking', frame)
-
-        # Handle keyboard input
-        key = cv2.waitKey(1)
-        if key == ord('q') or key == ord('Q'):
-            break
-        elif key == ord('s') or key == ord('S'):
-            cv2.waitKey()
+        # Show frame or print status
+        if display_available:
+            cv2.imshow('YOLO Object Tracking', frame)
+            # Handle keyboard input
+            key = cv2.waitKey(1)
+            if key == ord('q') or key == ord('Q'):
+                break
+            elif key == ord('s') or key == ord('S'):
+                cv2.waitKey()
+        else:
+            # Print status to console in headless mode
+            print(f"\r{status_text} | FPS: {avg_frame_rate:0.1f}", end='', flush=True)
 
         # Calculate FPS
         t_stop = time.perf_counter()
@@ -301,5 +318,6 @@ finally:
     print(f'\nAverage FPS: {avg_frame_rate:.2f}')
     servo.cleanup()
     cap.release()
-    cv2.destroyAllWindows()
+    if display_available:
+        cv2.destroyAllWindows()
     print("Cleanup complete")
