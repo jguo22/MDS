@@ -116,7 +116,6 @@ print(
 print(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
 print(f"Press Ctrl+C to quit\n")
 
-results = model(source=0, stream=True, verbose=False)
 
 raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
 raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
@@ -130,6 +129,7 @@ bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,1
 
 cap = cv2.VideoCapture(0)
 frame = cap.read()
+results = model(frame, stream=True, verbose=False)
 
 # Initialize control and status variables
 avg_frame_rate = 0
