@@ -5,9 +5,11 @@ from ultralytics import YOLO
 
 from raven import Raven
 
+raven_board = Raven()
+
 # Get absolute path to model file (relative to this script)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, 'best_ncnn_model')
+MODEL_PATH = os.path.join(SCRIPT_DIR, 'yolo11n_ncnn_model')
 
 # Configuration
 CAMERA_INDEX = 0
@@ -118,9 +120,15 @@ else:
 results = model(source=0, stream=True, verbose=False)
 
 
+raven_board.set_motor_encoder(Raven.MotorChannel.CH1, 0) # Set encoder count for motor 1 to zero
+print(raven_board.get_motor_encoder(Raven.MotorChannel.CH1)) # Print encoder count = "0"
+raven_board.set_motor_mode(Raven.MotorChannel.CH1, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
+
+raven_board.set_motor_encoder(Raven.MotorChannel.CH2, 0) # Set encoder count for motor 1 to zero
+print(raven_board.get_motor_encoder(Raven.MotorChannel.CH2)) # Print encoder count = "0"
+raven_board.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
 try:
     for r in results:
-        print("result")
         detections = r.boxes
         changed = False
 
@@ -131,14 +139,23 @@ try:
                 continue
             classidx = int(detections[i].cls.item())
             classname = labels[classidx]
-            print(classname)
-            servo.set_angle(50)
+
+            # MOVE TOWARDS CENTER
+
+            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH1, 5)
+            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 5)
             changed = True
-            print("set angle to 50")
+            print("Found object " + classname)
+            break
 
         if (changed == False):
-            servo.set_angle(0)
-            print("set angle to 0")
+            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH1, 0)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH1, 0)
+            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
+            print("no object")
 
 
 
@@ -147,4 +164,8 @@ except KeyboardInterrupt:
 
 finally:
     servo.cleanup()
+    raven_board.set_motor_torque_factor(Raven.MotorChannel.CH1, 0)
+    raven_board.set_motor_speed_factor(Raven.MotorChannel.CH1, 0)
+    raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
+    raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
     print("Cleanup complete")
