@@ -94,7 +94,6 @@ if not os.path.exists(MODEL_PATH):
 
 # Load YOLO model
 model = YOLO(MODEL_PATH, task='detect')
-labels = model.names
 
 
 # Initialize Raven servo controller
