@@ -1,7 +1,13 @@
-path: dataset
-train: images/train
-val: images/val
+train: ../train/images
+val: ../valid/images
+test: ../test/images
 
-names:
-  0: red_can
-  1: green_can
+nc: 1
+names: ['pringle can']
+
+roboflow:
+  workspace: mds-5rhhh
+  project: pringle-can-detection
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/mds-5rhhh/pringle-can-detection/dataset/1
