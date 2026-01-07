@@ -123,7 +123,7 @@ raven_board.set_motor_encoder(Raven.MotorChannel.CH2, 0)
 raven_board.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.DIRECT)
 try:
     for r in results:
-        detections: Boxes = r.boxes
+        detections = r.boxes
         xywh = detections.xywh
         print("found object at " + xywh)
         print(xywh)
