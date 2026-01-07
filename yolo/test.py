@@ -94,6 +94,7 @@ if not os.path.exists(MODEL_PATH):
 
 # Load YOLO model
 model = YOLO(MODEL_PATH, task='detect')
+labels = model.names
 
 
 # Initialize Raven servo controller
@@ -127,6 +128,9 @@ try:
 
             if conf < CONFIDENCE_THRESHOLD:
                 continue
+            classidx = int(detections[i].cls.item())
+            classname = labels[classidx]
+            print(classname)
             servo.set_angle(50)
             print("set angle to 50")
 
