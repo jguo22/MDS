@@ -119,16 +119,19 @@ results = model(source=0, stream=True, verbose=False)
 
 try:
     for r in results:
-            detections = r.boxes
+        print("result")
+        detections = r.boxes
 
-            for i in range(len(detections)):
-                conf = detections[i].conf.item()
+        for i in range(len(detections)):
+            conf = detections[i].conf.item()
 
-                if conf < CONFIDENCE_THRESHOLD:
-                    continue
-                servo.set_angle(50)
+            if conf < CONFIDENCE_THRESHOLD:
+                continue
+            servo.set_angle(50)
+            print("set angle to 50")
 
-            servo.set_angle(0)
+        servo.set_angle(0)
+        print("set angle to 0")
 
 
 
