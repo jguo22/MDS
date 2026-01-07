@@ -148,9 +148,9 @@ else:
     print(f"Press Ctrl+C to quit\n")
 
 try:
+    profiler.start()  # Start profiler once at the beginning
     while True:
         t_start = time.perf_counter()
-        profiler.start()
 
         # Read frame from camera
         ret, frame = cap.read()
@@ -287,38 +287,42 @@ try:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
         # Show frame or print status
-        if DISPLAY_ENABLED:
-            cv2.imshow('YOLO Object Tracking', frame)
-            # Handle keyboard input
-            key = cv2.waitKey(1)
-            if key == ord('q') or key == ord('Q'):
-                break
-            elif key == ord('s') or key == ord('S'):
-                cv2.waitKey()
-        else:
-            # Print status to console in headless mode
-            print(f"\r{status_text} | FPS: {avg_frame_rate:0.1f}", end='', flush=True)
-
-        profiler.record("display_render")
-
         # Calculate FPS
-        t_stop = time.perf_counter()
-        frame_rate_calc = float(1 / (t_stop - t_start))
-
-        if len(frame_rate_buffer) >= fps_avg_len:
+        frame_rate = 1.0 / (time.perf_counter() - t_start)
+        frame_rate_buffer.append(frame_rate)
+        if len(frame_rate_buffer) > fps_avg_len:
             frame_rate_buffer.pop(0)
-        frame_rate_buffer.append(frame_rate_calc)
+        avg_frame_rate = sum(frame_rate_buffer) / len(frame_rate_buffer)
 
-        avg_frame_rate = np.mean(frame_rate_buffer)
+        # Print status
+        if target_center_x is not None:
+            angle = servo.current_angle
+            print(
+                f"\rTracking: {labels[target_detection.cls.item()]} | Angle: {angle:.1f}° | FPS: {frame_rate:.1f}", end="")
+        else:
+            print("\rNo target detected | Angle: 0.0° | FPS: 0.0", end="")
+
+        # Display frame if enabled
+        if DISPLAY_ENABLED:
+            cv2.imshow('Object Tracking', frame)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord('s'):
+                cv2.waitKey(0)
 
         profiler.end_frame()
+        
+        # Small delay to prevent excessive CPU usage
+        time.sleep(0.01)
 
 except KeyboardInterrupt:
     print("\nInterrupted by user")
 
 finally:
     print(f'\nAverage FPS: {avg_frame_rate:.2f}')
-    profiler.save_profile()
+    if 'profiler' in locals():
+        profiler.save_profile()
     servo.cleanup()
     cap.release()
     if DISPLAY_ENABLED:
