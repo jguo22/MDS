@@ -122,6 +122,7 @@ try:
     for r in results:
         print("result")
         detections = r.boxes
+        changed = False
 
         for i in range(len(detections)):
             conf = detections[i].conf.item()
@@ -132,9 +133,11 @@ try:
             classname = labels[classidx]
             print(classname)
             servo.set_angle(50)
+            changed = True
             print("set angle to 50")
 
-        servo.set_angle(0)
+        if (changed == False):
+            servo.set_angle(0)
         print("set angle to 0")
 
 
