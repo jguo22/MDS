@@ -7,9 +7,13 @@ import numpy as np
 from ultralytics import YOLO
 
 from raven import Raven
+from profiler import Profiler
+
+# Get absolute path to model file (relative to this script)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(SCRIPT_DIR, 'yolo11n.pt')
 
 # Configuration
-MODEL_PATH = 'yolo11n.pt'
 CAMERA_INDEX = 0
 SERVO_CHANNEL = 4
 MIN_ANGLE = -90
@@ -123,6 +127,9 @@ servo = RavenServoController(
     max_us=MAX_US,
 )
 
+# Initialize profiler
+profiler = Profiler()
+
 # Bounding box colors
 bbox_colors = [(164, 120, 87), (68, 148, 228), (93, 97, 209), (178, 182, 133), (88, 159, 106),
                (96, 202, 231), (159, 124, 168), (169, 162, 241), (98, 118, 150), (172, 176, 184)]
@@ -147,6 +154,7 @@ else:
 try:
     while True:
         t_start = time.perf_counter()
+        profiler.start()
 
         # Read frame from camera
         ret, frame = cap.read()
@@ -154,9 +162,13 @@ try:
             print("Error reading frame from camera")
             break
 
+        profiler.record("camera_capture")
+
         # Run YOLO detection
         results = model(frame, verbose=False)
         detections = results[0].boxes
+
+        profiler.record("yolo_inference")
 
         # Find target object (largest matching object)
         target_detection = None
@@ -275,6 +287,8 @@ try:
             servo.set_angle(0)
             status_text = 'No target detected'
 
+        profiler.record("processing_and_servo")
+
         # Display info on frame
         cv2.putText(frame, f'FPS: {avg_frame_rate:0.1f}', (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
@@ -294,6 +308,8 @@ try:
             # Print status to console in headless mode
             print(f"\r{status_text} | FPS: {avg_frame_rate:0.1f}", end='', flush=True)
 
+        profiler.record("display_render")
+
         # Calculate FPS
         t_stop = time.perf_counter()
         frame_rate_calc = float(1 / (t_stop - t_start))
@@ -304,11 +320,14 @@ try:
 
         avg_frame_rate = np.mean(frame_rate_buffer)
 
+        profiler.end_frame()
+
 except KeyboardInterrupt:
     print("\nInterrupted by user")
 
 finally:
     print(f'\nAverage FPS: {avg_frame_rate:.2f}')
+    profiler.save_profile()
     servo.cleanup()
     cap.release()
     if DISPLAY_ENABLED:
