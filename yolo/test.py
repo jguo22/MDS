@@ -4,6 +4,7 @@ import sys
 from ultralytics import YOLO
 
 from raven import Raven
+import cv2
 
 raven_board = Raven()
 
@@ -126,8 +127,12 @@ try:
         detections = r.boxes
         xywh = detections.xywh
         #print("found object at " + xywh)
+        r.show()
         print(xywh)
         changed = False
+
+        annotated_frame = r.plot()
+        cv2.imshow("YOLO Inference", annotated_frame)
 
         for i in range(len(detections)):
             conf = detections[i].conf.item()
@@ -165,4 +170,5 @@ finally:
     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
+    cv2.destroyAllWindows()
     print("Cleanup complete")
