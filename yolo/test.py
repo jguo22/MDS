@@ -114,19 +114,21 @@ if DISPLAY_ENABLED:
 else:
     print(f"Press Ctrl+C to quit\n")
 
+results = model(source=0, stream=True, verbose=False)
+
+
 try:
-    while True:
-        results = model(source=0, verbose=False)
-        detections = results[0].boxes
+    for r in results:
+            detections = r.boxes
 
-        for i in range(len(detections)):
-            conf = detections[i].conf.item()
+            for i in range(len(detections)):
+                conf = detections[i].conf.item()
 
-            if conf < CONFIDENCE_THRESHOLD:
-                continue
-            servo.set_angle(50)
+                if conf < CONFIDENCE_THRESHOLD:
+                    continue
+                servo.set_angle(50)
 
-        servo.set_angle(0)
+            servo.set_angle(0)
 
 
 
