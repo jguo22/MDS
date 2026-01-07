@@ -116,8 +116,6 @@ print(
 print(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
 print(f"Press Ctrl+C to quit\n")
 
-results = model(source=0, stream=True, verbose=False)
-
 raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
 raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
 
@@ -135,12 +133,14 @@ fps_avg_len = 200
 img_count = 0
 object_count = 0
 
-try:
-    for r in results:
-        frame = r.plot()
-        t_start = time.perf_counter()
 
-        detections = r.boxes
+
+try:
+    cap = cv2.VideoCapture(0)
+    while cap.isOpened():
+        success, frame = cap.read()
+        results = model(frame, verbose=False)
+        detections = results[0].boxes
         for i in range(len(detections)):
             # Get bounding box coordinates
             # Ultralytics returns results in Tensor format, which have to be converted to a regular Python array
@@ -172,8 +172,7 @@ try:
 
         changed = False
 
-        annotated_frame = r.plot()
-        cv2.imshow("YOLO Inference", annotated_frame)
+        cv2.imshow("YOLO Inference", frame)
 
         for i in range(len(detections)):
             conf = detections[i].conf.item()
