@@ -19,6 +19,7 @@ MAX_US = 2500
 CONFIDENCE_THRESHOLD = 0.5
 TARGET_CLASS = None
 CENTER_DEADZONE = 5
+DISPLAY_ENABLED = False
 
 
 class RavenServoController:
@@ -110,16 +111,8 @@ if not ret:
 frame_height, frame_width = test_frame.shape[:2]
 print(f"Camera resolution: {frame_width}x{frame_height}")
 
-# Check if display is available
-display_available = True
-try:
-    cv2.imshow('Display Test', test_frame)
-    cv2.waitKey(1)
-    cv2.destroyAllWindows()
-except cv2.error as e:
-    print("Warning: Display not available (Qt platform plugin not found)")
+if not DISPLAY_ENABLED:
     print("Running in headless mode - no UI will be shown")
-    display_available = False
 
 # Initialize Raven servo controller
 servo = RavenServoController(
@@ -146,7 +139,7 @@ print("\nStarting object tracking...")
 print(
     f"Target class: {TARGET_CLASS if TARGET_CLASS else 'Any object'}")
 print(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
-if display_available:
+if DISPLAY_ENABLED:
     print(f"Press 'q' to quit, 's' to pause\n")
 else:
     print(f"Press Ctrl+C to quit\n")
@@ -289,7 +282,7 @@ try:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
         # Show frame or print status
-        if display_available:
+        if DISPLAY_ENABLED:
             cv2.imshow('YOLO Object Tracking', frame)
             # Handle keyboard input
             key = cv2.waitKey(1)
@@ -318,6 +311,6 @@ finally:
     print(f'\nAverage FPS: {avg_frame_rate:.2f}')
     servo.cleanup()
     cap.release()
-    if display_available:
+    if DISPLAY_ENABLED:
         cv2.destroyAllWindows()
     print("Cleanup complete")
