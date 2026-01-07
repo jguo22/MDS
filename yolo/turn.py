@@ -132,8 +132,7 @@ avg_frame_rate = 0
 frame_rate_buffer = []
 fps_avg_len = 30
 
-# Calculate deadzone
-deadzone_pixels = (CENTER_DEADZONE / 100) * frame_width
+# Deadzone removed
 
 print("\nStarting object tracking...")
 print(
@@ -256,24 +255,19 @@ try:
             cv2.line(frame, (int(frame_center_x), 0),
                      (int(frame_center_x), frame_height), (255, 255, 0), 1)
 
-            # Move servo if outside deadzone
-            if abs(offset) > deadzone_pixels:
-                # Calculate servo angle based on offset
-                # Normalize offset to -1.0 to 1.0
-                normalized_offset = offset / (frame_width / 2)
+            # Calculate servo angle based on offset
+            # Normalize offset to -1.0 to 1.0
+            normalized_offset = offset / (frame_width / 2)
 
-                # Convert to servo angle
-                angle_range = MAX_ANGLE - MIN_ANGLE
-                servo_angle = normalized_offset * (angle_range / 2)
+            # Convert to servo angle
+            angle_range = MAX_ANGLE - MIN_ANGLE
+            servo_angle = normalized_offset * (angle_range / 2)
 
-                servo.set_angle(servo_angle)
-                status_text = f'Tracking: {target_bbox[5]} | Angle: {servo.current_angle:.1f}°'
-            else:
-                servo.set_angle(0)
-                status_text = f'Centered: {target_bbox[5]} | Angle: 0°'
+            servo.set_angle(servo_angle)
+            status_text = f'Tracking: {target_bbox[5]} | Angle: {servo.current_angle:.1f}°'
         else:
-            servo.set_angle(0)
-            status_text = 'No target detected'
+            # Don't change the angle when no target is detected, just update status
+            status_text = f'No target detected | Angle: {servo.current_angle:.1f}°'
 
         # Display info on frame
         cv2.putText(frame, f'FPS: {avg_frame_rate:0.1f}', (10, 30),
