@@ -172,7 +172,9 @@ try:
 
         changed = False
 
-        cv2.imshow("YOLO Inference", frame)
+        # Display detection results
+        cv2.putText(frame, f'Number of objects: {object_count}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
+        cv2.imshow('YOLO detection results', frame) # Display image
 
         for i in range(len(detections)):
             conf = detections[i].conf.item()
@@ -185,9 +187,9 @@ try:
             # MOVE TOWARDS CENTER
 
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 50)
-            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 30, reverse=False)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 5, reverse=False)
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 30, reverse=True)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 5, reverse=True)
             changed = True
             print("Found object " + classname)
             break
