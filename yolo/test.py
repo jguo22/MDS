@@ -47,7 +47,7 @@ class RavenServoController:
 
             # Set servo channel
             if servo_channel == 1:
-                self.channel = Raven.ServoChannel.CH1
+                self.channel = Raven.ServoChannel.CH3
             elif servo_channel == 2:
                 self.channel = Raven.ServoChannel.CH2
             elif servo_channel == 3:
@@ -112,24 +112,21 @@ print("\nStarting object tracking...")
 print(
     f"Target class: {TARGET_CLASS if TARGET_CLASS else 'Any object'}")
 print(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
-if DISPLAY_ENABLED:
-    print(f"Press 'q' to quit, 's' to pause\n")
-else:
-    print(f"Press Ctrl+C to quit\n")
+print(f"Press Ctrl+C to quit\n")
 
 results = model(source=0, stream=True, verbose=False)
 
+raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
+raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
 
-raven_board.set_motor_encoder(Raven.MotorChannel.CH1, 0) # Set encoder count for motor 1 to zero
-print(raven_board.get_motor_encoder(Raven.MotorChannel.CH1)) # Print encoder count = "0"
-raven_board.set_motor_mode(Raven.MotorChannel.CH1, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
-
-raven_board.set_motor_encoder(Raven.MotorChannel.CH2, 0) # Set encoder count for motor 1 to zero
-print(raven_board.get_motor_encoder(Raven.MotorChannel.CH2)) # Print encoder count = "0"
-raven_board.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
+raven_board.set_motor_encoder(Raven.MotorChannel.CH2, 0)
+raven_board.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.DIRECT)
 try:
     for r in results:
-        detections = r.boxes
+        detections: Boxes = r.boxes
+        xywh = detections.xywh
+        print("found object at " + xywh)
+        print(xywh)
         changed = False
 
         for i in range(len(detections)):
@@ -142,17 +139,17 @@ try:
 
             # MOVE TOWARDS CENTER
 
-            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH1, 50)
-            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH1, 5)
+            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 50)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 10)
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 5)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 10)
             changed = True
             print("Found object " + classname)
             break
 
         if (changed == False):
-            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH1, 0)
-            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH1, 0)
+            raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
+            raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
             raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
             print("no object")
@@ -164,8 +161,8 @@ except KeyboardInterrupt:
 
 finally:
     servo.cleanup()
-    raven_board.set_motor_torque_factor(Raven.MotorChannel.CH1, 0)
-    raven_board.set_motor_speed_factor(Raven.MotorChannel.CH1, 0)
+    raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
+    raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
     print("Cleanup complete")
