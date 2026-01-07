@@ -22,7 +22,6 @@ MIN_US = 500
 MAX_US = 2500
 CONFIDENCE_THRESHOLD = 0.5
 TARGET_CLASS = None
-CENTER_DEADZONE = 5
 DISPLAY_ENABLED = False
 
 
@@ -138,8 +137,6 @@ bbox_colors = [(164, 120, 87), (68, 148, 228), (93, 97, 209), (178, 182, 133), (
 avg_frame_rate = 0
 frame_rate_buffer = []
 fps_avg_len = 30
-
-# Deadzone removed
 
 print("\nStarting object tracking...")
 print(
