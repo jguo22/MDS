@@ -16,6 +16,35 @@ app = Flask(__name__)
 output_frame = None
 lock = None
 
+@app.route("/")
+def index():
+    return """
+    <html>
+      <head><title>YOLO Stream</title></head>
+      <body>
+        <h1>YOLO Live Stream</h1>
+        <img src="/video" width="640">
+      </body>
+    </html>
+    """
+
+def generate():
+    global output_frame
+    while True:
+        with lock:
+            if output_frame is None:
+                continue
+            ret, buffer = cv2.imencode(".jpg", output_frame)
+            frame = buffer.tobytes()
+
+        yield (b"--frame\r\n"
+               b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+
+@app.route("/video")
+def video():
+    return Response(generate(),
+                    mimetype="multipart/x-mixed-replace; boundary=frame")
+
 lock = threading.Lock()
 
 # Define and parse user input arguments
@@ -224,24 +253,6 @@ while True:
     # Display detection results
     with lock:
         output_frame = frame.copy()
-
-def generate():
-    global output_frame
-    while True:
-        with lock:
-            if output_frame is None:
-                continue
-            ret, buffer = cv2.imencode(".jpg", output_frame)
-            frame = buffer.tobytes()
-
-        yield (b"--frame\r\n"
-               b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
-
-
-@app.route("/video")
-def video():
-    return Response(generate(),
-                    mimetype="multipart/x-mixed-replace; boundary=frame")
 
 # Clean up
 print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
