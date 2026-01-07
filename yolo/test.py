@@ -7,7 +7,7 @@ from raven import Raven
 
 # Get absolute path to model file (relative to this script)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, 'yolo11n_ncnn_model')
+MODEL_PATH = os.path.join(SCRIPT_DIR, 'best_ncnn_model')
 
 # Configuration
 CAMERA_INDEX = 0
