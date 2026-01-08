@@ -205,7 +205,7 @@ try:
                         motors.stopRotating()
                         cv2.waitKey(1000)
                         # Rotate back to find object
-                        motors.rotateInPlace(5, False)
+                        motors.rotateInPlace(10, False)
                         cv2.waitKey(1000)
 
                     changed = True
