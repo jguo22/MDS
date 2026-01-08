@@ -194,7 +194,7 @@ try:
 
         # Variables for detected humans
         humans_detected = False
-        x_mid = None
+        x_mid = 320
         biggest_human_area = 0
 
         # Go through each detection and get bbox coords, confidence, and class
