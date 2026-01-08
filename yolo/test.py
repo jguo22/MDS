@@ -326,7 +326,7 @@ try:
             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
                 # Stop moving for 0.5s to stabilize image
-                if (robot.now - robot.state_start > 0.3):
+                if (robot.now - robot.state_start > 1):
                     # Check for humans. If found, seek. If not, return to searching.
                     print("Checking image.")
                     robot.checkImage(cap)
@@ -339,6 +339,7 @@ try:
             # Rotate for correction until in margin
             case RobotState.SEEKING_CORRECTION:
                 # Assuming we are already rotating, stop rotating when in margin
+                # Rotate for 0.3s
                 if (robot.now - robot.state_start > 0.3):
                     robot.checkRotation(cap)
             # Move foward for 2 seconds, then recheck for correction
