@@ -9,7 +9,7 @@ from enum import Enum
 raven_board = Raven()
 
 
-def drawBox(frame, xmin, ymin, xmax, ymax, classname):
+def drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname):
     color = bbox_colors[classidx % 10]
     cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
 
@@ -208,7 +208,7 @@ try:
 
             # Draw box if confidence threshold is high enough
             if conf > 0.5:
-                drawBox(frame, xmin, ymin, xmax, ymax, classname)
+                drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
 
             if (classname == "person"):
                 humans_detected = True
