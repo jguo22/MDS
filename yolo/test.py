@@ -194,17 +194,17 @@ try:
 
             # Get bounding box coordinates
             # Ultralytics returns results in Tensor format, which have to be converted to a regular Python array
-            xyxy_tensor = detections.xyxy.cpu() # Detections in Tensor format in CPU memory
+            xyxy_tensor = detection.xyxy.cpu() # Detections in Tensor format in CPU memory
             xyxy = xyxy_tensor.numpy().squeeze() # Convert tensors to Numpy array
             xmin, ymin, xmax, ymax = xyxy.astype(int) # Extract individual coordinates and convert to int
 
             # Get bounding box class ID and name
-            classidx = int(detections.cls.item())
+            classidx = int(detection.cls.item())
             classname = labels[classidx]
             print("found " + classname)
 
             # Get bounding box confidence
-            conf = detections.conf.item()
+            conf = detection.conf.item()
 
             # Draw box if confidence threshold is high enough
             if conf > 0.5:
