@@ -134,10 +134,15 @@ class RavenMotorControllers:
         self.rightChannel = Raven.MotorChannel.CH2
         self.rotating = False
 
-        raven_board.set_motor_encoder(self.leftChannel, 1)
-        raven_board.set_motor_mode(self.leftChannel, Raven.MotorMode.DIRECT)
-        raven_board.set_motor_encoder(self.rightChannel, 1)
-        raven_board.set_motor_mode(self.rightChannel, Raven.MotorMode.DIRECT)
+        raven_board.set_motor_encoder(self.leftChannel, 0)
+        raven_board.set_motor_max_current(self.leftChannel, 5)
+        raven_board.set_motor_mode(self.leftChannel, Raven.MotorMode.POSITION)
+        raven_board.set_motor_pid(self.leftChannel, p_gain = 100, i_gain = 0, d_gain = 0)
+
+        raven_board.set_motor_encoder(self.rightChannel, 0)
+        raven_board.set_motor_max_current(self.rightChannel, 5)
+        raven_board.set_motor_mode(self.rightChannel, Raven.MotorMode.POSITION)
+        raven_board.set_motor_pid(self.rightChannel, p_gain = 100, i_gain = 0, d_gain = 0)
 
     def setTorque(self, torque):
         raven_board.set_motor_torque_factor(self.leftChannel, torque)
@@ -164,6 +169,10 @@ class RavenMotorControllers:
         raven_board.set_motor_torque_factor(self.rightChannel, 0)
         raven_board.set_motor_speed_factor(self.leftChannel, 0)
         raven_board.set_motor_speed_factor(self.rightChannel, 0)
+
+    def spinMotor(self, count):
+        raven_board.set_motor_target(self.leftChannel, count)
+        raven_board.set_motor_target(self.rightChannel, count)
 
 
 class Robot:
@@ -227,10 +236,7 @@ robot = Robot()
 # Begin inference loop
 try:
     while True:
-        raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-        raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 50)
-        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 50, reverse=False)
-        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 50, reverse=True)
+        motors.spinMotor(1000)
         # motors.setSpeed(100)
         # motors.setTorque(100)
 
