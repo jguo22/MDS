@@ -182,8 +182,8 @@ try:
         t_start = time.perf_counter()
 
         ret, frame = cap.read()
-        print("WIDTH is " + cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        print("HEIGHT is " + cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print("WIDTH is " + str(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+        print("HEIGHT is " + str(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         # Resize
         frame = cv2.resize(frame,(600,400))
         # Run inference on frame
