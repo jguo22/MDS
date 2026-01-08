@@ -122,7 +122,7 @@ class RavenMotorControllers:
 
 model_path = "yolo11n_ncnn_model"
 img_source = "usb"
-min_thresh = float(0.5)
+min_thresh = float(0.2)
 user_res = None
 record = False
 
