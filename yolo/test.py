@@ -199,7 +199,7 @@ try:
                 cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
 
 
-                if (classname != "person"):
+                if (classname == "person"):
                     if (motors.rotating):
                         motors.stopRotating()
 
