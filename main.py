@@ -226,8 +226,9 @@ motors = RavenMotorControllers()
 robot = Robot()
 # Begin inference loop
 try:
-    motors.setSpeed(100)
-    motors.setTorque(100)
+    while True:
+        motors.setSpeed(100)
+        motors.setTorque(100)
 
 except KeyboardInterrupt:
     print("\nInterrupted by user")
