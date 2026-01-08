@@ -173,6 +173,7 @@ avg_frame_rate = 0
 frame_rate_buffer = []
 fps_avg_len = 200
 img_count = 0
+motors.rotateInPlace(100)
 
 # Begin inference loop
 try:
@@ -212,6 +213,7 @@ try:
 
             if (classname == "person"):
                 humans_detected = True
+        continue
 
         # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
         if (state == RobotState.CHECKING_SEARCH):
@@ -220,8 +222,8 @@ try:
                 # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
                 if (humans_detected):
                     print("FOUND HUMANS")
-                    # state = RobotState.SEEKING
-                    # state_start = now
+                    state = RobotState.SEEKING
+                    state_start = now
                 else:
                     print("No humans found. Resuming search.")
                     state = RobotState.SEARCHING
@@ -229,6 +231,14 @@ try:
                     motors.rotateInPlace(50)
         # Searching Mode
         if (state == RobotState.SEARCHING):
+            # Change to Searching Mode and Rotate after checking for 1s
+            if (now - state_start > 0.1):
+                state = RobotState.CHECKING_SEARCH
+                state_start = now
+                motors.stopRotating()
+                print("Checking search now.")
+        # Seeking Mode
+        if (state == RobotState.SEEKING):
             # Change to Searching Mode and Rotate after checking for 1s
             if (now - state_start > 0.1):
                 state = RobotState.CHECKING_SEARCH
