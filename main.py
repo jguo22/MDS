@@ -1,4 +1,4 @@
-from client import DetectionClient
+from tcp.client import DetectionClient
 import time
 import sys
 import os

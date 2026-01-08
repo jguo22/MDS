@@ -6,8 +6,8 @@ Sends images to computer server for YOLO object detection
 import json
 import time
 import cv2
-from tcp_protocol import TCPConnection
-from yolo_detector import encode_image_to_base64
+from .tcp_protocol import TCPConnection
+from .yolo_detector import encode_image_to_base64
 
 # Configuration
 SERVER_HOST = '192.168.1.100'  # Replace with your computer's IP address
