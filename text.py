@@ -32,7 +32,7 @@ for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
     raven.set_motor_encoder(motor, 0)
     raven.set_motor_max_current(motor, 5)
     raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
-    raven.set_motor_pid(motor, p_gain = 300, i_gain = 30, d_gain = 40)
+    raven.set_motor_pid(motor, p_gain = 300, i_gain = 100, d_gain = 40)
     raven.set_motor_target(motor, 0)
 
 def startPath(left_coefficient, right_coefficient, distance):
@@ -59,7 +59,7 @@ def updatePath(dt):
     raven.set_motor_target(LEFT_MOTOR, start_left - (current_distance * left_coef))
     raven.set_motor_target(RIGHT_MOTOR, start_right + (current_distance * right_coef))
 
-startPath(1, 1, TICK_ROTATION * 5)
+startPath(-1, -1, TICK_ROTATION * 5)
 
 while True:
     updatePath(.05)
