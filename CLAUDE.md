@@ -98,21 +98,31 @@ The `yolo_detect.py` script performs the following:
 ## Python Environment
 
 ### Dependencies
-System Python 3.11 is used (not the venv in yolo/venv). Key packages:
+Python 3.11 virtual environment in `venv/`. Key packages:
 - `ultralytics==8.3.248`: YOLO training and inference
 - `opencv-python==4.12.0.88`: Image processing and camera interface
 - `torch==2.2.0`: PyTorch deep learning framework
 - `ncnn==1.0.20250916`: NCNN inference framework
 - `numpy==2.2.6`: Array operations
-- `raven`: Motor controller interface (custom package)
+- `raven`: Motor controller interface (custom package from maslab-lib)
 
 ### Setup
-The project uses system-level Python packages. To install dependencies:
+Activate the virtual environment and install dependencies:
 ```bash
-pip3 install ultralytics opencv-python torch ncnn numpy
+source venv/bin/activate
+pip3 install -r requirements.txt
 ```
 
-The `raven` package should be installed separately (hardware-specific).
+Or install manually:
+```bash
+source venv/bin/activate
+pip3 install ultralytics ncnn numpy
+pip3 install git+https://github.com/MASLAB/maslab-lib.git
+```
+
+The `raven` package is installed via maslab-lib and provides motor controller access.
+
+**Important:** Always activate the venv before running scripts: `source venv/bin/activate`
 
 ## Custom Model Training
 
@@ -220,12 +230,28 @@ When integrating vision with motor control:
 3. Send commands to Raven board to actuate motors
 4. Main control loop should handle both vision processing and motor updates
 
-### Common Pitfalls
+### Common Pitfalls and Solutions
+
+**Detection Issues:**
+- **False positives on backgrounds**: Add 10-20% background-only images with empty label files to training dataset
+- **Low confidence scores**: Custom models often perform best with lower thresholds (0.2-0.4 vs 0.5 default)
+- **Model not detecting objects**: Check if input resolution matches training size (640x640), verify model path
+
+**Camera and Display:**
 - **Camera resolution**: For PiCamera, always specify `--resolution` to avoid configuration issues
+- **Resolution mismatch**: Match inference resolution to training resolution for best results (640x480 or 1280x720)
+- **Interactive controls**: Use 'p' to capture frames, 's' to pause/resume, 'q' to quit
+
+**Training:**
 - **Model paths**: Use absolute paths or paths relative to project root
-- **Detection threshold**: Default 0.5 is conservative; lower for more detections, raise for fewer false positives
+- **Dataset paths in data.yaml**: Use relative paths (`../train/images`) from dataset directory
+- **Empty training runs**: Verify dataset has matching image/label file pairs with correct naming
+- **Overfitting**: Increase data augmentation, add more training data, reduce `freeze` parameter
+
+**Performance:**
 - **Frame rate**: YOLO inference takes ~30-100ms per frame on typical hardware; factor this into control loops
-- **Coordinate systems**: YOLO returns pixel coordinates; convert to robot coordinates for navigation
+- **Coordinate systems**: YOLO returns pixel coordinates in xyxy format; convert to robot coordinates for navigation
+- **MPS acceleration**: Training uses Apple Silicon GPU (`device: 'mps'`); inference auto-detects available hardware
 
 ## File Organization
 
