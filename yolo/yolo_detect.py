@@ -232,7 +232,7 @@ while True:
         conf = detections[i].conf.item()
 
         # Draw box if confidence threshold is high enough
-        if conf > 0.5:
+        if conf > float(min_thresh):
 
             color = bbox_colors[classidx % 10]
             cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)

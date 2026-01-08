@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['pringles']
+
+roboflow:
+  workspace: mds-nijuk
+  project: pringles-glrn4
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/mds-nijuk/pringles-glrn4/dataset/3
