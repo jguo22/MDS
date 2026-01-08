@@ -259,12 +259,14 @@ while True:
             raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 5, reverse=False)
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
             raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 5, reverse=True)
+            print("FOUND AN OBJECT")
 
         if (changed == False):
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
             raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
             raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
             raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
+            print("found no object")
 
 
     # Calculate and draw framerate (if using video, USB, or Picamera source)
