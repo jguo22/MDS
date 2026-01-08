@@ -216,7 +216,6 @@ avg_frame_rate = 0
 frame_rate_buffer = []
 fps_avg_len = 200
 img_count = 0
-motors.rotateInPlace(100)
 
 if (not DISPLAY_ENABLED):
     print("Running headless")
@@ -271,7 +270,7 @@ try:
 
         robot.setNowTime()
 
-        match state:
+        match robot.state:
             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
                 # Stop moving for 0.5s to stabilize image
