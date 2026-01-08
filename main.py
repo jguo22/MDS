@@ -236,7 +236,7 @@ robot = Robot()
 # Begin inference loop
 try:
     while True:
-        motors.spinMotor(1000)
+        motors.spinMotor(10000)
         # motors.setSpeed(100)
         # motors.setTorque(100)
 
