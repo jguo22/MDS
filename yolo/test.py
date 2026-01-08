@@ -204,6 +204,7 @@ try:
                     if (motors.rotating):
                         print("stopping rotation")
                         motors.stopRotating()
+                        print("a" + str(motors.rotating))
                         cv2.waitKey(1000)
                         # Rotate back to find object
                         motors.rotateInPlace(10, False)
@@ -213,7 +214,9 @@ try:
                     motors.setTorque(30)
                     motors.setSpeed(30)
                     print("Moving towards object")
+                print("b" + str(motors.rotating))
 
+        print("c" + str(motors.rotating))
         if (changed == False):
             motors.rotateInPlace(15)
             print("found no object, rotating")
