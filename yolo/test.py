@@ -253,7 +253,7 @@ class Robot:
             conf = detection.conf.item()
 
             # Only get confident boxes
-            if conf < 0.5:
+            if conf < 0.3:
                 continue
             if (DISPLAY_ENABLED):
                 drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
@@ -325,7 +325,7 @@ try:
             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
                 # Stop moving for 0.5s to stabilize image
-                if (robot.now - robot.state_start > 0.5):
+                if (robot.now - robot.state_start > 0.3):
                     # Check for humans. If found, seek. If not, return to searching.
                     print("Checking image.")
                     robot.checkImage(cap)
