@@ -209,6 +209,7 @@ try:
                         # Rotate back to find object
                         motors.rotateInPlace(10, False)
                         cv2.waitKey(1000)
+                        motors.stopRotating()
 
                     changed = True
                     motors.setTorque(30)
