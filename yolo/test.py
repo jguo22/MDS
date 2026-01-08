@@ -182,8 +182,6 @@ try:
             classidx = int(detections[i].cls.item())
             classname = labels[classidx]
             print("found " + classname)
-            if (classname != "Human"):
-                continue
 
             # Get bounding box confidence
             conf = detections[i].conf.item()
@@ -201,6 +199,9 @@ try:
                 cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
                 cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
 
+
+                if (classname != "Human"):
+                    continue
                 if (motors.rotating):
                     motors.stopRotating()
 
