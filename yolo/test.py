@@ -168,7 +168,7 @@ try:
         detections = results[0].boxes
 
         changed = False
-        print("new cap")
+        print("new cap, rotation: " + str(motors.rotating))
 
         # Go through each detection and get bbox coords, confidence, and class
         for i in range(len(detections)):
