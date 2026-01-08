@@ -105,12 +105,12 @@ class RavenMotorControllers:
     def setSpeed(self, speed, reverse = False):
         raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = reverse)
         raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = not reverse)
-    def rotateInPlace(self, speed):
+    def rotateInPlace(self, speed, clockwise = True):
         self.rotating = True
         raven_board.set_motor_torque_factor(self.leftChannel, 20)
         raven_board.set_motor_torque_factor(self.rightChannel, 20)
-        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = True)
-        raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = True)
+        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = clockwise)
+        raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = clockwise)
     def stopRotating(self):
         self.rotating = False
         raven_board.set_motor_torque_factor(self.leftChannel, 0)
@@ -201,17 +201,21 @@ try:
 
                 if (classname == "person"):
                     if (motors.rotating):
+                        print("stopping rotation")
                         motors.stopRotating()
-                        cv2.waitKey(3000)
+                        cv2.waitKey(1000)
+                        # Rotate back to find object
+                        motors.rotateInPlace(5, False)
+                        cv2.waitKey(1000)
 
                     changed = True
                     motors.setTorque(30)
                     motors.setSpeed(30)
-                    print("FOUND AN OBJECT")
+                    print("Moving towards object")
 
         if (changed == False):
             motors.rotateInPlace(15)
-            print("found no object")
+            print("found no object, rotating")
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
