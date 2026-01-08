@@ -1,3 +1,4 @@
+from client import DetectionClient
 import time
 import sys
 import os
@@ -9,7 +10,6 @@ from enum import Enum
 
 # Import TCP detection client
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tcp'))
-from client import DetectionClient
 
 raven_board = Raven()
 
@@ -280,7 +280,8 @@ try:
 
         # Process detections if we got results
         if detections:
-            # Go through each detection and get bbox coords, confidence, and class
+            # Go through each detection and get bbox coords, confidence, and
+            # class
             for detection in detections:
                 # Extract detection data
                 classname = detection['class']
@@ -297,9 +298,17 @@ try:
                 # Get class index for color (use hash of classname as index)
                 classidx = hash(classname) % 10
 
-                drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname, conf)
+                drawBox(
+                    classidx,
+                    frame,
+                    xmin,
+                    ymin,
+                    xmax,
+                    ymax,
+                    classname,
+                    conf)
 
-                if (classname == "person"):
+                if (classname == "pringles"):
                     humans_detected = True
                     human_area = (xmax - xmin) * (ymax - ymin)
                     if (human_area > biggest_human_area):
