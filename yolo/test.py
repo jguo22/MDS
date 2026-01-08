@@ -233,7 +233,7 @@ try:
             if (now - state_start > 1.0):
                 state = RobotState.CHECKING_SEARCH
                 state_start = now
-                motors.stopRotating
+                motors.stopRotating()
                 print("Checking search now.")
 
 
