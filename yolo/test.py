@@ -40,7 +40,7 @@ class RobotState(Enum):
     DROPPING_OFF = 6
 
 state = RobotState.CHECKING_SEARCH
-state_start = time.monotonic
+state_start = time.monotonic()
 
 class RavenServoController:
     def __init__(
