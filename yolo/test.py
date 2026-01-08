@@ -200,14 +200,13 @@ try:
 
 
                 if (classname != "person"):
-                    continue
-                if (motors.rotating):
-                    motors.stopRotating()
+                    if (motors.rotating):
+                        motors.stopRotating()
 
-                changed = True
-                motors.setTorque(30)
-                motors.setSpeed(30)
-                print("FOUND AN OBJECT")
+                    changed = True
+                    motors.setTorque(30)
+                    motors.setSpeed(30)
+                    print("FOUND AN OBJECT")
 
             if (changed == False):
                 motors.rotateInPlace(20)
