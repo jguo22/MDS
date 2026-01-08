@@ -221,7 +221,7 @@ try:
 
         print("c" + str(motors.rotating))
         if (changed == False):
-            motors.rotateInPlace(5)
+            motors.rotateInPlace(10)
             print("found no object, rotating")
 
 
