@@ -114,13 +114,104 @@ pip3 install ultralytics opencv-python torch ncnn numpy
 
 The `raven` package should be installed separately (hardware-specific).
 
+## Custom Model Training
+
+### Training Pipeline
+The `yolo/train/` directory contains the complete training infrastructure:
+
+**Training a Model:**
+```bash
+cd yolo/train
+python3 train.py
+```
+
+The training script (`train.py`) automatically:
+- Manages experiment numbering via `runs/train/exp{N}` directories
+- Tracks run numbers in `runs/train/run_counter.txt`
+- Saves best and last models to `runs/train/exp{N}/weights/`
+- Uses transfer learning with `freeze: 10` (freezes first 10 layers)
+- Configured for Apple Silicon with `device: 'mps'`
+
+**Key Training Parameters in `train.py`:**
+- Dataset: `datasets/combined1/data.yaml` (customizable)
+- Base model: `yolo11n.pt` (pretrained YOLOv11n)
+- Epochs: 300 with early stopping (`patience: 50`)
+- Batch size: 16
+- Image size: 640x640
+- Learning rate: 0.01 → 0.0001 (linear decay)
+- Data augmentation: flip, HSV, rotation, translation, scale, mosaic
+
+**Validating a Model:**
+```bash
+cd yolo/train
+python3 validate.py
+```
+Edit `validate.py` to change the model path (currently points to `exp2/weights/best.pt`).
+
+**Checking Frozen Layers:**
+```bash
+cd yolo/train
+python3 check_frozen_layers.py
+```
+This script shows which layers are trainable vs frozen in the base model.
+
+### Dataset Structure
+Datasets are organized in `yolo/train/datasets/` following YOLO format:
+```
+datasets/
+├── combined1/          # Combined dataset
+├── Pringles1/          # Individual Pringles dataset
+└── Cheetos/            # Individual Cheetos dataset
+
+Each dataset contains:
+dataset_name/
+├── data.yaml           # Dataset config (paths, class names, nc)
+├── train/
+│   ├── images/        # Training images
+│   └── labels/        # Training labels (.txt, YOLO format)
+├── valid/
+│   ├── images/
+│   └── labels/
+└── test/
+    ├── images/
+    └── labels/
+```
+
+**YOLO Label Format:**
+Each `.txt` file contains one line per object:
+```
+class_id center_x center_y width height
+```
+All coordinates are normalized to [0, 1]. Empty `.txt` files indicate background images with no objects.
+
+**Important:** To prevent false positives on backgrounds, include background-only images with empty label files (10-20% of dataset).
+
+### Testing Custom Models
+Test trained models on various sources:
+
+```bash
+# Test on dataset test images
+python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source yolo/train/datasets/combined1/test/images --thresh 0.2
+
+# Test on live camera
+python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source usb0 --thresh 0.2
+
+# Capture frame for debugging (press 'p' during inference)
+python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source usb0 --thresh 0.2
+# Then test saved frame
+python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source capture.png --thresh 0.2
+```
+
+**Threshold Tuning:** Custom models often need lower thresholds (0.2-0.4) compared to pretrained models (0.5+).
+
 ## Development Workflow
 
 ### Working with YOLO Models
-1. **Training custom models**: Use Ultralytics YOLO API to train on custom datasets
+1. **Training custom models**: Edit `yolo/train/train.py` to configure dataset and parameters, then run
 2. **Model export**: Models can be exported to NCNN format for embedded deployment
 3. **Testing**: Run detection on test images/videos before deploying to robot
 4. **Tuning**: Adjust confidence threshold (`--thresh`) based on detection requirements
+5. **Debugging**: Use profiler (`yolo/profiler.py`) to measure inference performance
 
 ### Motor Control Integration
 When integrating vision with motor control:
@@ -140,20 +231,38 @@ When integrating vision with motor control:
 
 ```
 MDS/
-├── main.py              # Raven motor controller example
-├── out.jpg             # Example output image
-├── yolo/
-│   ├── yolo11n.pt      # YOLO model (PyTorch)
-│   ├── yolo_detect.py  # Main detection script
-│   ├── yolo11n_ncnn_model/  # NCNN optimized model
-│   │   ├── model.ncnn.bin
-│   │   ├── model.ncnn.param
-│   │   ├── model_ncnn.py
-│   │   └── metadata.yaml
-│   ├── runs/           # Detection output directory
-│   │   └── detect/
-│   └── turn.py         # (Empty placeholder)
-└── README.md
+├── main.py                    # Raven motor controller example
+├── requirements.txt           # Python dependencies (ultralytics, ncnn, numpy, maslab-lib)
+├── out.jpg                   # Example output image
+├── runs/                     # Root-level runs directory (generated)
+└── yolo/
+    ├── yolo11n.pt            # Pretrained YOLOv11n model (COCO dataset, 80 classes)
+    ├── yolo_detect.py        # Main detection script for inference
+    ├── profiler.py           # Performance profiling utility
+    ├── turn.py               # (Placeholder)
+    ├── yolo11n_ncnn_model/   # NCNN optimized model for embedded deployment
+    │   ├── model.ncnn.bin
+    │   ├── model.ncnn.param
+    │   ├── model_ncnn.py
+    │   └── metadata.yaml
+    ├── runs/detect/          # Detection output directory (generated)
+    └── train/
+        ├── yolo11n.pt        # Base model for training
+        ├── train.py          # Training script with auto-incrementing experiments
+        ├── validate.py       # Model validation script
+        ├── check_frozen_layers.py  # Utility to inspect layer freeze status
+        ├── datasets/         # Training datasets
+        │   ├── combined1/    # Primary combined dataset
+        │   ├── Pringles1/
+        │   └── Cheetos/
+        └── runs/train/       # Training outputs (generated)
+            ├── run_counter.txt
+            ├── exp1/
+            ├── exp2/
+            └── exp{N}/
+                └── weights/
+                    ├── best.pt   # Best model checkpoint
+                    └── last.pt   # Last epoch checkpoint
 ```
 
 ## Model Information

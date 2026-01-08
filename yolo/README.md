@@ -14,3 +14,6 @@ train folder for training stuff
   python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp1/weights/best.pt --source usb0 --thresh 0.2 --resolution 1280x720
 
 
+# testing on data
+python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source yolo/train/datasets/combined1/test/images  --thresh 0.2
+

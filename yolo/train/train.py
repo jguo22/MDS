@@ -27,7 +27,7 @@ def train_model():
 
     config = {
         # Path to your data.yaml
-        'data': str(SCRIPT_DIR / 'datasets/Cheetos/data.yaml'),
+        'data': str(SCRIPT_DIR / 'datasets/combined1/data.yaml'),
         'model': str(SCRIPT_DIR / 'yolo11n.pt'),         # Pretrained model
         'epochs': 300,                   # Number of training epochs
         'imgsz': 640,                  # Image size
