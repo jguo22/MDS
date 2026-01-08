@@ -202,7 +202,7 @@ try:
                 if (classname == "person"):
                     if (motors.rotating):
                         motors.stopRotating()
-                        cv2.waitKey(300)
+                        cv2.waitKey(3000)
 
                     changed = True
                     motors.setTorque(30)
