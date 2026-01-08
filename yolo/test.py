@@ -29,7 +29,7 @@ MAX_US = 2500
 CONFIDENCE_THRESHOLD = 0.5
 TARGET_CLASS = None
 CENTER_DEADZONE = 5
-DISPLAY_ENABLED = False
+DISPLAY_ENABLED = True
 
 class RobotState(Enum):
     SEARCHING = 1
@@ -144,7 +144,6 @@ model_path = "yolo11n_ncnn_model"
 img_source = "usb"
 min_thresh = float(0.2)
 user_res = None
-record = False
 
 # Load the model into memory and get label map
 model = YOLO(model_path, task='detect')
@@ -242,12 +241,13 @@ try:
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
-        cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
+        if (DISPLAY_ENABLED):
+            cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
 
-        # Display detection results
-        cv2.imshow('YOLO detection results',frame) # Display image
-
-        cv2.waitKey(5)
+            # Display detection results
+            cv2.imshow('YOLO detection results',frame) # Display image
+        else:
+            print(f"FPS: {avg_frame_rate:0.2f}")
 
         # Calculate FPS for this frame
         t_stop = time.perf_counter()
