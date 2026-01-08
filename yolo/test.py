@@ -214,10 +214,10 @@ class Robot:
             # Point towards human
             if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
                 print("rotating counterclockwise")
-                motors.rotateInPlace(5, False)
+                motors.rotateInPlace(10, False)
             elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
                 print("rotating clockwise")
-                motors.rotateInPlace(5, True)
+                motors.rotateInPlace(10, True)
             else:
                 print("moving towards human")
                 self.moveToHuman()
@@ -339,7 +339,8 @@ try:
             # Rotate for correction until in margin
             case RobotState.SEEKING_CORRECTION:
                 # Assuming we are already rotating, stop rotating when in margin
-                robot.checkRotation(cap)
+                if (robot.now - robot.state_start > 0.3):
+                    robot.checkRotation(cap)
             # Move foward for 2 seconds, then recheck for correction
             case RobotState.SEEKING_MOVING:
                 if (robot.now - robot.state_start > 2):
