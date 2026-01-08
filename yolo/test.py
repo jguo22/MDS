@@ -41,7 +41,8 @@ class RobotState(Enum):
     PICKING_UP = 4
     RETURNING = 5
     DROPPING_OFF = 6
-    SEEKING_MOVING = 3
+    SEEKING_MOVING = 7
+    REFINDING_OBJECT = 8
 
 
 
@@ -254,7 +255,7 @@ class Robot:
             conf = detection.conf.item()
 
             # Only get confident boxes
-            if conf < 0.3:
+            if conf < 0.2:
                 continue
             if (DISPLAY_ENABLED):
                 drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
@@ -271,9 +272,10 @@ class Robot:
             if (abs(x_mid - MIDPOINT) < MARGIN):
                 print("moving towards human")
                 self.moveToHuman()
-        else:
-            print("aborting human seeking. Lost human.")
-            self.searchMode()
+        elif (robot.state != RobotState.REFINDING_OBJECT):
+            # Look harder for humans
+            robot.state = RobotState.REFINDING_OBJECT
+            robot.state_start = robot.now
 
 
 model_path = "yolo11n_ncnn_model"
@@ -347,6 +349,11 @@ try:
                 if (robot.now - robot.state_start > 2):
                     print("rechecking image for humans.")
                     robot.checkImage(cap)
+            # Look again
+            case RobotState.REFINDING_OBJECT:
+                if (robot.now - robot.state_start > 1):
+                    print("trying to refind the object.")
+                    robot.checkRotation(cap)
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
