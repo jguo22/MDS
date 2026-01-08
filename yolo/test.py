@@ -181,7 +181,6 @@ class Robot:
         self.state = RobotState.CHECKING_SEARCH
         self.state_start = robot.now
         motors.stopRotating()
-        robot.checkImage()
 
 
 model_path = "yolo11n_ncnn_model"
