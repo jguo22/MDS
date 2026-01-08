@@ -109,9 +109,9 @@ class RavenMotorControllers:
         raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = not reverse)
     def rotateInPlace(self, speed):
         self.rotating = True
-        raven_board.set_motor_torque_factor(self.leftChannel, 100)
-        raven_board.set_motor_torque_factor(self.rightChannel, 100)
-        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = False)
+        raven_board.set_motor_torque_factor(self.leftChannel, 20)
+        raven_board.set_motor_torque_factor(self.rightChannel, 20)
+        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = True)
         raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = True)
     def stopRotating(self):
         self.rotating = False
@@ -203,8 +203,8 @@ try:
                 if (motors.rotating):
                     motors.stopRotating()
 
-                motors.setTorque(50)
-                motors.setSpeed(30)
+                motors.setTorque(30)
+                motors.setSpeed(5)
                 print("FOUND AN OBJECT")
 
             if (changed == False):
