@@ -155,6 +155,7 @@ class Robot:
         self.state = RobotState.SEEKING_MOVING
         self.state_start = self.now
         # Point towards human
+        motors.stopRotating()
         motors.setSpeed(20)
         motors.setTorque(20)
     # Spin around to look for objects
