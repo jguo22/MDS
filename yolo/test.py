@@ -269,6 +269,7 @@ try:
 
         robot.setNowTime()
 
+        print ("current state is " + robot.state.name)
         match robot.state:
             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
