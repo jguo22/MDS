@@ -212,22 +212,6 @@ class Robot:
         motors.stopRotating()
 
 
-model_path = "yolo11n_ncnn_model"
-img_source = "usb"
-min_thresh = float(0.2)
-user_res = None
-
-# Load the model into memory and get label map
-model = YOLO(model_path, task='detect')
-labels = model.names
-
-cap = cv2.VideoCapture(0)
-
-# Set bounding box colors (using the Tableu 10 color scheme)
-bbox_colors = [(164, 120, 87), (68, 148, 228), (93, 97, 209), (178, 182, 133), (88, 159, 106),
-               (96, 202, 231), (159, 124, 168), (169, 162, 241), (98, 118, 150), (172, 176, 184)]
-
-
 # Initialize Raven servo controller
 servo = RavenServoController(
     servo_channel=SERVO_CHANNEL,
@@ -238,15 +222,6 @@ servo = RavenServoController(
 )
 
 motors = RavenMotorControllers()
-
-# Initialize control and status variables
-avg_frame_rate = 0
-frame_rate_buffer = []
-fps_avg_len = 200
-img_count = 0
-
-if (not DISPLAY_ENABLED):
-    print("Running headless")
 
 robot = Robot()
 # Begin inference loop
@@ -260,7 +235,6 @@ except KeyboardInterrupt:
 finally:
     # Clean up
     print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
-    cap.release()
     cv2.destroyAllWindows()
 
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
