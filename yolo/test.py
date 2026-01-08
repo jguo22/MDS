@@ -333,14 +333,14 @@ try:
 
             case RobotState.SEARCHING:
                 # Change to Checking Search Mode and Rotate after checking for 0.2s (good for ~12 FPS)
-                if (robot.now - robot.state_start > 0.5):
+                if (robot.now - robot.state_start > 0.3):
                     print("Stopping search.")
                     robot.stopSearching()
             # Rotate for correction until in margin
             case RobotState.SEEKING_CORRECTION:
                 # Assuming we are already rotating, stop rotating when in margin
                 # Rotate for 0.3s
-                if (robot.now - robot.state_start > 0.3):
+                if (robot.now - robot.state_start > 1):
                     robot.checkRotation(cap)
             # Move foward for 2 seconds, then recheck for correction
             case RobotState.SEEKING_MOVING:
