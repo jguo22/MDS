@@ -194,6 +194,12 @@ servo = RavenServoController(
     max_us=MAX_US,
 )
 
+
+raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
+raven_board.set_motor_encoder(Raven.MotorChannel.CH2, 0) # Set encoder count for motor 1 to zero
+raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
+raven_board.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
+
 # Initialize control and status variables
 avg_frame_rate = 0
 frame_rate_buffer = []
