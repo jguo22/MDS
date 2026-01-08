@@ -43,8 +43,7 @@ class RobotState(Enum):
     DROPPING_OFF = 6
     SEEKING_MOVING = 3
 
-state = RobotState.CHECKING_SEARCH
-state_start = time.monotonic()
+
 
 class RavenServoController:
     def __init__(
@@ -142,6 +141,47 @@ class RavenMotorControllers:
         raven_board.set_motor_speed_factor(self.leftChannel, 0)
         raven_board.set_motor_speed_factor(self.rightChannel, 0)
 
+class Robot:
+    def __init__(self):
+        self.state = RobotState.CHECKING_SEARCH
+        self.state_start = time.monotonic()
+        self.now = time.monotonic()
+
+    def setNowTime(self):
+        self.now = time.monotonic()
+
+    # Move towards a human
+    def moveToHuman(self):
+        self.state = RobotState.SEEKING_MOVING
+        self.state_start = self.now
+        # Point towards human
+        motors.setSpeed(20)
+        motors.setTorque(20)
+    # Spin around to look for objects
+    def searchMode(self):
+        self.state = RobotState.SEARCHING
+        self.state_start = self.now
+        motors.rotateInPlace(40)
+    # Check the image. If there's a human, correct. If not, switch to search mode.
+    def checkImage(self, humans_found, x_mid):
+        if (humans_found):
+            self.state = RobotState.SEEKING_CORRECTION
+            self.state_start = robot.now
+            # Point towards human
+            if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
+                motors.rotateInPlace(5, False)
+            elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
+                motors.rotateInPlace(5, True)
+            else:
+                self.moveToHuman
+        else:
+            self.searchMode()
+    # Stop spinning the bot and let the next frame search
+    def stopSearching(self):
+        self.state = RobotState.CHECKING_SEARCH
+        self.state_start = robot.now
+        motors.stopRotating()
+        robot.checkImage()
 
 
 model_path = "yolo11n_ncnn_model"
@@ -180,6 +220,8 @@ motors.rotateInPlace(100)
 
 if (not DISPLAY_ENABLED):
     print("Running headless")
+
+robot = Robot()
 # Begin inference loop
 try:
     while True:
@@ -225,69 +267,39 @@ try:
                 if (human_area > biggest_human_area):
                     biggest_human_area = human_area
                     x_mid = (xmax + xmin)/2
+                    print("BIGGEST HUMAN AT x: " + str(x_mid))
 
-        now = time.monotonic()
+        robot.setNowTime()
 
         match state:
             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
                 # Stop moving for 0.5s to stabilize image
-                if (now - state_start > 0.5):
-                    # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
-                    if (humans_detected):
-                        print("FOUND HUMANS. SEEKING NOW")
-                        state = RobotState.SEEKING_CORRECTION
-                        state_start = now
-                        # Rotate the correct way
-                        if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
-                            motors.rotateInPlace(5, False)
-                        elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
-                            motors.rotateInPlace(5, True)
-                    else:
-                        print("No humans found. Resuming search.")
-                        state = RobotState.SEARCHING
-                        state_start = now
-                        motors.rotateInPlace(50)
+                if (robot.now - robot.state_start > 0.5):
+                    # Check for humans. If found, seek. If not, return to searching.
+                    print("Checking image.")
+                    robot.checkImage(humans_detected, x_mid)
+
             case RobotState.SEARCHING:
                 # Change to Checking Search Mode and Rotate after checking for 0.2s (good for ~12 FPS)
-                if (now - state_start > 0.2):
-                    state = RobotState.CHECKING_SEARCH
-                    state_start = now
-                    motors.stopRotating()
-                    print("Checking search now.")
+                if (robot.now - robot.state_start > 0.2):
+                    print("Stopping search.")
+                    robot.stopSearching()
             # Rotate for correction until in margin
             case RobotState.SEEKING_CORRECTION:
                 # Assuming we are already rotating, stop rotating when in margin
                 if (humans_detected):
                     if (abs(MIDPOINT - x_mid) < MARGIN):
-                        state = RobotState.SEEKING_MOVING
-                        state_start = now
-                        motors.stopRotating()
-                        motors.setSpeed(10)
-                        motors.setTorque(10)
+                        robot.moveToHuman()
                         print("WITHIN MARGIN. MOVING FOWARD.")
                 else:
                     print("No humans found. Resuming search.")
-                    state = RobotState.SEARCHING
-                    state_start = now
-                    motors.rotateInPlace(20, False)
+                    robot.searchMode()
             # Move foward for 2 seconds, then recheck for correction
             case RobotState.SEEKING_MOVING:
-                if (now - state_start > 2):
-                    if (humans_detected):
-                        state = RobotState.SEEKING_CORRECTION
-                        state_start = now
-                        # Rotate the correct way
-                        if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
-                            motors.rotateInPlace(5, False)
-                        elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
-                            motors.rotateInPlace(5, True)
-                        print("CHECKING CORRECTION")
-                    else:
-                        print("No humans found. Resuming search.")
-                        state = RobotState.SEARCHING
-                        state_start = now
-                        motors.rotateInPlace(20, False)
+                if (robot.now - robot.state_start > 2):
+                    print("rechecking image for humans.")
+                    robot.checkImage()
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
