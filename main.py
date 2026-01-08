@@ -1,15 +1,20 @@
 import time
+import sys
+import os
 
 from raven import Raven
 import cv2
 import numpy as np
-from ultralytics import YOLO
 from enum import Enum
+
+# Import TCP detection client
+sys.path.append(os.path.join(os.path.dirname(__file__), 'tcp'))
+from client import DetectionClient
 
 raven_board = Raven()
 
 
-def drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname):
+def drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname, conf):
     color = bbox_colors[classidx % 10]
     cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
 
@@ -46,6 +51,11 @@ CONFIDENCE_THRESHOLD = 0.5
 TARGET_CLASS = None
 CENTER_DEADZONE = 5
 DISPLAY_ENABLED = False
+
+# TCP Detection Server Configuration
+SERVER_HOST = '192.168.1.100'  # Replace with your computer's IP address
+SERVER_PORT = 5000
+DETECTION_THRESHOLD = 0.5
 
 MIDPOINT = 320
 MARGIN = 40
@@ -212,14 +222,14 @@ class Robot:
         motors.stopRotating()
 
 
-model_path = "yolo11n_ncnn_model"
-img_source = "usb"
-min_thresh = float(0.2)
-user_res = None
+# Initialize TCP Detection Client
+print(f"Connecting to detection server at {SERVER_HOST}:{SERVER_PORT}...")
+detection_client = DetectionClient(host=SERVER_HOST, port=SERVER_PORT)
+if not detection_client.connect():
+    print("Failed to connect to detection server. Exiting.")
+    sys.exit(1)
 
-# Load the model into memory and get label map
-model = YOLO(model_path, task='detect')
-labels = model.names
+print("Connected to detection server successfully!")
 
 cap = cv2.VideoCapture(0)
 
@@ -256,47 +266,46 @@ try:
         t_start = time.perf_counter()
 
         ret, frame = cap.read()
-        # Run inference on frame
-        results = model(frame, verbose=False)
-        # Extract results
-        detections = results[0].boxes
+        if not ret:
+            print("Failed to capture frame")
+            continue
+
+        # Run detection via TCP server
+        detections = detection_client.detect(frame, thresh=DETECTION_THRESHOLD)
 
         # Variables for detected humans
         humans_detected = False
         x_mid = 320
         biggest_human_area = 0
 
-        # Go through each detection and get bbox coords, confidence, and class
-        for detection in detections:
+        # Process detections if we got results
+        if detections:
+            # Go through each detection and get bbox coords, confidence, and class
+            for detection in detections:
+                # Extract detection data
+                classname = detection['class']
+                conf = detection['confidence']
+                bbox = detection['bbox']
+                xmin, ymin, xmax, ymax = [int(coord) for coord in bbox]
 
-            # Get bounding box coordinates
-            # Ultralytics returns results in Tensor format, which have to be
-            # converted to a regular Python array
-            xyxy_tensor = detection.xyxy.cpu()  # Detections in Tensor format in CPU memory
-            xyxy = xyxy_tensor.numpy().squeeze()  # Convert tensors to Numpy array
-            # Extract individual coordinates and convert to int
-            xmin, ymin, xmax, ymax = xyxy.astype(int)
+                print("found " + classname)
 
-            # Get bounding box class ID and name
-            classidx = int(detection.cls.item())
-            classname = labels[classidx]
-            print("found " + classname)
+                # Only get confident boxes
+                if conf < CONFIDENCE_THRESHOLD:
+                    continue
 
-            # Get bounding box confidence
-            conf = detection.conf.item()
+                # Get class index for color (use hash of classname as index)
+                classidx = hash(classname) % 10
 
-            # Only get confident boxes
-            if conf < 0.5:
-                continue
-            drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
+                drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname, conf)
 
-            if (classname == "person"):
-                humans_detected = True
-                human_area = (xmax - xmin) * (ymax - ymin)
-                if (human_area > biggest_human_area):
-                    biggest_human_area = human_area
-                    x_mid = (xmax + xmin) / 2
-                    print("BIGGEST HUMAN AT x: " + str(x_mid))
+                if (classname == "person"):
+                    humans_detected = True
+                    human_area = (xmax - xmin) * (ymax - ymin)
+                    if (human_area > biggest_human_area):
+                        biggest_human_area = human_area
+                        x_mid = (xmax + xmin) / 2
+                        print("BIGGEST HUMAN AT x: " + str(x_mid))
 
         robot.setNowTime()
 
@@ -333,7 +342,7 @@ try:
             case RobotState.SEEKING_MOVING:
                 if (robot.now - robot.state_start > 2):
                     print("rechecking image for humans.")
-                    robot.checkImage()
+                    robot.checkImage(humans_detected, x_mid)
 
         # Calculate and draw framerate (if using video, USB, or Picamera
         # source)
@@ -371,22 +380,10 @@ finally:
     cap.release()
     cv2.destroyAllWindows()
 
+    # Disconnect from detection server
+    detection_client.disconnect()
+
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-
-raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
-print(raven_board.get_motor_encoder(Raven.MotorChannel.CH3)) # Print encoder count = "0"
-
-raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
-
-# Speed controlled:
-raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 100) # Let the motor use all the torque to get to speed factor
-raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 10, reverse=True) # Spin at 10% max speed in reverse
-
-# Torque controlled:
-# raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 100) # Make motor try to run at max speed forward
-# raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 100) # Let it use up to 10% available torque
-while True:
-    pass

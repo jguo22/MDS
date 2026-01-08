@@ -1,20 +1,19 @@
-# TCP Communication System
+# TCP Object Detection System
 
-This directory contains a TCP-based client-server communication system for the MASLAB 2026 robot. The system enables reliable communication between a Raspberry Pi (robot) and a computer (control station) for remote object detection, sensor data transmission, and motor command coordination.
+Remote YOLO object detection system for the MASLAB 2026 robot. Sends images from Raspberry Pi to a computer for processing and receives detection results.
 
-## Architecture Overview
+## Architecture
 
 ```
 ┌─────────────────────┐                    ┌─────────────────────┐
 │  Raspberry Pi       │                    │  Computer           │
-│  (Robot)            │◄──────TCP─────────►│  (Control Station)  │
+│  (Robot)            │◄──────TCP─────────►│  (Detection Server) │
 │                     │                    │                     │
 │  - Camera capture   │                    │  - YOLO detection   │
-│  - Sensor reading   │                    │  - Path planning    │
-│  - Motor control    │   Image + Data     │  - Decision making  │
+│  - Motor control    │   Base64 Image     │  - Model inference  │
 │                     │   ────────────►    │                     │
 │                     │   ◄────────────    │                     │
-│                     │  Motor Commands    │                     │
+│                     │    Detections      │                     │
 └─────────────────────┘                    └─────────────────────┘
 ```
 
@@ -23,407 +22,378 @@ This directory contains a TCP-based client-server communication system for the M
 ```
 tcp/
 ├── README.md              # This file
-├── tcp_protocol.py        # Length-prefixed TCP protocol implementation
-├── yolo_detector.py       # YOLO model wrapper for object detection
-├── server.py              # Server (runs on computer)
-└── client.py              # Client (runs on Raspberry Pi)
+├── tcp_protocol.py        # Length-prefixed TCP protocol
+├── yolo_detector.py       # YOLO model wrapper
+├── server.py              # Detection server (runs on computer)
+└── client.py              # Detection client (runs on Raspberry Pi)
+```
+
+## Quick Start
+
+### 1. Setup
+
+**On Computer:**
+```bash
+cd tcp/
+pip3 install opencv-python numpy ultralytics
+```
+
+**On Raspberry Pi:**
+```bash
+cd tcp/
+pip3 install opencv-python numpy
+```
+
+### 2. Find Your Computer's IP
+
+```bash
+# Mac/Linux
+ifconfig | grep inet
+
+# Windows
+ipconfig
+```
+
+### 3. Configure Client
+
+Edit `client.py` and update:
+```python
+SERVER_HOST = '192.168.1.100'  # Your computer's IP
+```
+
+### 4. Run
+
+**On Computer (start server first):**
+```bash
+python3 server.py
+```
+
+**On Raspberry Pi:**
+```bash
+python3 client.py
+```
+
+## Usage
+
+### Server (Computer)
+
+```bash
+# Use default model (yolo/yolo11n.pt)
+python3 server.py
+
+# Use custom trained model
+python3 server.py yolo/train/runs/train/exp2/weights/best.pt
+```
+
+The server will:
+1. Load the YOLO model
+2. Listen on port 5000
+3. Process incoming images
+4. Return detection results
+
+### Client (Raspberry Pi)
+
+**Basic Usage:**
+```python
+from client import DetectionClient
+import cv2
+
+# Connect to server
+client = DetectionClient(host='192.168.1.100', port=5000)
+client.connect()
+
+# Capture and detect
+cap = cv2.VideoCapture(0)
+ret, frame = cap.read()
+cap.release()
+
+if ret:
+    detections = client.detect(frame, thresh=0.5)
+
+    for det in detections:
+        print(f"{det['class']}: {det['confidence']:.2f} at {det['bbox']}")
+
+client.disconnect()
+```
+
+**Continuous Detection Loop:**
+```python
+from client import DetectionClient
+import cv2
+import time
+
+client = DetectionClient(host='192.168.1.100', port=5000)
+client.connect()
+
+cap = cv2.VideoCapture(0)
+frame_count = 0
+
+try:
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Detect every 10 frames (~3 FPS detection)
+        frame_count += 1
+        if frame_count % 10 == 0:
+            detections = client.detect(frame, thresh=0.5)
+
+            if detections:
+                print(f"Found {len(detections)} objects")
+                # TODO: Use detections for motor control
+
+        time.sleep(0.03)  # ~30 FPS capture
+
+except KeyboardInterrupt:
+    pass
+finally:
+    cap.release()
+    client.disconnect()
+```
+
+**Detect from File:**
+```python
+from client import DetectionClient
+
+client = DetectionClient(host='192.168.1.100', port=5000)
+client.connect()
+
+# Detect from image file
+detections = client.detect('photo.jpg', thresh=0.5)
+
+if detections:
+    for det in detections:
+        print(f"{det['class']}: {det['confidence']:.2f}")
+
+client.disconnect()
+```
+
+## API Reference
+
+### DetectionClient
+
+**Methods:**
+
+- `connect()` - Connect to server. Returns `True` if successful.
+- `is_connected()` - Check connection status.
+- `detect(image, thresh=0.5)` - Send image for detection. Returns list of detections or `None`.
+- `disconnect()` - Close connection.
+
+**Detection Format:**
+
+Each detection is a dictionary:
+```python
+{
+    'class': 'person',           # Object class name
+    'confidence': 0.95,          # Confidence score (0-1)
+    'bbox': [x1, y1, x2, y2]    # Bounding box coordinates
+}
+```
+
+### DetectionServer
+
+**Methods:**
+
+- `load_model()` - Load YOLO model. Returns `True` if successful.
+- `start()` - Start the server (blocking).
+- `stop()` - Stop the server.
+
+## Protocol
+
+### Request Format
+
+```json
+{
+    "image": "<base64-encoded JPEG>",
+    "thresh": 0.5
+}
+```
+
+### Response Format
+
+**Success:**
+```json
+{
+    "status": "ok",
+    "detections": [
+        {
+            "class": "person",
+            "confidence": 0.95,
+            "bbox": [100, 150, 300, 400]
+        }
+    ],
+    "image_size": [640, 480]
+}
+```
+
+**Error:**
+```json
+{
+    "status": "error",
+    "message": "Error description"
+}
 ```
 
 ## Modules
 
-### `tcp_protocol.py`
+### tcp_protocol.py
 
-Implements a length-prefixed TCP protocol for reliable message transmission. This module solves the problem of sending variable-length messages (especially large images) over TCP.
-
-**Key Classes:**
-- `TCPProtocol`: Static methods for sending/receiving length-prefixed messages
-- `TCPConnection`: Wrapper for socket connections with protocol support
-
-**Protocol Format:**
-```
-[4 bytes: message length][N bytes: UTF-8 encoded message]
-```
-
-**Usage:**
-```python
-from tcp_protocol import TCPProtocol, TCPConnection
-
-# Low-level usage
-TCPProtocol.send_message(socket, "Hello")
-message = TCPProtocol.recv_message(socket)
-
-# High-level usage
-conn = TCPConnection()
-conn.connect("192.168.1.100", 5000)
-response = conn.send_receive("Hello")
-conn.close()
-```
-
-### `yolo_detector.py`
-
-Wrapper for YOLO object detection with support for OpenCV images and base64-encoded images.
+Implements length-prefixed TCP protocol for reliable transmission of large messages.
 
 **Key Classes:**
-- `YOLODetector`: YOLO model loader and detection runner
+- `TCPProtocol` - Low-level send/receive with 4-byte length prefix
+- `TCPConnection` - High-level connection wrapper
+
+### yolo_detector.py
+
+YOLO model wrapper for object detection.
 
 **Key Functions:**
-- `encode_image_to_base64(image)`: Encode OpenCV image to base64 string
+- `YOLODetector.load()` - Load model
+- `YOLODetector.detect(image, thresh)` - Run detection
+- `YOLODetector.detect_from_base64(image_b64, thresh)` - Detect from base64 image
+- `encode_image_to_base64(image)` - Encode OpenCV image to base64
 
-**Usage:**
-```python
-from yolo_detector import YOLODetector
+## Performance
 
-# Initialize and load model
-detector = YOLODetector('yolo/yolo11n.pt')
-detector.load()
+### Typical Latency
 
-# Detect from file or OpenCV image
-detections = detector.detect('image.jpg', thresh=0.5)
+- Image encoding (Pi): ~10-20ms
+- Network transmission: ~50-100ms
+- YOLO detection (Computer): ~30-100ms
+- **Total round-trip: 100-300ms**
 
-# Detect from base64 image
-detections, image_size = detector.detect_from_base64(image_b64, thresh=0.5)
+### Throughput
 
-# Each detection is a dict:
-# {'class': 'person', 'confidence': 0.95, 'bbox': [x1, y1, x2, y2]}
-```
+- Recommended detection rate: **3-10 FPS**
+- Image size after compression: ~50-100 KB (640x480 JPEG)
+- Network bandwidth needed: ~0.5-1 MB/s at 10 FPS
 
-### `server.py`
+### Optimization Tips
 
-TCP server that runs on your computer. Receives data from the Raspberry Pi and performs heavy computation (YOLO detection, path planning, etc.).
+1. **Lower detection frequency** - Detect every N frames instead of every frame
+2. **Reduce image resolution** - Resize to 320x240 or 416x416 before sending
+3. **Adjust JPEG quality** - Lower quality = smaller files (edit `yolo_detector.py`)
+4. **Increase threshold** - Higher confidence threshold = faster processing
 
-**Key Class:**
-- `RobotServer`: Multi-threaded server handling multiple message types
+## Troubleshooting
 
-**Message Handlers:**
-- `handle_ping()`: Connection test
-- `handle_detection()`: Process detection results from Pi
-- `handle_sensor()`: Process sensor data from Pi
-- `handle_status()`: Process status updates from Pi
-- `handle_detect_image()`: Run YOLO detection on received image
+### Connection Refused
 
-**Usage:**
-```bash
-# Run with default model
-python3 server.py
+- Check that server is running on computer
+- Verify firewall allows port 5000
+- Confirm computer and Pi are on same network
+- Verify SERVER_HOST is correct in `client.py`
 
-# Run with custom model
-python3 server.py yolo/train/runs/train/exp2/weights/best.pt
-```
+### "YOLO model not loaded"
 
-### `client.py`
+- Check model path is correct
+- Verify model file exists
+- Ensure Ultralytics is installed: `pip3 install ultralytics`
 
-TCP client that runs on the Raspberry Pi. Sends camera images, sensor data, and status updates to the computer server.
+### Slow Performance
 
-**Key Class:**
-- `RobotClient`: Client for communicating with server
+- Reduce camera resolution
+- Increase detection interval (detect every N frames)
+- Use smaller YOLO model (yolo11n vs yolo11s/m/l)
+- Check WiFi signal strength
 
-**Key Methods:**
-- `ping()`: Test connection
-- `send_detection(objects)`: Send pre-computed detections
-- `send_sensor_data(encoders, **kwargs)`: Send sensor readings
-- `send_status(battery, cpu_temp, **kwargs)`: Send status updates
-- `detect_image(image, thresh)`: Send image for remote YOLO detection
+### Camera Not Found
 
-**Usage:**
-```bash
-# Edit SERVER_HOST in client.py first, then run
-python3 client.py
-```
+- Verify camera is connected: `ls /dev/video*`
+- Try different camera index: `cv2.VideoCapture(1)` or `cv2.VideoCapture(2)`
+- For PiCamera: Use `libcamera` or picamera2 library
 
-## Message Protocol
+### No Detections
 
-All messages are JSON-formatted with a `type` field indicating the message type.
+- Lower confidence threshold: `detect(frame, thresh=0.2)`
+- Check that objects are in frame
+- Verify lighting conditions
+- Test with images that have known objects
 
-### Message Types
-
-#### 1. Ping (Connection Test)
-
-**Request:**
-```json
-{"type": "ping"}
-```
-
-**Response:**
-```json
-{"status": "ok", "message": "pong"}
-```
-
-#### 2. Detection Results (Pi → Server)
-
-**Request:**
-```json
-{
-  "type": "detection",
-  "objects": [
-    {"class": "person", "confidence": 0.95, "bbox": [100, 150, 300, 400]},
-    {"class": "bottle", "confidence": 0.87, "bbox": [450, 200, 550, 350]}
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "motor_commands": [
-    {"channel": 1, "speed": 50},
-    {"channel": 2, "speed": -30}
-  ]
-}
-```
-
-#### 3. Sensor Data (Pi → Server)
-
-**Request:**
-```json
-{
-  "type": "sensor",
-  "encoders": [1234, 5678],
-  "timestamp": 1234567890.123
-}
-```
-
-**Response:**
-```json
-{"status": "ok", "message": "Sensor data received"}
-```
-
-#### 4. Status Update (Pi → Server)
-
-**Request:**
-```json
-{
-  "type": "status",
-  "battery": 85,
-  "cpu_temp": 52
-}
-```
-
-**Response:**
-```json
-{"status": "ok"}
-```
-
-#### 5. Image Detection (Pi → Server)
-
-**Request:**
-```json
-{
-  "type": "detect_image",
-  "image": "<base64-encoded JPEG>",
-  "thresh": 0.5
-}
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "detections": [
-    {"class": "person", "confidence": 0.95, "bbox": [100, 150, 300, 400]}
-  ],
-  "image_size": [640, 480]
-}
-```
-
-**Error Response:**
-```json
-{"status": "error", "message": "Error description"}
-```
-
-## Setup and Configuration
-
-### 1. Find Your Computer's IP Address
-
-On your computer (Mac/Linux):
-```bash
-ifconfig
-# Look for inet address on active interface (e.g., en0 for WiFi)
-```
-
-On Windows:
-```bash
-ipconfig
-# Look for IPv4 Address
-```
-
-### 2. Configure Client
-
-Edit `client.py` and update the server IP:
-```python
-SERVER_HOST = '192.168.1.100'  # Replace with your computer's IP
-```
-
-### 3. Install Dependencies
-
-Both computer and Raspberry Pi need:
-```bash
-pip3 install opencv-python numpy ultralytics
-```
-
-### 4. Run the System
-
-**On Computer (Server):**
-```bash
-cd tcp/
-python3 server.py
-```
-
-**On Raspberry Pi (Client):**
-```bash
-cd tcp/
-python3 client.py
-```
-
-## Example Integration
-
-### Raspberry Pi - Continuous Detection Loop
+## Example: Robot Navigation
 
 ```python
-from client import RobotClient
+from client import DetectionClient
 import cv2
 import time
 
-client = RobotClient(host='192.168.1.100', port=5000)
+# Import your motor control library
+# from raven import Raven, MotorChannel, MotorMode
+
+client = DetectionClient(host='192.168.1.100', port=5000)
 client.connect()
 
+# Initialize motor controller
+# raven = Raven()
+# raven.set_motor_mode(MotorChannel.CH1, MotorMode.DIRECT)
+# raven.set_motor_mode(MotorChannel.CH2, MotorMode.DIRECT)
+
 cap = cv2.VideoCapture(0)
+frame_count = 0
 
 try:
     while True:
-        # Capture frame
         ret, frame = cap.read()
         if not ret:
             continue
 
-        # Send to server for detection
-        response = client.detect_image(frame, thresh=0.5)
+        frame_count += 1
 
-        if response and response.get('status') == 'ok':
-            detections = response.get('detections', [])
-            print(f"Detected {len(detections)} objects")
+        # Detect every 5 frames
+        if frame_count % 5 == 0:
+            detections = client.detect(frame, thresh=0.5)
 
-            # Process detections (e.g., track target object)
-            for det in detections:
-                if det['class'] == 'bottle':
-                    bbox = det['bbox']
-                    # TODO: Calculate motor commands to approach bottle
-                    print(f"Found bottle at {bbox}")
+            if detections:
+                # Find target object (e.g., bottle)
+                target = None
+                for det in detections:
+                    if det['class'] == 'bottle':
+                        target = det
+                        break
 
-        time.sleep(0.1)  # 10 FPS
+                if target:
+                    # Get bounding box
+                    x1, y1, x2, y2 = target['bbox']
+                    center_x = (x1 + x2) / 2
+                    image_width = frame.shape[1]
+
+                    # Simple centering logic
+                    error = (center_x - image_width / 2) / image_width
+
+                    if abs(error) < 0.1:
+                        # Centered - move forward
+                        print("Moving forward")
+                        # raven.set_motor_speed_factor(MotorChannel.CH1, 50)
+                        # raven.set_motor_speed_factor(MotorChannel.CH2, 50)
+                    elif error < 0:
+                        # Target on left - turn left
+                        print("Turning left")
+                        # raven.set_motor_speed_factor(MotorChannel.CH1, 30)
+                        # raven.set_motor_speed_factor(MotorChannel.CH2, 50)
+                    else:
+                        # Target on right - turn right
+                        print("Turning right")
+                        # raven.set_motor_speed_factor(MotorChannel.CH1, 50)
+                        # raven.set_motor_speed_factor(MotorChannel.CH2, 30)
+                else:
+                    # No target - stop
+                    print("No target found - stopping")
+                    # raven.set_motor_speed_factor(MotorChannel.CH1, 0)
+                    # raven.set_motor_speed_factor(MotorChannel.CH2, 0)
+
+        time.sleep(0.03)
 
 except KeyboardInterrupt:
     print("Stopping...")
 finally:
     cap.release()
     client.disconnect()
+    # raven.set_motor_speed_factor(MotorChannel.CH1, 0)
+    # raven.set_motor_speed_factor(MotorChannel.CH2, 0)
 ```
-
-### Computer - Custom Detection Handler
-
-```python
-from server import RobotServer
-
-class CustomServer(RobotServer):
-    def handle_detect_image(self, data):
-        # Run parent detection
-        response_json = super().handle_detect_image(data)
-        response = json.loads(response_json)
-
-        # Add custom logic
-        if response.get('status') == 'ok':
-            detections = response.get('detections', [])
-
-            # Example: Calculate motor commands based on detection positions
-            if detections:
-                # Find center of first detection
-                bbox = detections[0]['bbox']
-                center_x = (bbox[0] + bbox[2]) / 2
-                image_width = response['image_size'][0]
-
-                # Simple centering logic
-                if center_x < image_width / 3:
-                    response['motor_commands'] = [
-                        {'channel': 1, 'speed': 30},  # Turn left
-                        {'channel': 2, 'speed': 50}
-                    ]
-                elif center_x > 2 * image_width / 3:
-                    response['motor_commands'] = [
-                        {'channel': 1, 'speed': 50},  # Turn right
-                        {'channel': 2, 'speed': 30}
-                    ]
-                else:
-                    response['motor_commands'] = [
-                        {'channel': 1, 'speed': 50},  # Go straight
-                        {'channel': 2, 'speed': 50}
-                    ]
-
-        return json.dumps(response)
-
-# Run custom server
-server = CustomServer(model_path='yolo/yolo11n.pt')
-server.load_model()
-server.start()
-```
-
-## Performance Considerations
-
-### Image Transmission
-
-- Images are JPEG-compressed before base64 encoding (reduces size ~10x)
-- 640x480 image ≈ 50-100 KB after JPEG compression
-- Base64 encoding increases size by ~33% (final size ≈ 70-130 KB)
-- Transmission time over WiFi: ~50-200ms depending on signal strength
-
-### YOLO Detection
-
-- YOLOv11n inference: ~30-100ms per frame on typical computer
-- Transfer learning model: similar performance
-- Consider running detection at lower frame rate (5-10 FPS) to allow time for motor control
-
-### Network Latency
-
-- Typical round-trip time: 100-300ms
-  - Network transmission: 50-100ms
-  - YOLO detection: 30-100ms
-  - Protocol overhead: 10-50ms
-
-## Troubleshooting
-
-### Connection Refused
-
-- Check firewall settings on computer (allow port 5000)
-- Verify computer and Pi are on same network
-- Confirm SERVER_HOST is correct in client.py
-
-### Image Detection Fails
-
-- Ensure YOLO model path is correct on server
-- Check model loaded successfully (look for "YOLO model loaded successfully" message)
-- Verify image encoding is successful on client side
-
-### Slow Performance
-
-- Reduce image resolution before sending
-- Lower YOLO confidence threshold to reduce processing time
-- Use NCNN model on Pi for local detection instead of remote
-
-### Connection Drops
-
-- Check WiFi signal strength
-- Add reconnection logic to client
-- Implement heartbeat/ping mechanism for connection monitoring
-
-## Future Enhancements
-
-- [ ] Add authentication/encryption for secure communication
-- [ ] Implement connection pooling for multiple clients
-- [ ] Add compression for image transmission (e.g., reduce JPEG quality)
-- [ ] Support video streaming with frame buffering
-- [ ] Add timeout handling and automatic reconnection
-- [ ] Implement command queuing for motor control
-- [ ] Add telemetry logging and visualization
 
 ## License
 
-This code is part of the MASLAB 2026 project.
+Part of MASLAB 2026 project.

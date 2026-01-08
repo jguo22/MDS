@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 TCP Protocol - Length-prefixed message protocol for reliable communication
 """
@@ -29,7 +28,8 @@ class TCPProtocol:
 
         # Calculate length and create 4-byte prefix
         length = len(message_bytes)
-        length_prefix = length.to_bytes(TCPProtocol.HEADER_SIZE, byteorder='big')
+        length_prefix = length.to_bytes(
+            TCPProtocol.HEADER_SIZE, byteorder='big')
 
         # Send length prefix + message
         sock.sendall(length_prefix + message_bytes)
@@ -83,7 +83,8 @@ class TCPConnection:
         Args:
             sock: Existing socket object, or None to create new one
         """
-        self.socket = sock if sock else socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket = sock if sock else socket.socket(
+            socket.AF_INET, socket.SOCK_STREAM)
         self.connected = False
 
     def connect(self, host, port):

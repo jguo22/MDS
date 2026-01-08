@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
 """
 TCP Client - Run this on the Raspberry Pi
-Connects to the computer server and sends detection/sensor data
+Sends images to computer server for YOLO object detection
 """
 
 import json
@@ -15,8 +14,8 @@ SERVER_HOST = '192.168.1.100'  # Replace with your computer's IP address
 SERVER_PORT = 5000
 
 
-class RobotClient:
-    """Client for sending data to computer server and receiving commands"""
+class DetectionClient:
+    """Client for sending images to server for object detection"""
 
     def __init__(self, host=SERVER_HOST, port=SERVER_PORT):
         self.host = host
@@ -25,14 +24,14 @@ class RobotClient:
 
     def connect(self):
         """
-        Connect to the TCP server
+        Connect to the detection server
 
         Returns:
             bool: True if connection successful, False otherwise
         """
         success = self.connection.connect(self.host, self.port)
         if success:
-            print(f"Connected to server at {self.host}:{self.port}")
+            print(f"Connected to detection server at {self.host}:{self.port}")
         else:
             print(f"Failed to connect to server at {self.host}:{self.port}")
         return success
@@ -41,86 +40,7 @@ class RobotClient:
         """Check if connected to server"""
         return self.connection.connected
 
-    def send_data(self, msg_type, **kwargs):
-        """
-        Send data to the server
-
-        Args:
-            msg_type: Message type (e.g., 'detection', 'sensor', 'status')
-            **kwargs: Additional data parameters
-
-        Returns:
-            Server response dict, or None if failed
-        """
-        data = {'type': msg_type, **kwargs}
-        message = json.dumps(data)
-        response = self.connection.send_receive(message)
-
-        if response:
-            try:
-                return json.loads(response)
-            except json.JSONDecodeError:
-                return response
-        return None
-
-    def ping(self):
-        """
-        Send a ping to test connection
-
-        Returns:
-            Server response dict
-        """
-        return self.send_data('ping')
-
-    def send_detection(self, objects):
-        """
-        Send YOLO detection results to server
-
-        Args:
-            objects: List of detected objects with format:
-                     [{'class': 'person', 'confidence': 0.95, 'bbox': [x1, y1, x2, y2]}, ...]
-
-        Returns:
-            Server response with motor commands
-        """
-        return self.send_data('detection', objects=objects)
-
-    def send_sensor_data(self, encoders=None, **kwargs):
-        """
-        Send sensor data to server
-
-        Args:
-            encoders: List of encoder values
-            **kwargs: Additional sensor data (e.g., battery, temperature)
-
-        Returns:
-            Server response dict
-        """
-        data = {'encoders': encoders or []}
-        data.update(kwargs)
-        return self.send_data('sensor', **data)
-
-    def send_status(self, battery=None, cpu_temp=None, **kwargs):
-        """
-        Send robot status to server
-
-        Args:
-            battery: Battery percentage
-            cpu_temp: CPU temperature
-            **kwargs: Additional status information
-
-        Returns:
-            Server response dict
-        """
-        data = {}
-        if battery is not None:
-            data['battery'] = battery
-        if cpu_temp is not None:
-            data['cpu_temp'] = cpu_temp
-        data.update(kwargs)
-        return self.send_data('status', **data)
-
-    def detect_image(self, image, thresh=0.5):
+    def detect(self, image, thresh=0.5):
         """
         Send image to server for YOLO object detection
 
@@ -129,8 +49,8 @@ class RobotClient:
             thresh: Confidence threshold for detections (default: 0.5)
 
         Returns:
-            Server response with detections:
-            {'status': 'ok', 'detections': [...], 'image_size': [width, height]}
+            List of detections, or None if failed. Each detection is a dict:
+            {'class': 'person', 'confidence': 0.95, 'bbox': [x1, y1, x2, y2]}
         """
         try:
             # Load image if path is provided
@@ -144,12 +64,39 @@ class RobotClient:
             # Encode image to base64
             image_b64 = encode_image_to_base64(image)
 
-            # Send to server
-            print(f"Sending image for detection ({image.shape[1]}x{image.shape[0]}, {len(image_b64)} bytes)...")
-            return self.send_data('detect_image', image=image_b64, thresh=thresh)
+            # Prepare request
+            request = json.dumps({
+                'image': image_b64,
+                'thresh': thresh
+            })
 
+            # Send to server and get response
+            print(
+                f"Sending image for detection ({image.shape[1]}x{image.shape[0]}, {len(image_b64)} bytes)...")
+            response = self.connection.send_receive(request)
+
+            if not response:
+                print("No response from server")
+                return None
+
+            # Parse response
+            data = json.loads(response)
+
+            if data.get('status') == 'ok':
+                detections = data.get('detections', [])
+                image_size = data.get('image_size', [0, 0])
+                print(f"Received {len(detections)} detections from server")
+                return detections
+            else:
+                error_msg = data.get('message', 'Unknown error')
+                print(f"Server error: {error_msg}")
+                return None
+
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse server response: {e}")
+            return None
         except Exception as e:
-            print(f"Error sending image for detection: {e}")
+            print(f"Error during detection: {e}")
             return None
 
     def disconnect(self):
@@ -159,80 +106,74 @@ class RobotClient:
 
 
 def main():
-    """Example usage of the TCP client on Raspberry Pi"""
-    client = RobotClient()
+    """Example usage of the detection client"""
+    client = DetectionClient()
 
     # Connect to server
     if not client.connect():
         return
 
     try:
-        # Example 1: Ping test
-        print("\nSending ping...")
-        response = client.ping()
-        print(f"Response: {response}")
-
-        time.sleep(1)
-
-        # Example 2: Send detection results
-        print("\nSending detection results...")
-        detections = [
-            {'class': 'person', 'confidence': 0.95, 'bbox': [100, 150, 300, 400]},
-            {'class': 'bottle', 'confidence': 0.87, 'bbox': [450, 200, 550, 350]}
-        ]
-        response = client.send_detection(detections)
-        print(f"Response: {response}")
-
-        # Check for motor commands in response
-        if isinstance(response, dict) and 'motor_commands' in response:
-            print("Motor commands received:")
-            for cmd in response['motor_commands']:
-                print(f"  Channel {cmd['channel']}: Speed {cmd['speed']}")
-
-        time.sleep(1)
-
-        # Example 3: Send sensor data
-        print("\nSending sensor data...")
-        response = client.send_sensor_data(encoders=[1234, 5678], timestamp=time.time())
-        print(f"Response: {response}")
-
-        time.sleep(1)
-
-        # Example 4: Send status update
-        print("\nSending status update...")
-        response = client.send_status(battery=85, cpu_temp=52)
-        print(f"Response: {response}")
-
-        time.sleep(1)
-
-        # Example 5: Send image for detection (if you have a test image)
-        # Option 1: From file
-        # response = client.detect_image('test_image.jpg', thresh=0.5)
-
-        # Option 2: From camera
+        # Example 1: Detect from camera
         print("\nCapturing image from camera...")
         cap = cv2.VideoCapture(0)
+
         if cap.isOpened():
             ret, frame = cap.read()
             cap.release()
 
             if ret:
-                print("Sending image for detection...")
-                response = client.detect_image(frame, thresh=0.5)
-                print(f"Response: {response}")
+                print("Running detection on captured frame...")
+                detections = client.detect(frame, thresh=0.5)
 
-                if isinstance(response, dict) and response.get('status') == 'ok':
-                    detections = response.get('detections', [])
+                if detections:
                     print(f"\nDetected {len(detections)} objects:")
                     for det in detections:
-                        print(f"  - {det['class']}: {det['confidence']:.2f} at {det['bbox']}")
+                        print(
+                            f"  - {det['class']}: {det['confidence']:.2f} at {det['bbox']}")
+                else:
+                    print("No detections or detection failed")
             else:
                 print("Failed to capture frame from camera")
         else:
-            print("Camera not available - skipping image detection example")
+            print("Camera not available")
+
+        time.sleep(1)
+
+        # Example 2: Detect from image file (if you have a test image)
+        # detections = client.detect('test_image.jpg', thresh=0.5)
+        # if detections:
+        #     print(f"Detected {len(detections)} objects in test_image.jpg")
+
+        # Example 3: Continuous detection loop
+        print("\n--- Starting continuous detection (press Ctrl+C to stop) ---")
+        cap = cv2.VideoCapture(0)
+
+        if cap.isOpened():
+            frame_count = 0
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                # Run detection every 10 frames (~3 FPS at 30 FPS capture)
+                frame_count += 1
+                if frame_count % 10 == 0:
+                    detections = client.detect(frame, thresh=0.5)
+                    if detections:
+                        print(f"Frame {frame_count}: {len(detections)} objects detected")
+                        for det in detections:
+                            print(f"  {det['class']}: {det['confidence']:.2f}")
+
+                # Small delay to reduce CPU usage
+                time.sleep(0.03)  # ~30 FPS
+
+            cap.release()
+        else:
+            print("Could not start continuous detection - camera not available")
 
     except KeyboardInterrupt:
-        print("\nInterrupted by user")
+        print("\nStopped by user")
     finally:
         client.disconnect()
 
