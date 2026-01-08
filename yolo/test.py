@@ -168,6 +168,7 @@ try:
         detections = results[0].boxes
 
         changed = False
+        print("new cap")
 
         # Go through each detection and get bbox coords, confidence, and class
         for i in range(len(detections)):
