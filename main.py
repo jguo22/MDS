@@ -229,8 +229,8 @@ try:
     while True:
         raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
         raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 100)
-        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 100)
-        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 100)
+        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 100, reverse=False)
+        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 100, reverse=True)
         # motors.setSpeed(100)
         # motors.setTorque(100)
 
