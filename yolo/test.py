@@ -31,13 +31,17 @@ TARGET_CLASS = None
 CENTER_DEADZONE = 5
 DISPLAY_ENABLED = False
 
+MIDPOINT = 320
+MARGIN = 40
+
 class RobotState(Enum):
     SEARCHING = 1
     CHECKING_SEARCH = 2
-    SEEKING = 3
+    SEEKING_CORRECTION = 3
     PICKING_UP = 4
     RETURNING = 5
     DROPPING_OFF = 6
+    SEEKING_MOVING = 3
 
 state = RobotState.CHECKING_SEARCH
 state_start = time.monotonic()
@@ -188,7 +192,10 @@ try:
         # Extract results
         detections = results[0].boxes
 
+        # Variables for detected humans
         humans_detected = False
+        x_mid = None
+        biggest_human_area = 0
 
         # Go through each detection and get bbox coords, confidence, and class
         for detection in detections:
@@ -207,12 +214,17 @@ try:
             # Get bounding box confidence
             conf = detection.conf.item()
 
-            # Draw box if confidence threshold is high enough
-            if conf > 0.5:
-                drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
+            # Only get confident boxes
+            if conf < 0.5:
+                continue
+            drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
 
             if (classname == "person"):
                 humans_detected = True
+                human_area = (xmax - xmin) * (ymax - ymin)
+                if (human_area > biggest_human_area):
+                    biggest_human_area = human_area
+                    x_mid = (xmax + xmin)/2
 
         now = time.monotonic()
 
@@ -223,22 +235,47 @@ try:
                 if (now - state_start > 0.5):
                     # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
                     if (humans_detected):
-                        print("FOUND HUMANS")
-                        state = RobotState.SEARCHING
+                        print("FOUND HUMANS. SEEKING NOW")
+                        state = RobotState.SEEKING_CORRECTION
                         state_start = now
-                        motors.rotateInPlace(50)
+                        # Rotate the correct way
+                        if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
+                            motors.rotateInPlace(5, False)
+                        elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
+                            motors.rotateInPlace(5, True)
                     else:
                         print("No humans found. Resuming search.")
                         state = RobotState.SEARCHING
                         state_start = now
                         motors.rotateInPlace(50)
             case RobotState.SEARCHING:
-                # Change to Searching Mode and Rotate after checking for 1s
-                if (now - state_start > 0.1):
+                # Change to Checking Search Mode and Rotate after checking for 0.2s (good for ~12 FPS)
+                if (now - state_start > 0.2):
                     state = RobotState.CHECKING_SEARCH
                     state_start = now
                     motors.stopRotating()
                     print("Checking search now.")
+            # Rotate for correction until in margin
+            case RobotState.SEEKING_CORRECTION:
+                # Assuming we are already rotating, stop rotating when in margin
+                if (abs(MIDPOINT - x_mid) < MARGIN):
+                    state = RobotState.SEEKING_MOVING
+                    state_start = now
+                    motors.stopRotating()
+                    motors.setSpeed(10)
+                    motors.setTorque(10)
+                    print("WITHIN MARGIN. MOVING FOWARD.")
+            # Move foward for 2 seconds, then recheck for correction
+            case RobotState.SEEKING_MOVING:
+                if (now - state_start > 2):
+                    state = RobotState.SEEKING_CORRECTION
+                    state_start = now
+                    # Rotate the correct way
+                    if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
+                        motors.rotateInPlace(5, False)
+                    elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
+                        motors.rotateInPlace(5, True)
+                    print("CHECKING CORRECTION")
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
