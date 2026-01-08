@@ -212,10 +212,13 @@ class Robot:
             self.state_start = robot.now
             # Point towards human
             if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
+                print("rotating counterclockwise")
                 motors.rotateInPlace(5, False)
             elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
+                print("rotating clockwise")
                 motors.rotateInPlace(5, True)
             else:
+                print("moving towards human")
                 self.moveToHuman()
         else:
             self.searchMode()
