@@ -216,7 +216,7 @@ class Robot:
             elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
                 motors.rotateInPlace(5, True)
             else:
-                self.moveToHuman
+                self.moveToHuman()
         else:
             self.searchMode()
     # Stop spinning the bot and let the next frame search
@@ -289,13 +289,7 @@ try:
             # Rotate for correction until in margin
             case RobotState.SEEKING_CORRECTION:
                 # Assuming we are already rotating, stop rotating when in margin
-                if (humans_detected):
-                    if (abs(MIDPOINT - x_mid) < MARGIN):
-                        robot.moveToHuman()
-                        print("WITHIN MARGIN. MOVING FOWARD.")
-                else:
-                    print("No humans found. Resuming search.")
-                    robot.searchMode()
+                robot.checkImage(cap)
             # Move foward for 2 seconds, then recheck for correction
             case RobotState.SEEKING_MOVING:
                 if (robot.now - robot.state_start > 2):
