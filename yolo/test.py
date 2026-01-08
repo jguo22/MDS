@@ -216,7 +216,7 @@ try:
         # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
         if (state == RobotState.CHECKING_SEARCH):
             # Stop moving for 1s to stabilize image
-            if (now - state_start > 1.0):
+            if (now - state_start > 0.5):
                 # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
                 if (humans_detected):
                     print("FOUND HUMANS")
@@ -230,7 +230,7 @@ try:
         # Searching Mode
         if (state == RobotState.SEARCHING):
             # Change to Searching Mode and Rotate after checking for 1s
-            if (now - state_start > 1.0):
+            if (now - state_start > 0.5):
                 state = RobotState.CHECKING_SEARCH
                 state_start = now
                 motors.stopRotating()
