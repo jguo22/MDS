@@ -27,9 +27,9 @@ def train_model():
 
     config = {
         # Path to your data.yaml
-        'data': str(SCRIPT_DIR / 'datasets' / 'Pringles1' / 'data.yaml'),
+        'data': str(SCRIPT_DIR / 'datasets/Cheetos/data.yaml'),
         'model': str(SCRIPT_DIR / 'yolo11n.pt'),         # Pretrained model
-        'epochs': 20,                   # Number of training epochs
+        'epochs': 300,                   # Number of training epochs
         'imgsz': 640,                  # Image size
         # Use MPS (Metal Performance Shaders) for Apple Silicon
         'device': 'mps',
@@ -44,6 +44,25 @@ def train_model():
         'project': str(runs_dir),      # Directory to save results
         'name': run_name,              # Auto-incremented run name
         'exist_ok': False,             # Don't overwrite existing experiments
+
+        # Data Augmentation
+        'fliplr': 0.5,                 # Horizontal flip probability
+        'flipud': 0.1,                 # Vertical flip probability
+        'hsv_h': 0.015,                # Hue augmentation (0-1)
+        'hsv_s': 0.7,                  # Saturation augmentation (0-1)
+        'hsv_v': 0.4,                  # Brightness/Value augmentation (0-1)
+        'degrees': 10.0,               # Rotation range (+/- deg)
+        'translate': 0.1,              # Translation (+/- fraction)
+        'scale': 0.5,                  # Image scale (+/- gain)
+        'shear': 2.0,                  # Shear angle (+/- deg)
+        'perspective': 0.0001,         # Perspective distortion (0-0.001)
+        'mosaic': 1.0,                 # Mosaic augmentation (probability)
+        'mixup': 0.0,                  # MixUp augmentation (probability)
+        'copy_paste': 0.0,             # Copy-paste augmentation (probability)
+
+        # Transfer Learning
+        # Freeze first N layers (None=auto, 0=train all)
+        'freeze': 10,
     }
 
     # Initialize model
