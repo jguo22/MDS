@@ -227,8 +227,10 @@ robot = Robot()
 # Begin inference loop
 try:
     while True:
-        motors.setSpeed(100)
-        motors.setTorque(100)
+        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 100)
+        raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 100)
+        # motors.setSpeed(100)
+        # motors.setTorque(100)
 
 except KeyboardInterrupt:
     print("\nInterrupted by user")
