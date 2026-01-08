@@ -9,8 +9,8 @@ TICK_ROTATION = 64 * 50
 WHEEL_D = 90 # TODO: MEASURE ACCIURATELY AND USE MM
 BASE_D = 250 # DISTANCE BETEEN CENTER OF WHEELS
 # ORIGIN OF ROBOT IS BETWEEN CENTER OF WHEELS
-MAX_VELOCITY = 1 * TICK_ROTATION # ticks/s
-ACCELERATION = 1 * TICK_ROTATION # ticks/s^2. Reach max v in 1s
+MAX_VELOCITY = 3 * TICK_ROTATION # ticks/s
+ACCELERATION = 3 * TICK_ROTATION # ticks/s^2. Reach max v in 1s
 
 BASE_RATIO = WHEEL_D/BASE_D
 TURN_CONSTANT = BASE_RATIO * 2 * math.pi/TICK_ROTATION
@@ -59,7 +59,7 @@ def updatePath(dt):
     raven.set_motor_target(LEFT_MOTOR, start_left - (current_distance * left_coef))
     raven.set_motor_target(RIGHT_MOTOR, start_right + (current_distance * right_coef))
 
-startPath(-1, -1, TICK_ROTATION * 5)
+startPath(1, 1, TICK_ROTATION * 5)
 
 while True:
     updatePath(.05)
