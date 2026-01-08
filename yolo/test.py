@@ -203,7 +203,7 @@ try:
                 if (motors.rotating):
                     motors.stopRotating()
 
-                motors.setTorque(30)
+                motors.setTorque(5)
                 motors.setSpeed(5)
                 print("FOUND AN OBJECT")
 
