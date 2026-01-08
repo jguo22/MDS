@@ -227,6 +227,51 @@ class Robot:
         self.state = RobotState.CHECKING_SEARCH
         self.state_start = robot.now
         motors.stopRotating()
+    def checkRotation(self, cap):
+        ret, frame = cap.read()
+        results = model(frame, verbose=False)
+        detections = results[0].boxes
+        humans_detected = False
+        x_mid = 320
+        biggest_human_area = 0
+
+        # Go through each detection and get bbox coords, confidence, and class
+        for detection in detections:
+
+            # Get bounding box coordinates
+            # Ultralytics returns results in Tensor format, which have to be converted to a regular Python array
+            xyxy_tensor = detection.xyxy.cpu() # Detections in Tensor format in CPU memory
+            xyxy = xyxy_tensor.numpy().squeeze() # Convert tensors to Numpy array
+            xmin, ymin, xmax, ymax = xyxy.astype(int) # Extract individual coordinates and convert to int
+
+            # Get bounding box class ID and name
+            classidx = int(detection.cls.item())
+            classname = labels[classidx]
+            print("found " + classname)
+
+            # Get bounding box confidence
+            conf = detection.conf.item()
+
+            # Only get confident boxes
+            if conf < 0.5:
+                continue
+            if (DISPLAY_ENABLED):
+                drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
+
+            if (classname == "person"):
+                humans_detected = True
+                human_area = (xmax - xmin) * (ymax - ymin)
+                if (human_area > biggest_human_area):
+                    biggest_human_area = human_area
+                    x_mid = (xmax + xmin)/2
+                    print("BIGGEST HUMAN AT x: " + str(x_mid))
+
+        if (humans_detected):
+            if (abs(x_mid - MIDPOINT()) < MARGIN):
+                print("moving towards human")
+                self.moveToHuman()
+        else:
+            self.searchMode()
 
 
 model_path = "yolo11n_ncnn_model"
@@ -292,7 +337,7 @@ try:
             # Rotate for correction until in margin
             case RobotState.SEEKING_CORRECTION:
                 # Assuming we are already rotating, stop rotating when in margin
-                robot.checkImage(cap)
+                robot.checkRotation(cap)
             # Move foward for 2 seconds, then recheck for correction
             case RobotState.SEEKING_MOVING:
                 if (robot.now - robot.state_start > 2):
