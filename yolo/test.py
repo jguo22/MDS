@@ -179,10 +179,13 @@ motors.rotateInPlace(100)
 try:
     while True:
         print("new cap")
-        now = time.monotonic()
         t_start = time.perf_counter()
 
         ret, frame = cap.read()
+        print("WIDTH is " + cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        print("HEIGHT is " + cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        # Resize
+        frame = cv2.resize(frame,(600,400))
         # Run inference on frame
         results = model(frame, verbose=False)
         # Extract results
@@ -213,38 +216,31 @@ try:
 
             if (classname == "person"):
                 humans_detected = True
-        continue
 
-        # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
-        if (state == RobotState.CHECKING_SEARCH):
-            # Stop moving for 1s to stabilize image
-            if (now - state_start > 0.5):
-                # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
-                if (humans_detected):
-                    print("FOUND HUMANS")
-                    state = RobotState.SEEKING
+        now = time.monotonic()
+
+        match state:
+            # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
+            case RobotState.CHECKING_SEARCH:
+                # Stop moving for 1s to stabilize image
+                if (now - state_start > 0.5):
+                    # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
+                    if (humans_detected):
+                        print("FOUND HUMANS")
+                        state = RobotState.SEEKING
+                        state_start = now
+                    else:
+                        print("No humans found. Resuming search.")
+                        state = RobotState.SEARCHING
+                        state_start = now
+                        motors.rotateInPlace(50)
+            case RobotState.SEARCHING:
+                # Change to Searching Mode and Rotate after checking for 1s
+                if (now - state_start > 0.1):
+                    state = RobotState.CHECKING_SEARCH
                     state_start = now
-                else:
-                    print("No humans found. Resuming search.")
-                    state = RobotState.SEARCHING
-                    state_start = now
-                    motors.rotateInPlace(50)
-        # Searching Mode
-        if (state == RobotState.SEARCHING):
-            # Change to Searching Mode and Rotate after checking for 1s
-            if (now - state_start > 0.1):
-                state = RobotState.CHECKING_SEARCH
-                state_start = now
-                motors.stopRotating()
-                print("Checking search now.")
-        # Seeking Mode
-        if (state == RobotState.SEEKING):
-            # Change to Searching Mode and Rotate after checking for 1s
-            if (now - state_start > 0.1):
-                state = RobotState.CHECKING_SEARCH
-                state_start = now
-                motors.stopRotating()
-                print("Checking search now.")
+                    motors.stopRotating()
+                    print("Checking search now.")
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
