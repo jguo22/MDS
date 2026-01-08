@@ -100,11 +100,9 @@ class RavenMotorControllers:
 
 
     def setTorque(self, torque):
-        torque = max(torque, 100)
         raven_board.set_motor_torque_factor(self.leftChannel, torque)
         raven_board.set_motor_torque_factor(self.rightChannel, torque)
     def setSpeed(self, speed, reverse = False):
-        speed = max(speed, 100)
         raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = reverse)
         raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = not reverse)
     def rotateInPlace(self, speed):
@@ -183,6 +181,9 @@ try:
             # Get bounding box class ID and name
             classidx = int(detections[i].cls.item())
             classname = labels[classidx]
+            print("found " + classname)
+            if (classname != "Human"):
+                continue
 
             # Get bounding box confidence
             conf = detections[i].conf.item()
@@ -203,8 +204,8 @@ try:
                 if (motors.rotating):
                     motors.stopRotating()
 
-                motors.setTorque(5)
-                motors.setSpeed(5)
+                motors.setTorque(30)
+                motors.setSpeed(30)
                 print("FOUND AN OBJECT")
 
             if (changed == False):
