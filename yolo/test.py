@@ -342,7 +342,7 @@ try:
             case RobotState.SEEKING_CORRECTION:
                 # Assuming we are already rotating, stop rotating when in margin
                 # Rotate for 0.3s
-                if (robot.now - robot.state_start > 1):
+                if (robot.now - robot.state_start > 0.3):
                     robot.checkRotation(cap)
             # Move foward for 2 seconds, then recheck for correction
             case RobotState.SEEKING_MOVING:
