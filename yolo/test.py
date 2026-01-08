@@ -4,7 +4,7 @@ from raven import Raven
 import cv2
 import numpy as np
 from ultralytics import YOLO
-
+from enum import Enum
 
 raven_board = Raven()
 
@@ -21,6 +21,11 @@ TARGET_CLASS = None
 CENTER_DEADZONE = 5
 DISPLAY_ENABLED = False
 
+class RobotState(Enum):
+    SEARCHING = 1
+    STOPPING = 2
+    TURNING = 3
+    MOVING = 4
 
 class RavenServoController:
     def __init__(
@@ -157,6 +162,7 @@ img_count = 0
 # Begin inference loop
 try:
     while True:
+        now = time.monotonic()
         t_start = time.perf_counter()
 
         ret, frame = cap.read()
@@ -206,10 +212,6 @@ try:
                         motors.stopRotating()
                         print("a" + str(motors.rotating))
                         cv2.waitKey(1000)
-                        # Rotate back to find object
-                        motors.rotateInPlace(10, False)
-                        cv2.waitKey(1000)
-                        motors.stopRotating()
 
                     changed = True
                     motors.setTorque(30)
