@@ -34,8 +34,8 @@ for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
     raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
     raven.set_motor_target(motor, 0)
 
-raven.set_motor_pid(RIGHT_MOTOR, p_gain = 25, i_gain = 20, d_gain = 0.3)
-raven.set_motor_pid(LEFT_MOTOR, p_gain = 15, i_gain = 20, d_gain = 0.179)
+raven.set_motor_pid(RIGHT_MOTOR, p_gain = 30, i_gain = 20, d_gain = 0.35)
+raven.set_motor_pid(LEFT_MOTOR, p_gain = 20, i_gain = 20, d_gain = 0.3)
 
 def startPath(left_coefficient, right_coefficient, distance):
     global total_distance, left_coef, right_coef, start_angle, start_left, start_right
