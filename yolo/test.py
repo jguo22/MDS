@@ -266,7 +266,7 @@ robot = Robot()
 # Begin inference loop
 try:
     while True:
-        print("new cap")
+        # print("new cap")
         t_start = time.perf_counter()
 
         robot.setNowTime()
