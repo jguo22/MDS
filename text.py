@@ -62,7 +62,7 @@ def updatePath(dt):
     raven.set_motor_target(RIGHT_MOTOR, start_right + (current_distance * right_coef))
 
 
-startPath(-1, -1, TICK_ROTATION * 5)
+startPath(0.85, 1.15, TICK_ROTATION * 4.5)
 
 while True:
     updatePath(.05)
