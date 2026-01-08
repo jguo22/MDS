@@ -95,8 +95,8 @@ class RavenMotorControllers:
 
         raven_board.set_motor_encoder(self.leftChannel, 1)
         raven_board.set_motor_mode(self.leftChannel, Raven.MotorMode.DIRECT)
-        raven_board.set_motor_encoder(self.rightChannelChannel, 1)
-        raven_board.set_motor_mode(self.rightChannelChannel, Raven.MotorMode.DIRECT)
+        raven_board.set_motor_encoder(self.rightChannel, 1)
+        raven_board.set_motor_mode(self.rightChannel, Raven.MotorMode.DIRECT)
 
 
     def setTorque(self, torque):
