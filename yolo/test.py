@@ -1,7 +1,3 @@
-import os
-import sys
-import argparse
-import glob
 import time
 
 from raven import Raven
@@ -89,6 +85,40 @@ class RavenServoController:
         """Clean up servo controller"""
         if self.use_servo:
             print("Servo stopped")
+class RavenMotorControllers:
+    def __init__(
+            self):
+
+        self.leftChannel = Raven.MotorChannel.CH3
+        self.rightChannel = Raven.MotorChannel.CH2
+        self.rotating = False
+
+        raven_board.set_motor_encoder(self.leftChannel, 1)
+        raven_board.set_motor_mode(self.leftChannel, Raven.MotorMode.DIRECT)
+        raven_board.set_motor_encoder(self.rightChannelChannel, 1)
+        raven_board.set_motor_mode(self.rightChannelChannel, Raven.MotorMode.DIRECT)
+
+
+    def setTorque(self, torque):
+        torque = max(torque, 100)
+        raven_board.set_motor_torque_factor(self.leftChannel, torque)
+        raven_board.set_motor_torque_factor(self.rightChannel, torque)
+    def setSpeed(self, speed, reverse = False):
+        speed = max(speed, 100)
+        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = reverse)
+        raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = not reverse)
+    def rotateInPlace(self, speed):
+        self.rotating = True
+        raven_board.set_motor_torque_factor(self.leftChannel, 100)
+        raven_board.set_motor_torque_factor(self.rightChannel, 100)
+        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = False)
+        raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = True)
+    def stopRotating(self):
+        self.rotating = False
+        raven_board.set_motor_torque_factor(self.leftChannel, 0)
+        raven_board.set_motor_torque_factor(self.rightChannel, 0)
+        raven_board.set_motor_speed_factor(self.leftChannel, 0)
+        raven_board.set_motor_speed_factor(self.rightChannel, 0)
 
 
 
@@ -98,7 +128,7 @@ min_thresh = float(0.5)
 user_res = None
 record = False
 
-# Load the model into memory and get lable map
+# Load the model into memory and get label map
 model = YOLO(model_path, task='detect')
 labels = model.names
 
@@ -118,11 +148,7 @@ servo = RavenServoController(
     max_us=MAX_US,
 )
 
-
-raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
-raven_board.set_motor_encoder(Raven.MotorChannel.CH2, 0) # Set encoder count for motor 1 to zero
-raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
-raven_board.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
+motors = RavenMotorControllers()
 
 # Initialize control and status variables
 avg_frame_rate = 0
@@ -133,7 +159,6 @@ img_count = 0
 # Begin inference loop
 try:
     while True:
-
         t_start = time.perf_counter()
 
         ret, frame = cap.read()
@@ -143,9 +168,6 @@ try:
 
         # Extract results
         detections = results[0].boxes
-
-        # Initialize variable for basic object counting example
-        object_count = 0
 
         changed = False
 
@@ -181,17 +203,15 @@ try:
                 # Basic example: count the number of objects in the image
                 object_count = object_count + 1
 
-                raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 50)
-                raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 30, reverse=False)
-                raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 50)
-                raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 30, reverse=True)
+                if (motors.rotating):
+                    motors.stopRotating()
+
+                motors.setTorque(50)
+                motors.setSpeed(30)
                 print("FOUND AN OBJECT")
 
             if (changed == False):
-                raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
-                raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
-                raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
-                raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
+                motors.rotateInPlace(30)
                 print("found no object")
 
 
@@ -225,11 +245,7 @@ except KeyboardInterrupt:
 finally:
     # Clean up
     print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
-    if source_type == 'video' or source_type == 'usb':
-        cap.release()
-    elif source_type == 'picamera':
-        cap.stop()
-    if record: recorder.release()
+    cap.release()
     cv2.destroyAllWindows()
 
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
