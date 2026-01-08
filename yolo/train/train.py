@@ -27,8 +27,9 @@ def train_model():
 
     config = {
         # Path to your data.yaml
-        'data': str(SCRIPT_DIR / 'datasets/combined1/data.yaml'),
-        'model': str(SCRIPT_DIR / 'yolo11n.pt'),         # Pretrained model
+        'data': str(SCRIPT_DIR / 'datasets/addnull/data.yaml'),
+        # Pretrained model
+        'model': str(SCRIPT_DIR / 'runs/train/exp7/weights/best.pt'),
         'epochs': 300,                   # Number of training epochs
         'imgsz': 640,                  # Image size
         # Use MPS (Metal Performance Shaders) for Apple Silicon
@@ -46,19 +47,26 @@ def train_model():
         'exist_ok': False,             # Don't overwrite existing experiments
 
         # Data Augmentation
-        'fliplr': 0.5,                 # Horizontal flip probability
-        'flipud': 0.1,                 # Vertical flip probability
-        'hsv_h': 0.015,                # Hue augmentation (0-1)
-        'hsv_s': 0.7,                  # Saturation augmentation (0-1)
-        'hsv_v': 0.4,                  # Brightness/Value augmentation (0-1)
+        'fliplr': 0.3,                 # Horizontal flip probability
+        # Hue augmentation (reduced - preserve color)
+        'hsv_h': 0.01,
+        # Saturation augmentation (REDUCED from 0.7 - preserve red color)
+        'hsv_s': 0.3,
+        # Brightness/Value augmentation (REDUCED from 0.4)
+        'hsv_v': 0.2,
         'degrees': 10.0,               # Rotation range (+/- deg)
-        'translate': 0.1,              # Translation (+/- fraction)
-        'scale': 0.5,                  # Image scale (+/- gain)
+        # Translation (+/- fraction) - moderate cropping
+        'translate': 0.2,
+        # Image scale (+/- gain) - moderate scale variation
+        'scale': 0.5,
         'shear': 2.0,                  # Shear angle (+/- deg)
         'perspective': 0.0001,         # Perspective distortion (0-0.001)
-        'mosaic': 1.0,                 # Mosaic augmentation (probability)
+        # Mosaic augmentation (probability) - includes random cropping
+        'mosaic': 1.0,
         'mixup': 0.0,                  # MixUp augmentation (probability)
         'copy_paste': 0.0,             # Copy-paste augmentation (probability)
+        # Random erasing probability (simulates occlusion/partial crops)
+        'erasing': 0.1,                # REDUCED from 0.3 - less aggressive occlusion
 
         # Transfer Learning
         # Freeze first N layers (None=auto, 0=train all)
