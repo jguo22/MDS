@@ -137,12 +137,12 @@ class RavenMotorControllers:
         raven_board.set_motor_encoder(self.leftChannel, 0)
         raven_board.set_motor_max_current(self.leftChannel, 5)
         raven_board.set_motor_mode(self.leftChannel, Raven.MotorMode.POSITION)
-        raven_board.set_motor_pid(self.leftChannel, p_gain = 30, i_gain = 0, d_gain = 0)
+        raven_board.set_motor_pid(self.leftChannel, p_gain = 10, i_gain = 0, d_gain = 0)
 
         raven_board.set_motor_encoder(self.rightChannel, 0)
         raven_board.set_motor_max_current(self.rightChannel, 5)
         raven_board.set_motor_mode(self.rightChannel, Raven.MotorMode.POSITION)
-        raven_board.set_motor_pid(self.rightChannel, p_gain = 30, i_gain = 0, d_gain = 0)
+        raven_board.set_motor_pid(self.rightChannel, p_gain = 10, i_gain = 0, d_gain = 0)
 
     def setTorque(self, torque):
         raven_board.set_motor_torque_factor(self.leftChannel, torque)
