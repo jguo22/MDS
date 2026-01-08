@@ -271,6 +271,7 @@ class Robot:
                 print("moving towards human")
                 self.moveToHuman()
         else:
+            print("aborting human seeking. Lost human.")
             self.searchMode()
 
 
