@@ -174,6 +174,8 @@ fps_avg_len = 200
 img_count = 0
 motors.rotateInPlace(100)
 
+if (not DISPLAY_ENABLED):
+    print("Running headless")
 # Begin inference loop
 try:
     while True:
