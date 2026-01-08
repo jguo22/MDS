@@ -271,7 +271,7 @@ try:
 
         robot.setNowTime()
 
-        print ("current state is " + robot.state.name)
+        # print ("current state is " + robot.state.name)
         match robot.state:
             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
@@ -298,13 +298,13 @@ try:
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
-        if (DISPLAY_ENABLED):
-            cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
+        # if (DISPLAY_ENABLED):
+        #     cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
 
-            # Display detection results
-            cv2.imshow('YOLO detection results',frame) # Display image
-        else:
-            print(f"FPS: {avg_frame_rate:0.2f}")
+        #     # Display detection results
+        #     cv2.imshow('YOLO detection results',frame) # Display image
+        # else:
+        #     print(f"FPS: {avg_frame_rate:0.2f}")
 
         # Calculate FPS for this frame
         t_stop = time.perf_counter()
