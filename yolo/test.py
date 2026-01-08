@@ -226,7 +226,7 @@ try:
                     print("No humans found. Resuming search.")
                     state = RobotState.SEARCHING
                     state_start = now
-                    motors.rotateInPlace(100)
+                    motors.rotateInPlace(50)
         # Searching Mode
         if (state == RobotState.SEARCHING):
             # Change to Searching Mode and Rotate after checking for 1s
