@@ -188,7 +188,6 @@ try:
 
             # Draw box if confidence threshold is high enough
             if conf > min_thresh:
-                changed = True
 
                 color = bbox_colors[classidx % 10]
                 cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
@@ -205,6 +204,7 @@ try:
                 if (motors.rotating):
                     motors.stopRotating()
 
+                changed = True
                 motors.setTorque(30)
                 motors.setSpeed(30)
                 print("FOUND AN OBJECT")
