@@ -6,7 +6,46 @@ import time
 
 import cv2
 import numpy as np
+import threading
 from ultralytics import YOLO
+
+
+from flask import Flask, Response
+
+app = Flask(__name__)
+output_frame = None
+lock = None
+
+@app.route("/")
+def index():
+    return """
+    <html>
+      <head><title>YOLO Stream</title></head>
+      <body>
+        <h1>YOLO Live Stream</h1>
+        <img src="/video" width="640">
+      </body>
+    </html>
+    """
+
+def generate():
+    global output_frame
+    while True:
+        with lock:
+            if output_frame is None:
+                continue
+            ret, buffer = cv2.imencode(".jpg", output_frame)
+            frame = buffer.tobytes()
+
+        yield (b"--frame\r\n"
+               b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+
+@app.route("/video")
+def video():
+    return Response(generate(),
+                    mimetype="multipart/x-mixed-replace; boundary=frame")
+
+lock = threading.Lock()
 
 # Define and parse user input arguments
 
@@ -14,7 +53,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model', help='Path to YOLO model file (example: "runs/detect/train/weights/best.pt")',
                     required=True)
 parser.add_argument('--source', help='Image source, can be image file ("test.jpg"), \
-                    image folder ("test_dir"), video file ("testvid.mp4"), or index of USB camera ("usb0")', 
+                    image folder ("test_dir"), video file ("testvid.mp4"), or index of USB camera ("usb0")',
                     required=True)
 parser.add_argument('--thresh', help='Minimum confidence threshold for displaying detected objects (example: "0.4")',
                     default=0.5)
@@ -82,7 +121,7 @@ if record:
     if not user_res:
         print('Please specify resolution to record video at.')
         sys.exit(0)
-    
+
     # Set up recording
     record_name = 'demo1.avi'
     record_fps = 30
@@ -116,7 +155,7 @@ elif source_type == 'picamera':
     cap.start()
 
 # Set bounding box colors (using the Tableu 10 color scheme)
-bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106), 
+bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106),
               (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
 
 # Initialize control and status variables
@@ -124,6 +163,11 @@ avg_frame_rate = 0
 frame_rate_buffer = []
 fps_avg_len = 200
 img_count = 0
+
+threading.Thread(
+    target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, threaded=True),
+    daemon=True
+).start()
 
 # Begin inference loop
 while True:
@@ -138,13 +182,13 @@ while True:
         img_filename = imgs_list[img_count]
         frame = cv2.imread(img_filename)
         img_count = img_count + 1
-    
+
     elif source_type == 'video': # If source is a video, load next frame from video file
         ret, frame = cap.read()
         if not ret:
             print('Reached end of the video file. Exiting program.')
             break
-    
+
     elif source_type == 'usb': # If source is a USB camera, grab frame from camera
         ret, frame = cap.read()
         if (frame is None) or (not ret):
@@ -205,25 +249,11 @@ while True:
     # Calculate and draw framerate (if using video, USB, or Picamera source)
     if source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
         cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
-    
-    # Display detection results
-    cv2.putText(frame, f'Number of objects: {object_count}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw total number of detected objects
-    cv2.imshow('YOLO detection results',frame) # Display image
-    if record: recorder.write(frame)
 
-    # If inferencing on individual images, wait for user keypress before moving to next image. Otherwise, wait 5ms before moving to next frame.
-    if source_type == 'image' or source_type == 'folder':
-        key = cv2.waitKey()
-    elif source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
-        key = cv2.waitKey(5)
-    
-    if key == ord('q') or key == ord('Q'): # Press 'q' to quit
-        break
-    elif key == ord('s') or key == ord('S'): # Press 's' to pause inference
-        cv2.waitKey()
-    elif key == ord('p') or key == ord('P'): # Press 'p' to save a picture of results on this frame
-        cv2.imwrite('capture.png',frame)
-    
+    # Display detection results
+    with lock:
+        output_frame = frame.copy()
+
     # Calculate FPS for this frame
     t_stop = time.perf_counter()
     frame_rate_calc = float(1/(t_stop - t_start))
@@ -238,7 +268,6 @@ while True:
     # Calculate average FPS for past frames
     avg_frame_rate = np.mean(frame_rate_buffer)
 
-
 # Clean up
 print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
 if source_type == 'video' or source_type == 'usb':
@@ -246,4 +275,4 @@ if source_type == 'video' or source_type == 'usb':
 elif source_type == 'picamera':
     cap.stop()
 if record: recorder.release()
-cv2.destroyAllWindows()
+#cv2.destroyAllWindows()

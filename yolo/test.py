@@ -11,29 +11,13 @@ raven_board = Raven()
 
 def drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname):
     color = bbox_colors[classidx % 10]
-    cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
+    cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
 
     label = f'{classname}: {int(conf*100)}%'
-    labelSize, baseLine = cv2.getTextSize(
-        label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)  # Get font size
-    # Make sure not to draw label too close to top of window
-    label_ymin = max(ymin, labelSize[1] + 10)
-    cv2.rectangle(
-        frame,
-        (xmin,
-         label_ymin -
-         labelSize[1] -
-         10),
-        (xmin +
-         labelSize[0],
-         label_ymin +
-         baseLine -
-         10),
-        color,
-        cv2.FILLED)  # Draw white box to put label text in
-    cv2.putText(frame, label, (xmin, label_ymin - 7),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)  # Draw label text
-
+    labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
+    label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+    cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
+    cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
 
 # Configuration
 CAMERA_INDEX = 0
@@ -50,7 +34,6 @@ DISPLAY_ENABLED = False
 MIDPOINT = 320
 MARGIN = 40
 
-
 class RobotState(Enum):
     SEARCHING = 1
     CHECKING_SEARCH = 2
@@ -59,6 +42,7 @@ class RobotState(Enum):
     RETURNING = 5
     DROPPING_OFF = 6
     SEEKING_MOVING = 3
+
 
 
 class RavenServoController:
@@ -124,8 +108,6 @@ class RavenServoController:
         """Clean up servo controller"""
         if self.use_servo:
             print("Servo stopped")
-
-
 class RavenMotorControllers:
     def __init__(
             self):
@@ -139,32 +121,25 @@ class RavenMotorControllers:
         raven_board.set_motor_encoder(self.rightChannel, 1)
         raven_board.set_motor_mode(self.rightChannel, Raven.MotorMode.DIRECT)
 
+
     def setTorque(self, torque):
         raven_board.set_motor_torque_factor(self.leftChannel, torque)
         raven_board.set_motor_torque_factor(self.rightChannel, torque)
-
-    def setSpeed(self, speed, reverse=False):
-        raven_board.set_motor_speed_factor(
-            self.leftChannel, speed, reverse=reverse)
-        raven_board.set_motor_speed_factor(
-            self.rightChannel, speed, reverse=not reverse)
-
-    def rotateInPlace(self, speed, clockwise=True):
+    def setSpeed(self, speed, reverse = False):
+        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = reverse)
+        raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = not reverse)
+    def rotateInPlace(self, speed, clockwise = True):
         self.rotating = True
         raven_board.set_motor_torque_factor(self.leftChannel, 20)
         raven_board.set_motor_torque_factor(self.rightChannel, 20)
-        raven_board.set_motor_speed_factor(
-            self.leftChannel, speed, reverse=clockwise)
-        raven_board.set_motor_speed_factor(
-            self.rightChannel, speed, reverse=clockwise)
-
+        raven_board.set_motor_speed_factor(self.leftChannel, speed, reverse = clockwise)
+        raven_board.set_motor_speed_factor(self.rightChannel, speed, reverse = clockwise)
     def stopRotating(self):
         self.rotating = False
         raven_board.set_motor_torque_factor(self.leftChannel, 0)
         raven_board.set_motor_torque_factor(self.rightChannel, 0)
         raven_board.set_motor_speed_factor(self.leftChannel, 0)
         raven_board.set_motor_speed_factor(self.rightChannel, 0)
-
 
 class Robot:
     def __init__(self):
@@ -183,16 +158,56 @@ class Robot:
         motors.setSpeed(20)
         motors.setTorque(20)
     # Spin around to look for objects
-
     def searchMode(self):
         self.state = RobotState.SEARCHING
         self.state_start = self.now
         motors.rotateInPlace(40)
-    # Check the image. If there's a human, correct. If not, switch to search
-    # mode.
+    # Check the image. If there's a human, correct. If not, switch to search mode.
+    def checkImage(self, cap):
 
-    def checkImage(self, humans_found, x_mid):
-        if (humans_found):
+        ret, frame = cap.read()
+        # Run inference on frame
+        results = model(frame, verbose=False)
+        # Extract results
+        detections = results[0].boxes
+
+        # Variables for detected humans
+        humans_detected = False
+        x_mid = 320
+        biggest_human_area = 0
+
+        # Go through each detection and get bbox coords, confidence, and class
+        for detection in detections:
+
+            # Get bounding box coordinates
+            # Ultralytics returns results in Tensor format, which have to be converted to a regular Python array
+            xyxy_tensor = detection.xyxy.cpu() # Detections in Tensor format in CPU memory
+            xyxy = xyxy_tensor.numpy().squeeze() # Convert tensors to Numpy array
+            xmin, ymin, xmax, ymax = xyxy.astype(int) # Extract individual coordinates and convert to int
+
+            # Get bounding box class ID and name
+            classidx = int(detection.cls.item())
+            classname = labels[classidx]
+            print("found " + classname)
+
+            # Get bounding box confidence
+            conf = detection.conf.item()
+
+            # Only get confident boxes
+            if conf < 0.5:
+                continue
+            if (DISPLAY_ENABLED):
+                drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
+
+            if (classname == "person"):
+                humans_detected = True
+                human_area = (xmax - xmin) * (ymax - ymin)
+                if (human_area > biggest_human_area):
+                    biggest_human_area = human_area
+                    x_mid = (xmax + xmin)/2
+                    print("BIGGEST HUMAN AT x: " + str(x_mid))
+
+        if (humans_detected):
             self.state = RobotState.SEEKING_CORRECTION
             self.state_start = robot.now
             # Point towards human
@@ -205,7 +220,6 @@ class Robot:
         else:
             self.searchMode()
     # Stop spinning the bot and let the next frame search
-
     def stopSearching(self):
         self.state = RobotState.CHECKING_SEARCH
         self.state_start = robot.now
@@ -224,8 +238,8 @@ labels = model.names
 cap = cv2.VideoCapture(0)
 
 # Set bounding box colors (using the Tableu 10 color scheme)
-bbox_colors = [(164, 120, 87), (68, 148, 228), (93, 97, 209), (178, 182, 133), (88, 159, 106),
-               (96, 202, 231), (159, 124, 168), (169, 162, 241), (98, 118, 150), (172, 176, 184)]
+bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106),
+              (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
 
 
 # Initialize Raven servo controller
@@ -255,73 +269,26 @@ try:
         print("new cap")
         t_start = time.perf_counter()
 
-        ret, frame = cap.read()
-        # Run inference on frame
-        results = model(frame, verbose=False)
-        # Extract results
-        detections = results[0].boxes
-
-        # Variables for detected humans
-        humans_detected = False
-        x_mid = 320
-        biggest_human_area = 0
-
-        # Go through each detection and get bbox coords, confidence, and class
-        for detection in detections:
-
-            # Get bounding box coordinates
-            # Ultralytics returns results in Tensor format, which have to be
-            # converted to a regular Python array
-            xyxy_tensor = detection.xyxy.cpu()  # Detections in Tensor format in CPU memory
-            xyxy = xyxy_tensor.numpy().squeeze()  # Convert tensors to Numpy array
-            # Extract individual coordinates and convert to int
-            xmin, ymin, xmax, ymax = xyxy.astype(int)
-
-            # Get bounding box class ID and name
-            classidx = int(detection.cls.item())
-            classname = labels[classidx]
-            print("found " + classname)
-
-            # Get bounding box confidence
-            conf = detection.conf.item()
-
-            # Only get confident boxes
-            if conf < 0.5:
-                continue
-            drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
-
-            if (classname == "person"):
-                humans_detected = True
-                human_area = (xmax - xmin) * (ymax - ymin)
-                if (human_area > biggest_human_area):
-                    biggest_human_area = human_area
-                    x_mid = (xmax + xmin) / 2
-                    print("BIGGEST HUMAN AT x: " + str(x_mid))
-
         robot.setNowTime()
 
-        print("current state is " + robot.state.name)
+        print ("current state is " + robot.state.name)
         match robot.state:
-            # Checking Search Mode. Is stationary and will check the image, if
-            # there's nothing, then it will rotate in place.
+            # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
                 # Stop moving for 0.5s to stabilize image
                 if (robot.now - robot.state_start > 0.5):
-                    # Check for humans. If found, seek. If not, return to
-                    # searching.
+                    # Check for humans. If found, seek. If not, return to searching.
                     print("Checking image.")
-                    robot.checkImage(humans_detected, x_mid)
+                    robot.checkImage(cap)
 
             case RobotState.SEARCHING:
-                # Change to Checking Search Mode and Rotate after checking for
-                # 0.2s (good for ~12 FPS)
-                if (robot.now - robot.state_start > 0.2):
+                # Change to Checking Search Mode and Rotate after checking for 0.2s (good for ~12 FPS)
+                if (robot.now - robot.state_start > 0.1):
                     print("Stopping search.")
                     robot.stopSearching()
             # Rotate for correction until in margin
             case RobotState.SEEKING_CORRECTION:
-                # Assuming we are already rotating, stop rotating when in
-                # margin
+                # Assuming we are already rotating, stop rotating when in margin
                 if (humans_detected):
                     if (abs(MIDPOINT - x_mid) < MARGIN):
                         robot.moveToHuman()
@@ -333,25 +300,23 @@ try:
             case RobotState.SEEKING_MOVING:
                 if (robot.now - robot.state_start > 2):
                     print("rechecking image for humans.")
-                    robot.checkImage()
+                    robot.checkImage(cap)
 
-        # Calculate and draw framerate (if using video, USB, or Picamera
-        # source)
+
+        # Calculate and draw framerate (if using video, USB, or Picamera source)
         if (DISPLAY_ENABLED):
-            cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10, 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, .7, (0, 255, 255), 2)  # Draw framerate
+            cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
 
             # Display detection results
-            cv2.imshow('YOLO detection results', frame)  # Display image
+            cv2.imshow('YOLO detection results',frame) # Display image
         else:
             print(f"FPS: {avg_frame_rate:0.2f}")
 
         # Calculate FPS for this frame
         t_stop = time.perf_counter()
-        frame_rate_calc = float(1 / (t_stop - t_start))
+        frame_rate_calc = float(1/(t_stop - t_start))
 
-        # Append FPS result to frame_rate_buffer (for finding average FPS over
-        # multiple frames)
+        # Append FPS result to frame_rate_buffer (for finding average FPS over multiple frames)
         if len(frame_rate_buffer) >= fps_avg_len:
             temp = frame_rate_buffer.pop(0)
             frame_rate_buffer.append(frame_rate_calc)
@@ -375,18 +340,3 @@ finally:
     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
-
-raven_board.set_motor_encoder(Raven.MotorChannel.CH3, 0) # Set encoder count for motor 1 to zero
-print(raven_board.get_motor_encoder(Raven.MotorChannel.CH3)) # Print encoder count = "0"
-
-raven_board.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.DIRECT) # Set motor mode to DIRECT
-
-# Speed controlled:
-raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 100) # Let the motor use all the torque to get to speed factor
-raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 10, reverse=True) # Spin at 10% max speed in reverse
-
-# Torque controlled:
-# raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 100) # Make motor try to run at max speed forward
-# raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 100) # Let it use up to 10% available torque
-while True:
-    pass
