@@ -202,6 +202,7 @@ try:
                 if (classname == "person"):
                     if (motors.rotating):
                         motors.stopRotating()
+                        cv2.waitKey(100)
 
                     changed = True
                     motors.setTorque(30)
@@ -209,7 +210,7 @@ try:
                     print("FOUND AN OBJECT")
 
         if (changed == False):
-            motors.rotateInPlace(5)
+            motors.rotateInPlace(10)
             print("found no object")
 
 
