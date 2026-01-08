@@ -224,8 +224,9 @@ try:
                     # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
                     if (humans_detected):
                         print("FOUND HUMANS")
-                        state = RobotState.SEEKING
+                        state = RobotState.SEARCHING
                         state_start = now
+                        motors.rotateInPlace(50)
                     else:
                         print("No humans found. Resuming search.")
                         state = RobotState.SEARCHING
