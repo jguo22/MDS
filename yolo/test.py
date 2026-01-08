@@ -267,7 +267,7 @@ class Robot:
                     print("BIGGEST HUMAN AT x: " + str(x_mid))
 
         if (humans_detected):
-            if (abs(x_mid - MIDPOINT()) < MARGIN):
+            if (abs(x_mid - MIDPOINT) < MARGIN):
                 print("moving towards human")
                 self.moveToHuman()
         else:
@@ -331,7 +331,7 @@ try:
 
             case RobotState.SEARCHING:
                 # Change to Checking Search Mode and Rotate after checking for 0.2s (good for ~12 FPS)
-                if (robot.now - robot.state_start > 0.1):
+                if (robot.now - robot.state_start > 0.5):
                     print("Stopping search.")
                     robot.stopSearching()
             # Rotate for correction until in margin
