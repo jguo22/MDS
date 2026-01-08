@@ -208,9 +208,9 @@ try:
                     motors.setSpeed(30)
                     print("FOUND AN OBJECT")
 
-            if (changed == False):
-                motors.rotateInPlace(20)
-                print("found no object")
+        if (changed == False):
+            motors.rotateInPlace(20)
+            print("found no object")
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
