@@ -200,9 +200,6 @@ try:
                 cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
                 cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
 
-                # Basic example: count the number of objects in the image
-                object_count = object_count + 1
-
                 if (motors.rotating):
                     motors.stopRotating()
 
