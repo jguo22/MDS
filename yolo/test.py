@@ -9,6 +9,16 @@ from enum import Enum
 raven_board = Raven()
 
 
+def drawBox(frame, xmin, ymin, xmax, ymax, classname):
+    color = bbox_colors[classidx % 10]
+    cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
+
+    label = f'{classname}: {int(conf*100)}%'
+    labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
+    label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+    cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
+    cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
+
 # Configuration
 CAMERA_INDEX = 0
 SERVO_CHANNEL = 4
@@ -23,9 +33,14 @@ DISPLAY_ENABLED = False
 
 class RobotState(Enum):
     SEARCHING = 1
-    STOPPING = 2
-    TURNING = 3
-    MOVING = 4
+    CHECKING_SEARCH = 2
+    SEEKING = 3
+    PICKING_UP = 4
+    RETURNING = 5
+    DROPPING_OFF = 6
+
+state = RobotState.CHECKING_SEARCH
+state_start = time.monotonic
 
 class RavenServoController:
     def __init__(
@@ -162,67 +177,64 @@ img_count = 0
 # Begin inference loop
 try:
     while True:
+        print("new cap")
         now = time.monotonic()
         t_start = time.perf_counter()
 
         ret, frame = cap.read()
-
         # Run inference on frame
         results = model(frame, verbose=False)
-
         # Extract results
         detections = results[0].boxes
 
-        changed = False
-        print("new cap, rotation: " + str(motors.rotating))
+        humans_detected = False
 
         # Go through each detection and get bbox coords, confidence, and class
-        for i in range(len(detections)):
+        for detection in detections:
 
             # Get bounding box coordinates
             # Ultralytics returns results in Tensor format, which have to be converted to a regular Python array
-            xyxy_tensor = detections[i].xyxy.cpu() # Detections in Tensor format in CPU memory
+            xyxy_tensor = detections.xyxy.cpu() # Detections in Tensor format in CPU memory
             xyxy = xyxy_tensor.numpy().squeeze() # Convert tensors to Numpy array
             xmin, ymin, xmax, ymax = xyxy.astype(int) # Extract individual coordinates and convert to int
 
             # Get bounding box class ID and name
-            classidx = int(detections[i].cls.item())
+            classidx = int(detections.cls.item())
             classname = labels[classidx]
             print("found " + classname)
 
             # Get bounding box confidence
-            conf = detections[i].conf.item()
+            conf = detections.conf.item()
 
             # Draw box if confidence threshold is high enough
-            if conf > min_thresh:
+            if conf > 0.5:
+                drawBox(frame, xmin, ymin, xmax, ymax, classname)
 
-                color = bbox_colors[classidx % 10]
-                cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
+            if (classname == "person"):
+                humans_detected = True
 
-                label = f'{classname}: {int(conf*100)}%'
-                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1) # Get font size
-                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-                cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED) # Draw white box to put label text in
-                cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1) # Draw label text
-
-
-                if (classname == "person"):
-                    if (motors.rotating):
-                        print("stopping rotation")
-                        motors.stopRotating()
-                        print("a" + str(motors.rotating))
-                        cv2.waitKey(1000)
-
-                    changed = True
-                    motors.setTorque(30)
-                    motors.setSpeed(30)
-                    print("Moving towards object")
-                print("b" + str(motors.rotating))
-
-        print("c" + str(motors.rotating))
-        if (changed == False):
-            motors.rotateInPlace(10)
-            print("found no object, rotating")
+        # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
+        if (state == RobotState.CHECKING_SEARCH):
+            # Stop moving for 1s to stabilize image
+            if (now - state_start > 1.0):
+                # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
+                if (humans_detected):
+                    print("FOUND HUMANS")
+                    # state = RobotState.SEEKING
+                    # state_start = now
+                else:
+                    print("No humans found. Resuming search.")
+                    state = RobotState.SEARCHING
+                    state_start = now
+                    motors.rotateInPlace(30)
+        # Searching Mode
+        if (state == RobotState.SEARCHING):
+            # Change to Searching Mode and Rotate after checking for 1s
+            if (now - state_start > 1.0):
+                state = RobotState.CHECKING_SEARCH
+                state_start = now
+                motors.stopRotating
+                print("Checking search now.")
 
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
