@@ -12,6 +12,20 @@ from ultralytics import YOLO
 
 raven_board = Raven()
 
+
+# Configuration
+CAMERA_INDEX = 0
+SERVO_CHANNEL = 4
+MIN_ANGLE = -90
+MAX_ANGLE = 90
+MIN_US = 500
+MAX_US = 2500
+CONFIDENCE_THRESHOLD = 0.5
+TARGET_CLASS = None
+CENTER_DEADZONE = 5
+DISPLAY_ENABLED = False
+
+
 class RavenServoController:
     def __init__(
             self,
@@ -169,6 +183,16 @@ elif source_type == 'picamera':
 # Set bounding box colors (using the Tableu 10 color scheme)
 bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106),
               (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
+
+
+# Initialize Raven servo controller
+servo = RavenServoController(
+    servo_channel=SERVO_CHANNEL,
+    min_angle=MIN_ANGLE,
+    max_angle=MAX_ANGLE,
+    min_us=MIN_US,
+    max_us=MAX_US,
+)
 
 # Initialize control and status variables
 avg_frame_rate = 0
