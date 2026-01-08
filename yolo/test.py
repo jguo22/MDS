@@ -29,7 +29,7 @@ MAX_US = 2500
 CONFIDENCE_THRESHOLD = 0.5
 TARGET_CLASS = None
 CENTER_DEADZONE = 5
-DISPLAY_ENABLED = True
+DISPLAY_ENABLED = False
 
 class RobotState(Enum):
     SEARCHING = 1
@@ -181,8 +181,6 @@ try:
         t_start = time.perf_counter()
 
         ret, frame = cap.read()
-        # Resize
-        frame = cv2.resize(frame,(640,200))
         # Run inference on frame
         results = model(frame, verbose=False)
         # Extract results
@@ -219,7 +217,7 @@ try:
         match state:
             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
             case RobotState.CHECKING_SEARCH:
-                # Stop moving for 1s to stabilize image
+                # Stop moving for 0.5s to stabilize image
                 if (now - state_start > 0.5):
                     # Check image for stuff. If there's a human, switch to seeking mode. otherwise revert to searching mode.
                     if (humans_detected):
