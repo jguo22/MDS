@@ -172,7 +172,7 @@ class RavenMotorControllers:
 
     def spinMotor(self, count):
         raven_board.set_motor_target(self.leftChannel, count)
-        raven_board.set_motor_target(self.rightChannel, count)
+        raven_board.set_motor_target(self.rightChannel, -count)
 
 
 class Robot:
