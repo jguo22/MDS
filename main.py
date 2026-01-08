@@ -234,8 +234,6 @@ except KeyboardInterrupt:
     print("\nInterrupted by user")
 
 finally:
-    # Clean up
-    print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
     cv2.destroyAllWindows()
 
     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
