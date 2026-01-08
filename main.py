@@ -227,6 +227,8 @@ robot = Robot()
 # Begin inference loop
 try:
     while True:
+        raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 100)
+        raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 100)
         raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 100)
         raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 100)
         # motors.setSpeed(100)
