@@ -209,7 +209,7 @@ try:
                     print("FOUND AN OBJECT")
 
         if (changed == False):
-            motors.rotateInPlace(20)
+            motors.rotateInPlace(15)
             print("found no object")
 
 
