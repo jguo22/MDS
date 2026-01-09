@@ -6,11 +6,11 @@ LEFT_MOTOR = Raven.MotorChannel.CH2
 RIGHT_MOTOR = Raven.MotorChannel.CH3
 
 TICK_ROTATION = 64 * 50
-WHEEL_D = 90 # TODO: MEASURE ACCIURATELY AND USE MM
-BASE_D = 220 # DISTANCE BETEEN CENTER OF WHEELS
+WHEEL_D = 95 # TODO: MEASURE ACCIURATELY AND USE MM
+BASE_D = 209 # DISTANCE BETEEN CENTER OF WHEELS
 # ORIGIN OF ROBOT IS BETWEEN CENTER OF WHEELS
 MAX_VELOCITY = 2 * TICK_ROTATION # ticks/s
-ACCELERATION = 2 * TICK_ROTATION # ticks/s^2. Reach max v in 1s
+ACCELERATION = 1.5 * TICK_ROTATION # ticks/s^2. Reach max v in 1s
 
 BASE_RATIO = WHEEL_D/BASE_D
 TURN_CONSTANT = BASE_RATIO * 2 * math.pi/TICK_ROTATION
@@ -34,8 +34,8 @@ for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
     raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
     raven.set_motor_target(motor, 0)
 
-raven.set_motor_pid(RIGHT_MOTOR, p_gain = 25, i_gain = 20, d_gain = 0.3)
-raven.set_motor_pid(LEFT_MOTOR, p_gain = 15, i_gain = 20, d_gain = 0.2)
+raven.set_motor_pid(RIGHT_MOTOR, p_gain = 25, i_gain = 5, d_gain = 0.1)
+raven.set_motor_pid(LEFT_MOTOR, p_gain = 20, i_gain = 5, d_gain = 0.1)
 
 def startPath(left_coefficient, right_coefficient, distance):
     global total_distance, left_coef, right_coef, start_angle, start_left, start_right
@@ -62,7 +62,7 @@ def updatePath(dt):
     raven.set_motor_target(RIGHT_MOTOR, start_right + (current_distance * right_coef))
 
 
-startPath(1, -1, TICK_ROTATION * BASE_RATIO * 4)
+startPath(1, 0, TICK_ROTATION / BASE_RATIO /2)
 
 while True:
     updatePath(.05)
