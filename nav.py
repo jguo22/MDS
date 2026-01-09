@@ -47,7 +47,7 @@ class Nav:
             i_gain=5,
             d_gain=0.1)
 
-    async def activate(self):
+    def activate(self):
         while True:
             self.updatePath(.05)
             time.sleep(.05)
