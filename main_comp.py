@@ -11,7 +11,7 @@ class ClickProcessor:
     def __init__(self, window_name: str = "Pi Camera"):
         self.window_name = window_name
         self.click_coords = None
-        self.frame_size = (0, 0)  # (width, height)
+        self.frame_size = (1000, 1000)  # (width, height)
         self._setup = False
 
     def _mouse_callback(self, event, x, y, flags, param):
