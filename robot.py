@@ -19,7 +19,8 @@ class RobotState(Enum):
     STEP_1 = 9
     STEP_2 = 10
     STEP_3 = 11
-    DONE = 12
+    STEP_4 = 12
+    STEP_5 = 13
 
 MIDPOINT = 320
 MARGIN = 40

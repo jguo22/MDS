@@ -10,7 +10,7 @@ class nav:
         self.WHEEL_D = 95 # TODO: MEASURE ACCIURATELY AND USE MM
         self.BASE_D = 209 # DISTANCE BETEEN CENTER OF WHEELS
         # ORIGIN OF ROBOT IS BETWEEN CENTER OF WHEELS
-        self.MAX_VELOCITY = 2 * self.TICK_ROTATION # ticks/s
+        self.MAX_VELOCITY = 10 * self.TICK_ROTATION # ticks/s
         self.ACCELERATION = 1.5 * self.TICK_ROTATION # ticks/s^2. Reach max v in 1s
 
         self.BASE_RATIO = self.WHEEL_D/self.BASE_D
@@ -36,7 +36,7 @@ class nav:
             self.raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
             self.raven.set_motor_target(motor, 0)
 
-        self.raven.set_motor_pid(self.RIGHT_MOTOR, p_gain = 25, i_gain = 5, d_gain = 0.1)
+        self.raven.set_motor_pid(self.RIGHT_MOTOR, p_gain = 25, i_gain = 5, d_gain = 0.13)
         self.raven.set_motor_pid(self.LEFT_MOTOR, p_gain = 20, i_gain = 5, d_gain = 0.1)
 
     def startPath(self, left_coefficient, right_coefficient, distance):
