@@ -1,5 +1,6 @@
 from raven import Raven
 import math
+import time
 
 
 class Nav:
@@ -45,6 +46,11 @@ class Nav:
             p_gain=20,
             i_gain=5,
             d_gain=0.1)
+
+    async def activate(self):
+        while True:
+            self.updatePath(.05)
+            time.sleep(.05)
 
     def startPath(self, left_coefficient, right_coefficient, distance):
         self.total_distance = distance
