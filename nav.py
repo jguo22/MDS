@@ -47,7 +47,6 @@ class Nav:
             d_gain=0.1)
 
     def startPath(self, left_coefficient, right_coefficient, distance):
-        print("nav distance " + str(distance))
         self.total_distance = distance
         self.current_distance = 0
         self.left_coef = left_coefficient
