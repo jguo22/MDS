@@ -1,8 +1,3 @@
-import time
-
-from robot import Robot
-from robot import RobotState
-
 from raven import Raven
 import cv2
 import numpy as np
@@ -158,82 +153,82 @@ img_count = 0
 if (not DISPLAY_ENABLED):
     print("Running headless")
 
-robot = Robot()
-# Begin inference loop
-try:
-    while True:
-        # print("new cap")
-        t_start = time.perf_counter()
+# robot = Robot()
+# # Begin inference loop
+# try:
+#     while True:
+#         # print("new cap")
+#         t_start = time.perf_counter()
 
-        robot.setNowTime()
+#         robot.setNowTime()
 
-        # print ("current state is " + robot.state.name)
-        match robot.state:
-            # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
-            case RobotState.CHECKING_SEARCH:
-                # Stop moving for 0.5s to stabilize image
-                if (robot.now - robot.state_start > 1):
-                    # Check for humans. If found, seek. If not, return to searching.
-                    print("Checking image.")
-                    robot.checkImage(cap)
+#         # print ("current state is " + robot.state.name)
+#         match robot.state:
+#             # Checking Search Mode. Is stationary and will check the image, if there's nothing, then it will rotate in place.
+#             case RobotState.CHECKING_SEARCH:
+#                 # Stop moving for 0.5s to stabilize image
+#                 if (robot.now - robot.state_start > 1):
+#                     # Check for humans. If found, seek. If not, return to searching.
+#                     print("Checking image.")
+#                     robot.checkImage(cap)
 
-            case RobotState.SEARCHING:
-                # Change to Checking Search Mode and Rotate after checking for 0.2s (good for ~12 FPS)
-                if (robot.now - robot.state_start > 0.3):
-                    print("Stopping search.")
-                    robot.stopSearching()
-            # Rotate for correction until in margin
-            case RobotState.SEEKING_CORRECTION:
-                # Assuming we are already rotating, stop rotating when in margin
-                # Rotate for 0.3s
-                if (robot.now - robot.state_start > 0.3):
-                    robot.checkRotation(cap)
-            # Move foward for 2 seconds, then recheck for correction
-            case RobotState.SEEKING_MOVING:
-                if (robot.now - robot.state_start > 2):
-                    print("rechecking image for humans.")
-                    robot.checkImage(cap)
-            # Look again
-            case RobotState.REFINDING_OBJECT:
-                if (robot.now - robot.state_start > 1):
-                    print("trying to refind the object.")
-                    robot.checkRotation(cap)
-
-
-        # Calculate and draw framerate (if using video, USB, or Picamera source)
-        # if (DISPLAY_ENABLED):
-        #     cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
-
-        #     # Display detection results
-        #     cv2.imshow('YOLO detection results',frame) # Display image
-        # else:
-        #     print(f"FPS: {avg_frame_rate:0.2f}")
-
-        # Calculate FPS for this frame
-        t_stop = time.perf_counter()
-        frame_rate_calc = float(1/(t_stop - t_start))
-
-        # Append FPS result to frame_rate_buffer (for finding average FPS over multiple frames)
-        if len(frame_rate_buffer) >= fps_avg_len:
-            temp = frame_rate_buffer.pop(0)
-            frame_rate_buffer.append(frame_rate_calc)
-        else:
-            frame_rate_buffer.append(frame_rate_calc)
-
-        # Calculate average FPS for past frames
-        avg_frame_rate = np.mean(frame_rate_buffer)
+#             case RobotState.SEARCHING:
+#                 # Change to Checking Search Mode and Rotate after checking for 0.2s (good for ~12 FPS)
+#                 if (robot.now - robot.state_start > 0.3):
+#                     print("Stopping search.")
+#                     robot.stopSearching()
+#             # Rotate for correction until in margin
+#             case RobotState.SEEKING_CORRECTION:
+#                 # Assuming we are already rotating, stop rotating when in margin
+#                 # Rotate for 0.3s
+#                 if (robot.now - robot.state_start > 0.3):
+#                     robot.checkRotation(cap)
+#             # Move foward for 2 seconds, then recheck for correction
+#             case RobotState.SEEKING_MOVING:
+#                 if (robot.now - robot.state_start > 2):
+#                     print("rechecking image for humans.")
+#                     robot.checkImage(cap)
+#             # Look again
+#             case RobotState.REFINDING_OBJECT:
+#                 if (robot.now - robot.state_start > 1):
+#                     print("trying to refind the object.")
+#                     robot.checkRotation(cap)
 
 
-except KeyboardInterrupt:
-    print("\nInterrupted by user")
+#         # Calculate and draw framerate (if using video, USB, or Picamera source)
+#         # if (DISPLAY_ENABLED):
+#         #     cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2) # Draw framerate
 
-finally:
-    # Clean up
-    print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
-    cap.release()
-    cv2.destroyAllWindows()
+#         #     # Display detection results
+#         #     cv2.imshow('YOLO detection results',frame) # Display image
+#         # else:
+#         #     print(f"FPS: {avg_frame_rate:0.2f}")
 
-    raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
-    raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
-    raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
-    raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)
+#         # Calculate FPS for this frame
+#         t_stop = time.perf_counter()
+#         frame_rate_calc = float(1/(t_stop - t_start))
+
+#         # Append FPS result to frame_rate_buffer (for finding average FPS over multiple frames)
+#         if len(frame_rate_buffer) >= fps_avg_len:
+#             temp = frame_rate_buffer.pop(0)
+#             frame_rate_buffer.append(frame_rate_calc)
+#         else:
+#             frame_rate_buffer.append(frame_rate_calc)
+
+#         # Calculate average FPS for past frames
+#         avg_frame_rate = np.mean(frame_rate_buffer)
+
+
+# except KeyboardInterrupt:
+#     print("\nInterrupted by user")
+
+# finally:
+#     # Clean up
+#     print(f'Average pipeline FPS: {avg_frame_rate:.2f}')
+#     cap.release()
+#     cv2.destroyAllWindows()
+
+#     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH3, 0)
+#     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH3, 0)
+#     raven_board.set_motor_torque_factor(Raven.MotorChannel.CH2, 0)
+#     raven_board.set_motor_speed_factor(Raven.MotorChannel.CH2, 0)

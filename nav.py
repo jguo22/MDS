@@ -40,25 +40,25 @@ class nav:
         self.raven.set_motor_pid(self.LEFT_MOTOR, p_gain = 20, i_gain = 5, d_gain = 0.1)
 
     def startPath(self, left_coefficient, right_coefficient, distance):
-        global total_distance, left_coef, right_coef, start_angle, start_left, start_right
-        total_distance = distance
-        left_coef = left_coefficient
-        right_coef = right_coefficient
-        start_angle = self.angle
-        start_left = self.raven.get_motor_encoder(self.LEFT_MOTOR)
-        start_right = self.raven.get_motor_encoder(self.RIGHT_MOTOR)
+        print("nav distance " + str(distance))
+        self.total_distance = distance
+        self.current_distance = 0
+        self.left_coef = left_coefficient
+        self.right_coef = right_coefficient
+        self.start_angle = self.angle
+        self.start_left = self.raven.get_motor_encoder(self.LEFT_MOTOR)
+        self.start_right = self.raven.get_motor_encoder(self.RIGHT_MOTOR)
 
     def updatePath(self, dt):
-        global current_distance, last_speed
         delta_speed = self.ACCELERATION * dt
         target_speed = 0
-        if (total_distance - current_distance <= last_speed ** 2 / ( 2 * self.ACCELERATION )):
-            target_speed = max(last_speed - delta_speed, 0)
+        if (self.total_distance - self.current_distance <= self.last_speed ** 2 / ( 2 * self.ACCELERATION )):
+            target_speed = max(self.last_speed - delta_speed, 0)
         else:
-            target_speed = min(last_speed + delta_speed, self.MAX_VELOCITY)
+            target_speed = min(self.last_speed + delta_speed, self.MAX_VELOCITY)
 
-        current_distance += (last_speed + target_speed)/2*dt
-        last_speed = target_speed
+        self.current_distance += (self.last_speed + target_speed)/2*dt
+        self.last_speed = target_speed
 
-        self.raven.set_motor_target(self.LEFT_MOTOR, start_left - (current_distance * left_coef))
-        self.raven.set_motor_target(self.RIGHT_MOTOR, start_right + (current_distance * right_coef))
+        self.raven.set_motor_target(self.LEFT_MOTOR, self.start_left - (self.current_distance * self.left_coef))
+        self.raven.set_motor_target(self.RIGHT_MOTOR, self.start_right + (self.current_distance * self.right_coef))

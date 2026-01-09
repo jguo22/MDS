@@ -16,6 +16,10 @@ class RobotState(Enum):
     DROPPING_OFF = 6
     SEEKING_MOVING = 7
     REFINDING_OBJECT = 8
+    STEP_1 = 9
+    STEP_2 = 10
+    STEP_3 = 11
+    DONE = 12
 
 MIDPOINT = 320
 MARGIN = 40
@@ -27,13 +31,13 @@ class Robot:
         self.now = time.monotonic()
 
         # Initialize model
-        self.model = YOLO("yolo11n_ncnn_model", task='detect')
+        self.model = YOLO("yolo/yolo11n_ncnn_model", task='detect')
         self.labels = self.model.names
 
         self.motors = RavenMotorControllers()
         self.raven = Raven()
 
-        self.nav = nav()
+        self.nav = nav(self.raven)
 
     def setNowTime(self):
         self.now = time.monotonic()
