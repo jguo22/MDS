@@ -2,7 +2,7 @@
 Computer video receiver - receives video from Pi and sends coordinates back.
 
 Usage:
-    python -m connection.computer_receiver --host 0.0.0.0
+	python -m connection.computer_receiver --host 0.0.0.0
 
 Run on the computer that will process the video.
 """
@@ -10,7 +10,6 @@ Run on the computer that will process the video.
 import socket
 import threading
 import time
-import argparse
 from typing import Callable, Optional, Tuple
 import cv2
 import numpy as np
@@ -33,9 +32,9 @@ class ComputerReceiver(protocol.ConnectionBase):
         Initialize the receiver.
 
         Args:
-            host: Host to bind to (0.0.0.0 for all interfaces)
-            video_port: Port for video receiving
-            coord_port: Port for sending coordinates
+                host: Host to bind to (0.0.0.0 for all interfaces)
+                video_port: Port for video receiving
+                coord_port: Port for sending coordinates
         """
         super().__init__()
         self.host = host
@@ -47,18 +46,20 @@ class ComputerReceiver(protocol.ConnectionBase):
         self.client_video: Optional[socket.socket] = None
         self.client_coord: Optional[socket.socket] = None
 
-        self.on_frame: Optional[Callable[[np.ndarray, int], Optional[Tuple[float, float]]]] = None
+        self.on_frame: Optional[Callable[[np.ndarray,
+                                          int], Optional[Tuple[float, float]]]] = None
         self.latest_frame: Optional[np.ndarray] = None
         self.latest_frame_id: int = 0
         self._lock = threading.Lock()
 
-    def set_frame_callback(self, callback: Callable[[np.ndarray, int], Optional[Tuple[float, float]]]):
+    def set_frame_callback(
+            self, callback: Callable[[np.ndarray, int], Optional[Tuple[float, float]]]):
         """
         Set callback for processing frames.
 
         Args:
-            callback: Function(frame, frame_id) -> (x, y) or None
-                     Return coordinates to send back, or None to skip
+                callback: Function(frame, frame_id) -> (x, y) or None
+                                 Return coordinates to send back, or None to skip
         """
         self.on_frame = callback
 
@@ -66,18 +67,23 @@ class ComputerReceiver(protocol.ConnectionBase):
         """Start listening for connections. Returns True if successful."""
         try:
             # Video server
-            self.video_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.video_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.video_server = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.video_server.setsockopt(
+                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.video_server.bind((self.host, self.video_port))
             self.video_server.listen(1)
             print(f"Video server listening on {self.host}:{self.video_port}")
 
             # Coordinate server
-            self.coord_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.coord_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.coord_server = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.coord_server.setsockopt(
+                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.coord_server.bind((self.host, self.coord_port))
             self.coord_server.listen(1)
-            print(f"Coordinate server listening on {self.host}:{self.coord_port}")
+            print(
+                f"Coordinate server listening on {self.host}:{self.coord_port}")
 
             return True
         except socket.error as e:
@@ -108,17 +114,18 @@ class ComputerReceiver(protocol.ConnectionBase):
         Send coordinates back to the Pi.
 
         Args:
-            x: X coordinate
-            y: Y coordinate
-            frame_id: Corresponding frame ID
-            extra: Optional extra data
+                x: X coordinate
+                y: Y coordinate
+                frame_id: Corresponding frame ID
+                extra: Optional extra data
 
         Returns:
-            True if successful
+                True if successful
         """
         if not self.client_coord:
             return False
-        return protocol.send_coordinates(self.client_coord, x, y, frame_id, extra)
+        return protocol.send_coordinates(
+            self.client_coord, x, y, frame_id, extra)
 
     def get_latest_frame(self) -> Optional[Tuple[np.ndarray, int]]:
         """Get the latest received frame. Thread-safe."""
@@ -127,13 +134,14 @@ class ComputerReceiver(protocol.ConnectionBase):
                 return self.latest_frame.copy(), self.latest_frame_id
         return None
 
-    def receive_loop(self, show_video: bool = True, window_name: str = "Pi Camera"):
+    def receive_loop(self, show_video: bool = True,
+                     window_name: str = "Pi Camera"):
         """
         Main loop to receive and process frames.
 
         Args:
-            show_video: Whether to display video in window
-            window_name: OpenCV window name
+                show_video: Whether to display video in window
+                window_name: OpenCV window name
         """
         if not self.client_video:
             print("No video connection")
@@ -185,7 +193,8 @@ class ComputerReceiver(protocol.ConnectionBase):
                     fps_start = time.time()
 
                     if show_video:
-                        cv2.setWindowTitle(window_name, f"{window_name} - {fps:.1f} FPS")
+                        cv2.setWindowTitle(
+                            window_name, f"{window_name} - {fps:.1f} FPS")
 
                 # Display
                 if show_video:
@@ -210,22 +219,22 @@ class ComputerReceiver(protocol.ConnectionBase):
         if self.client_video:
             try:
                 self.client_video.close()
-            except:
+            except BaseException:
                 pass
         if self.client_coord:
             try:
                 self.client_coord.close()
-            except:
+            except BaseException:
                 pass
         if self.video_server:
             try:
                 self.video_server.close()
-            except:
+            except BaseException:
                 pass
         if self.coord_server:
             try:
                 self.coord_server.close()
-            except:
+            except BaseException:
                 pass
 
 
@@ -236,16 +245,17 @@ class FrameProcessor:
     Subclass this to implement custom processing logic.
     """
 
-    def process(self, frame: np.ndarray, frame_id: int) -> Optional[Tuple[float, float]]:
+    def process(self, frame: np.ndarray,
+                frame_id: int) -> Optional[Tuple[float, float]]:
         """
         Process a frame and return coordinates.
 
         Args:
-            frame: BGR image as numpy array
-            frame_id: Frame sequence number
+                frame: BGR image as numpy array
+                frame_id: Frame sequence number
 
         Returns:
-            (x, y) coordinates or None
+                (x, y) coordinates or None
         """
         raise NotImplementedError
 
@@ -253,73 +263,39 @@ class FrameProcessor:
 class ClickProcessor(FrameProcessor):
     """Simple processor that returns mouse click coordinates."""
 
-    def __init__(self, window_name: str = "Pi Camera"):
-        self.window_name = window_name
-        self.click_coords: Optional[Tuple[float, float]] = None
-        self._setup = False
-
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             self.click_coords = (float(x), float(y))
             print(f"Click: ({x}, {y})")
 
-    def process(self, frame: np.ndarray, frame_id: int) -> Optional[Tuple[float, float]]:
-        if not self._setup:
-            cv2.setMouseCallback(self.window_name, self._mouse_callback)
-            self._setup = True
+            # Convert to normalized coordinates (0-1)
+            # -1 to ensure 1.0 is at the last pixel
+            x_norm = x / (self.width - 1)
+            y_norm = y / (self.height - 1)
+            self.click_coords = (x_norm, y_norm)
+            print(
+                f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f})")
 
+    def process(self, frame: np.ndarray,
+                frame_id: int) -> Optional[Tuple[float, float]]:
         # Return and clear click coordinates
         coords = self.click_coords
         self.click_coords = None
         return coords
 
+    def __init__(self, window_name: str = "Pi Camera"):
+        self.window_name = window_name
+        self.click_coords: Optional[Tuple[float, float]] = None
+        self._setup = False
+        self.width = 1000
+        self.height = 1000
+        cv2.setMouseCallback(self.window_name, self._mouse_callback())
+
 
 class CenterProcessor(FrameProcessor):
     """Processor that always returns the frame center."""
 
-    def process(self, frame: np.ndarray, frame_id: int) -> Optional[Tuple[float, float]]:
+    def process(self, frame: np.ndarray,
+                frame_id: int) -> Optional[Tuple[float, float]]:
         h, w = frame.shape[:2]
         return (w / 2.0, h / 2.0)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Computer Video Receiver")
-    parser.add_argument("--host", default="0.0.0.0",
-                        help="Host to bind to (default: 0.0.0.0)")
-    parser.add_argument("--video-port", type=int, default=config.VIDEO_PORT,
-                        help=f"Video port (default: {config.VIDEO_PORT})")
-    parser.add_argument("--coord-port", type=int, default=config.COORD_PORT,
-                        help=f"Coordinate port (default: {config.COORD_PORT})")
-    parser.add_argument("--no-display", action="store_true",
-                        help="Disable video display")
-    parser.add_argument("--mode", choices=["click", "center", "none"], default="click",
-                        help="Coordinate mode: click (mouse clicks), center (frame center), none")
-    args = parser.parse_args()
-
-    # Create receiver
-    receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
-
-    # Set up processor
-    window_name = "Pi Camera"
-    if args.mode == "click":
-        processor = ClickProcessor(window_name)
-        receiver.set_frame_callback(processor.process)
-    elif args.mode == "center":
-        processor = CenterProcessor()
-        receiver.set_frame_callback(processor.process)
-    # mode == "none": no callback
-
-    # Start servers
-    if not receiver.start_servers():
-        return
-
-    # Main loop - wait for connections and process
-    while True:
-        if receiver.wait_for_connection():
-            receiver.receive_loop(show_video=not args.no_display, window_name=window_name)
-        print("Waiting for reconnection...")
-        time.sleep(config.RECONNECT_DELAY)
-
-
-if __name__ == "__main__":
-    main()

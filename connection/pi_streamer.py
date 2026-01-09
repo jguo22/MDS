@@ -128,10 +128,12 @@ class PiStreamer(protocol.ConnectionBase):
         self.coord_port = coord_port
         self.camera: Optional[CameraCapture] = None
         self.frame_id = 0
-        self.on_coordinates: Optional[Callable[[float, float, int, dict], None]] = None
+        self.on_coordinates: Optional[Callable[[
+            float, float, int, dict], None]] = None
         self._coord_thread: Optional[threading.Thread] = None
 
-    def set_coordinate_callback(self, callback: Callable[[float, float, int, dict], None]):
+    def set_coordinate_callback(
+            self, callback: Callable[[float, float, int, dict], None]):
         """
         Set callback for when coordinates are received.
 
@@ -144,16 +146,19 @@ class PiStreamer(protocol.ConnectionBase):
         """Connect to the computer. Returns True if successful."""
         try:
             # Connect video socket
-            self.video_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.video_socket = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
             self.video_socket.settimeout(config.SOCKET_TIMEOUT)
             self.video_socket.connect((self.host, self.video_port))
             print(f"Connected video stream to {self.host}:{self.video_port}")
 
             # Connect coordinate socket
-            self.coord_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.coord_socket = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
             self.coord_socket.settimeout(config.SOCKET_TIMEOUT)
             self.coord_socket.connect((self.host, self.coord_port))
-            print(f"Connected coordinate channel to {self.host}:{self.coord_port}")
+            print(
+                f"Connected coordinate channel to {self.host}:{self.coord_port}")
 
             return True
         except socket.error as e:
@@ -171,7 +176,8 @@ class PiStreamer(protocol.ConnectionBase):
         Returns:
             True if camera opened successfully
         """
-        self.camera = CameraCapture(source, config.FRAME_WIDTH, config.FRAME_HEIGHT)
+        self.camera = CameraCapture(
+            source, config.FRAME_WIDTH, config.FRAME_HEIGHT)
         if not self.camera.open():
             print(f"Failed to open camera: {source}")
             return False
@@ -217,7 +223,8 @@ class PiStreamer(protocol.ConnectionBase):
         frame_interval = 1.0 / max_fps
 
         # Start coordinate receiver thread
-        self._coord_thread = threading.Thread(target=self._coordinate_receiver, daemon=True)
+        self._coord_thread = threading.Thread(
+            target=self._coordinate_receiver, daemon=True)
         self._coord_thread.start()
 
         print("Streaming started. Press Ctrl+C to stop.")
@@ -233,11 +240,15 @@ class PiStreamer(protocol.ConnectionBase):
                     continue
 
                 # Encode as JPEG
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), config.JPEG_QUALITY]
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
+                                config.JPEG_QUALITY]
                 _, encoded = cv2.imencode('.jpg', frame, encode_param)
 
                 # Send frame
-                if not protocol.send_frame(self.video_socket, encoded.tobytes(), self.frame_id):
+                if not protocol.send_frame(
+                        self.video_socket,
+                        encoded.tobytes(),
+                        self.frame_id):
                     print("Failed to send frame")
                     break
 
@@ -259,42 +270,3 @@ class PiStreamer(protocol.ConnectionBase):
         if self.camera:
             self.camera.close()
         self.close()
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Raspberry Pi Video Streamer")
-    parser.add_argument("--host", default=config.COMPUTER_IP,
-                        help=f"Computer IP address (default: {config.COMPUTER_IP})")
-    parser.add_argument("--camera", default="usb0",
-                        help="Camera source: usb0, usb1, picamera0, etc. (default: usb0)")
-    parser.add_argument("--fps", type=float, default=30.0,
-                        help="Maximum FPS (default: 30)")
-    parser.add_argument("--video-port", type=int, default=config.VIDEO_PORT,
-                        help=f"Video port (default: {config.VIDEO_PORT})")
-    parser.add_argument("--coord-port", type=int, default=config.COORD_PORT,
-                        help=f"Coordinate port (default: {config.COORD_PORT})")
-    args = parser.parse_args()
-
-    # Create streamer
-    streamer = PiStreamer(args.host, args.video_port, args.coord_port)
-
-    # Set up coordinate callback
-    def on_coords(x, y, frame_id, extra):
-        print(f"Received coords: x={x:.2f}, y={y:.2f}, frame={frame_id}")
-
-    streamer.set_coordinate_callback(on_coords)
-
-    # Start camera
-    if not streamer.start_camera(args.camera):
-        return
-
-    # Connect and stream
-    while True:
-        if streamer.connect():
-            streamer.stream(max_fps=args.fps)
-        print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
-        time.sleep(config.RECONNECT_DELAY)
-
-
-if __name__ == "__main__":
-    main()
