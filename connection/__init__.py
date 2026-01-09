@@ -14,9 +14,14 @@ Usage:
     # On Computer:
     python -m connection.computer_receiver
 
+    # As a library:
+    from connection.pi_streamer import PiStreamer
+    from connection.computer_receiver import ComputerReceiver
+
 See config.py for configuration options.
 """
 
+# Only export config - submodules are imported on demand to avoid circular import warnings
 from .config import (
     PI_IP,
     COMPUTER_IP,
@@ -27,30 +32,7 @@ from .config import (
     JPEG_QUALITY,
 )
 
-from .protocol import (
-    send_message,
-    recv_message,
-    send_frame,
-    recv_frame,
-    send_coordinates,
-    recv_coordinates,
-    ConnectionBase,
-)
-
-from .pi_streamer import (
-    PiStreamer,
-    CameraCapture,
-)
-
-from .computer_receiver import (
-    ComputerReceiver,
-    FrameProcessor,
-    ClickProcessor,
-    CenterProcessor,
-)
-
 __all__ = [
-    # Config
     'PI_IP',
     'COMPUTER_IP',
     'VIDEO_PORT',
@@ -58,20 +40,4 @@ __all__ = [
     'FRAME_WIDTH',
     'FRAME_HEIGHT',
     'JPEG_QUALITY',
-    # Protocol
-    'send_message',
-    'recv_message',
-    'send_frame',
-    'recv_frame',
-    'send_coordinates',
-    'recv_coordinates',
-    'ConnectionBase',
-    # Pi
-    'PiStreamer',
-    'CameraCapture',
-    # Computer
-    'ComputerReceiver',
-    'FrameProcessor',
-    'ClickProcessor',
-    'CenterProcessor',
 ]
