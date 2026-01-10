@@ -84,6 +84,19 @@ class CameraCapture:
             return None
         return None
 
+    def is_open(self) -> bool:
+        """Check if camera is currently open."""
+        if self.picam is not None:
+            return True
+        if self.cap is not None:
+            return self.cap.isOpened()
+        return False
+
+    def reopen(self) -> bool:
+        """Close and reopen the camera. Returns True if successful."""
+        self.close()
+        return self.open()
+
     def close(self):
         """Release camera resources."""
         if self.cap is not None:

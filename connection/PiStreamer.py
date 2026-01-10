@@ -41,6 +41,7 @@ class PiStreamer(protocol.ConnectionBase):
         self.video_port = video_port
         self.coord_port = coord_port
         self.camera: Optional[CameraCapture] = None
+        self._camera_source: Optional[str] = None  # Store source for reopening
         self.frame_id = 0
         self.on_coordinates: Optional[Callable[[
             float, float, int, dict], None]] = None
@@ -97,12 +98,29 @@ class PiStreamer(protocol.ConnectionBase):
         Returns:
             True if camera opened successfully
         """
+        self._camera_source = source  # Store for reopening
         self.camera = CameraCapture(
             source, config.FRAME_WIDTH, config.FRAME_HEIGHT)
         if not self.camera.open():
             print(f"Failed to open camera: {source}")
             return False
         print(f"Camera opened: {source}")
+        return True
+
+    def _ensure_camera_open(self) -> bool:
+        """Ensure camera is open, reopen if needed. Returns True if camera is ready."""
+        if self.camera is None:
+            if self._camera_source is None:
+                print("No camera source configured")
+                return False
+            return self.start_camera(self._camera_source)
+
+        if not self.camera.is_open():
+            print("Camera closed, attempting to reopen...")
+            if not self.camera.reopen():
+                print("Failed to reopen camera")
+                return False
+            print("Camera reopened successfully")
         return True
 
     def _coordinate_receiver(self):
@@ -137,8 +155,9 @@ class PiStreamer(protocol.ConnectionBase):
         Args:
             max_fps: Maximum frames per second to stream
         """
-        if not self.camera:
-            print("Camera not started")
+        # Ensure camera is open before streaming
+        if not self._ensure_camera_open():
+            print("Cannot start streaming: camera not available")
             return
         if not self.video_socket:
             print("Not connected")
@@ -164,6 +183,13 @@ class PiStreamer(protocol.ConnectionBase):
                 frame = self.camera.read()
                 if frame is None:
                     consecutive_failures += 1
+                    # Try to reopen camera after a few failures
+                    if consecutive_failures == 5:
+                        print("Multiple frame failures, attempting camera reopen...")
+                        if self.camera.reopen():
+                            print("Camera reopened, retrying...")
+                            consecutive_failures = 0
+                            continue
                     if consecutive_failures >= max_consecutive_failures:
                         print(
                             f"Too many consecutive frame capture failures ({max_consecutive_failures}). Disconnecting...")
@@ -219,8 +245,13 @@ class PiStreamer(protocol.ConnectionBase):
             self.stop()
 
     def stop(self):
-        """Stop streaming and close connections."""
+        """Stop streaming and close socket connections. Camera stays open for reconnect."""
         self.running = False
+        self.close()  # Uses parent's safe close method (sockets only)
+
+    def shutdown(self):
+        """Full shutdown - close everything including camera."""
+        self.stop()
         if self.camera:
             self.camera.close()
-        self.close()  # Uses parent's safe close method
+            self.camera = None

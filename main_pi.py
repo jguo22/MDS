@@ -53,11 +53,16 @@ def main():
         return
 
     # Connect and stream
-    while True:
-        if streamer.connect():
-            streamer.stream(max_fps=args.fps)
-        print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
-        time.sleep(config.RECONNECT_DELAY)
+    try:
+        while True:
+            if streamer.connect():
+                streamer.stream(max_fps=args.fps)
+            print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
+            time.sleep(config.RECONNECT_DELAY)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+    finally:
+        streamer.shutdown()
 
 
 if __name__ == "__main__":

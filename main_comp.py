@@ -23,7 +23,7 @@ class ClickProcessor:
                 scale = 10
                 # Scale to -150 to 150 range (centered at 0)
                 x_scaled = (x_norm * scale) - scale / 2
-                y_scaled = (y_norm * scale) - scale / 2
+                y_scaled = -(y_norm * scale) - scale / 2
                 self.click_coords = (x_scaled, y_scaled)
                 print(
                     f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
