@@ -1,6 +1,7 @@
 from raven import Raven
 import math
 import time
+import threading
 
 
 class Nav:
@@ -17,6 +18,8 @@ class Nav:
         self.BASE_RATIO = self.WHEEL_D / self.BASE_D
         self.TURN_CONSTANT = self.BASE_RATIO * 2 * math.pi / self.TICK_ROTATION
 
+        self.FPS = 20
+
         self.angle = 0
         self.start_angle = 0
         self.start_left = 0
@@ -27,6 +30,12 @@ class Nav:
         self.right_coef = 0
         self.last_speed = 0
         self.current_distance = 0
+
+        # for thread safety
+        # make sure to not spam use the lock
+        # and make operations inside the lock quick
+        self.requested_path = [0, 0, 0]
+        self.lock = threading.Lock()
 
         self.raven = Raven()
 
@@ -50,23 +59,34 @@ class Nav:
     def activate(self):
         start_time = time.time()
         while True:
-            time.sleep(.05)
-            current_time = time.time()
-            delta_time = current_time - start_time
-            start_time = current_time
+            with self.lock:
+                if self.requested_path[2] != 0:
+                    self._startRequestedPath(*self.requested_path)
 
-            self.updatePath(delta_time)
+            # get delta_time and sleep
+            delta_time = time.time() - start_time
+            if (delta_time < 1 / self.FPS):
+                time.sleep(0.05 - delta_time)
+                delta_time = 1 / self.FPS
+            start_time = time.time()
 
-    def startPath(self, left_coefficient, right_coefficient, distance):
-        self.total_distance = distance
-        self.current_distance = 0
-        self.left_coef = left_coefficient
-        self.right_coef = right_coefficient
-        self.start_angle = self.angle
-        self.start_left = self.raven.get_motor_encoder(self.LEFT_MOTOR)
-        self.start_right = self.raven.get_motor_encoder(self.RIGHT_MOTOR)
+            self._updatePath(delta_time)
 
-    def updatePath(self, dt):
+    def _startRequestedPath(
+            self,
+            left_coefficient,
+            right_coefficient,
+            distance):
+        with self.lock:
+            self.total_distance = distance
+            self.current_distance = 0
+            self.left_coef = left_coefficient
+            self.right_coef = right_coefficient
+            self.start_angle = self.angle
+            self.start_left = self.raven.get_motor_encoder(self.LEFT_MOTOR)
+            self.start_right = self.raven.get_motor_encoder(self.RIGHT_MOTOR)
+
+    def _updatePath(self, dt):
         delta_speed = self.ACCELERATION * dt
         target_speed = 0
         if (self.total_distance - self.current_distance <=
@@ -84,6 +104,11 @@ class Nav:
             self.LEFT_MOTOR, self.start_left - (self.current_distance * self.left_coef))
         self.raven.set_motor_target(
             self.RIGHT_MOTOR, self.start_right + (self.current_distance * self.right_coef))
+
+    def startPath(self, left_coefficient, right_coefficient, distance):
+        with self.lock:
+            self.requested_path = [
+                left_coefficient, right_coefficient, distance]
 
     def start_forward_mm(self, distance_mm):
         distance = distance_mm / (self.WHEEL_D * math.pi) * self.TICK_ROTATION
