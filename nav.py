@@ -48,9 +48,14 @@ class Nav:
             d_gain=0.1)
 
     def activate(self):
+        start_time = time.time()
         while True:
-            self.updatePath(.05)
             time.sleep(.05)
+            current_time = time.time()
+            delta_time = current_time - start_time
+            start_time = current_time
+
+            self.updatePath(delta_time)
 
     def startPath(self, left_coefficient, right_coefficient, distance):
         self.total_distance = distance

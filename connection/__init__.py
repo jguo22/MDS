@@ -21,7 +21,8 @@ Usage:
 See config.py for configuration options.
 """
 
-# Only export config - submodules are imported on demand to avoid circular import warnings
+# Only export config - submodules are imported on demand to avoid circular
+# import warnings
 from .config import (
     PI_IP,
     COMPUTER_IP,

@@ -101,11 +101,12 @@ class PiStreamer(protocol.ConnectionBase):
         self._camera_source = source  # Store for reopening
         self.camera = CameraCapture(
             source, config.FRAME_WIDTH, config.FRAME_HEIGHT)
-        if not self.camera.open():
+        if self.camera.open():
+            print(f"Camera opened: {source}")
+            return True
+        else:
             print(f"Failed to open camera: {source}")
             return False
-        print(f"Camera opened: {source}")
-        return True
 
     def _ensure_camera_open(self) -> bool:
         """Ensure camera is open, reopen if needed. Returns True if camera is ready."""

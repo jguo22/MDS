@@ -20,5 +20,5 @@ HEADER_SIZE = 8  # bytes for message length header
 BUFFER_SIZE = 65536  # receive buffer size
 
 # Timeouts (seconds)
-SOCKET_TIMEOUT = 5000.0
+SOCKET_TIMEOUT = 5.0
 RECONNECT_DELAY = 1.0

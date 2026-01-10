@@ -29,13 +29,11 @@ def main():
     streamer = PiStreamer(args.host, args.video_port, args.coord_port)
     nav = Nav()
 
+    # activate the navigation in another thread
     thread = threading.Thread(target=nav.activate)
-
-    # Start the thread's execution
     thread.start()
 
     # Set up coordinate callback
-
     def on_coords(x, y, frame_id, extra):
         print(f"Received coords: x={x:.2f}, y={y:.2f}, frame={frame_id}")
         distance = math.sqrt(x * x + y * y)
