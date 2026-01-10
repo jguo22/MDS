@@ -9,6 +9,8 @@ Run on the Raspberry Pi.
 
 import socket
 import threading
+import time
+import cv2
 from typing import Callable, Optional
 
 from . import config

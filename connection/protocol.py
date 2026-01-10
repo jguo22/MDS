@@ -5,7 +5,7 @@ Protocol utilities for reliable message passing over TCP sockets.
 import struct
 import json
 import socket
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple
 
 from . import config
 
@@ -75,7 +75,10 @@ def _recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
     return data
 
 
-def send_frame(sock: socket.socket, frame_data: bytes, frame_id: int = 0) -> bool:
+def send_frame(
+        sock: socket.socket,
+        frame_data: bytes,
+        frame_id: int = 0) -> bool:
     """
     Send a video frame with metadata.
 
@@ -172,12 +175,12 @@ class ConnectionBase:
         if self.video_socket:
             try:
                 self.video_socket.close()
-            except:
+            except BaseException:
                 pass
             self.video_socket = None
         if self.coord_socket:
             try:
                 self.coord_socket.close()
-            except:
+            except BaseException:
                 pass
             self.coord_socket = None
