@@ -69,11 +69,46 @@ def main():
         return
 
     # Main loop - wait for connections and process
-    # In the main loop, replace the reconnection logic with:
+    def restart_servers():
+        """Close everything and restart servers."""
+        # Close client connections
+        if receiver.client_video:
+            try:
+                receiver.client_video.close()
+            except:
+                pass
+        if receiver.client_coord:
+            try:
+                receiver.client_coord.close()
+            except:
+                pass
+        receiver.client_video = None
+        receiver.client_coord = None
+
+        # Close servers
+        if receiver.video_server:
+            try:
+                receiver.video_server.close()
+            except:
+                pass
+        if receiver.coord_server:
+            try:
+                receiver.coord_server.close()
+            except:
+                pass
+        receiver.video_server = None
+        receiver.coord_server = None
+
+        # Restart servers
+        time.sleep(0.5)  # Brief delay before rebinding
+        return receiver.start_servers()
+
     while True:
         if not receiver.wait_for_connection():
-            print("Waiting for Pi to connect...")
-            time.sleep(1)
+            print("Connection failed. Restarting servers...")
+            if not restart_servers():
+                print("Failed to restart servers. Retrying...")
+                time.sleep(1)
             continue
 
         try:
@@ -84,20 +119,19 @@ def main():
             )
         except (ConnectionError, OSError) as e:
             print(f"Connection error: {e}")
-            # Close existing connections
-            if receiver.client_video:
-                receiver.client_video.close()
-            if receiver.client_coord:
-                receiver.client_coord.close()
-            receiver.client_video = None
-            receiver.client_coord = None
-            print("Disconnected. Waiting for new connection...")
+            print("Disconnected. Restarting servers...")
+            if not restart_servers():
+                print("Failed to restart servers. Retrying...")
+                time.sleep(1)
         except KeyboardInterrupt:
             print("\nShutting down...")
             break
         except Exception as e:
             print(f"Unexpected error: {e}")
-            break
+            print("Restarting servers...")
+            if not restart_servers():
+                print("Failed to restart servers. Retrying...")
+                time.sleep(1)
 
 
 if __name__ == "__main__":

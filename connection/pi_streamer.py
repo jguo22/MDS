@@ -189,7 +189,9 @@ class PiStreamer(protocol.ConnectionBase):
             try:
                 coords = protocol.recv_coordinates(self.coord_socket)
                 if coords is None:
-                    print("Coordinate connection lost")
+                    print(
+                        "Coordinate connection lost. Disconnecting to find new client...")
+                    self.running = False  # Signal main stream loop to stop
                     break
                 if self.on_coordinates:
                     self.on_coordinates(
@@ -201,7 +203,9 @@ class PiStreamer(protocol.ConnectionBase):
             except socket.timeout:
                 continue
             except Exception as e:
-                print(f"Coordinate receiver error: {e}")
+                print(
+                    f"Coordinate receiver error: {e}. Disconnecting to find new client...")
+                self.running = False  # Signal main stream loop to stop
                 break
 
     def stream(self, max_fps: float = 30.0):
