@@ -84,22 +84,32 @@ class CameraCapture:
 
     def read(self) -> Optional[np.ndarray]:
         """Read a frame from the camera. Returns BGR numpy array or None."""
-        if self.picam is not None:
-            frame = self.picam.capture_array()
-            # Convert RGB to BGR for OpenCV compatibility
-            return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        elif self.cap is not None:
-            ret, frame = self.cap.read()
-            return frame if ret else None
+        try:
+            if self.picam is not None:
+                frame = self.picam.capture_array()
+                # Convert RGB to BGR for OpenCV compatibility
+                return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            elif self.cap is not None:
+                ret, frame = self.cap.read()
+                return frame if ret else None
+        except Exception as e:
+            print(f"Camera read error: {e}")
+            return None
         return None
 
     def close(self):
         """Release camera resources."""
         if self.cap is not None:
-            self.cap.release()
+            try:
+                self.cap.release()
+            except Exception:
+                pass
             self.cap = None
         if self.picam is not None:
-            self.picam.stop()
+            try:
+                self.picam.stop()
+            except Exception:
+                pass
             self.picam = None
 
 
@@ -143,6 +153,9 @@ class PiStreamer(protocol.ConnectionBase):
 
     def connect(self) -> bool:
         """Connect to the computer. Returns True if successful."""
+        # Clean up any existing sockets first
+        self.close()
+
         try:
             # Connect video socket
             self.video_socket = socket.socket(
@@ -162,6 +175,10 @@ class PiStreamer(protocol.ConnectionBase):
             return True
         except socket.error as e:
             print(f"Connection failed: {e}")
+            self.close()
+            return False
+        except Exception as e:
+            print(f"Unexpected connection error: {e}")
             self.close()
             return False
 
@@ -231,6 +248,9 @@ class PiStreamer(protocol.ConnectionBase):
         self._coord_thread.start()
 
         print("Streaming started. Press Ctrl+C to stop.")
+        consecutive_failures = 0
+        max_consecutive_failures = 10
+
         try:
             while self.running:
                 start_time = time.time()
@@ -238,21 +258,41 @@ class PiStreamer(protocol.ConnectionBase):
                 # Capture frame
                 frame = self.camera.read()
                 if frame is None:
-                    print("Failed to capture frame")
+                    consecutive_failures += 1
+                    if consecutive_failures >= max_consecutive_failures:
+                        print(f"Too many consecutive frame capture failures ({max_consecutive_failures}). Disconnecting...")
+                        break
                     time.sleep(0.1)
                     continue
 
+                # Reset failure counter on successful capture
+                consecutive_failures = 0
+
                 # Encode as JPEG
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
-                                config.JPEG_QUALITY]
-                _, encoded = cv2.imencode('.jpg', frame, encode_param)
+                try:
+                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
+                                    config.JPEG_QUALITY]
+                    success, encoded = cv2.imencode('.jpg', frame, encode_param)
+                    if not success:
+                        print("Failed to encode frame")
+                        continue
+                except Exception as e:
+                    print(f"Frame encoding error: {e}")
+                    continue
 
                 # Send frame
-                if not protocol.send_frame(
-                        self.video_socket,
-                        encoded.tobytes(),
-                        self.frame_id):
-                    print("Failed to send frame")
+                try:
+                    if not protocol.send_frame(
+                            self.video_socket,
+                            encoded.tobytes(),
+                            self.frame_id):
+                        print("Failed to send frame. Disconnecting...")
+                        break
+                except (socket.error, OSError, BrokenPipeError) as e:
+                    print(f"Socket error while sending frame: {e}. Disconnecting...")
+                    break
+                except Exception as e:
+                    print(f"Unexpected error sending frame: {e}. Disconnecting...")
                     break
 
                 self.frame_id += 1
@@ -264,6 +304,8 @@ class PiStreamer(protocol.ConnectionBase):
 
         except KeyboardInterrupt:
             print("\nStreaming stopped by user")
+        except Exception as e:
+            print(f"Unexpected streaming error: {e}")
         finally:
             self.stop()
 
@@ -272,4 +314,4 @@ class PiStreamer(protocol.ConnectionBase):
         self.running = False
         if self.camera:
             self.camera.close()
-        self.close()
+        self.close()  # Uses parent's safe close method
