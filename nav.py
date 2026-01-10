@@ -81,7 +81,7 @@ class Nav:
             self.RIGHT_MOTOR, self.start_right + (self.current_distance * self.right_coef))
 
     def start_forward_mm(self, distance_mm):
-        distance = distance_mm * self.TICK_ROTATION
+        distance = distance_mm / (self.WHEEL_D * math.pi) * self.TICK_ROTATION
         self.startPath(1, 1, distance)
 
     def start_rotate(self, theta):
