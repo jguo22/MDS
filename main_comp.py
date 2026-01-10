@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from typing import Optional, Tuple
 from connection import config
-from connection.computer_receiver import ComputerReceiver
+from connection.ComputerReceiver import ComputerReceiver
 
 
 class ClickProcessor:
@@ -75,12 +75,12 @@ def main():
         if receiver.client_video:
             try:
                 receiver.client_video.close()
-            except:
+            except BaseException:
                 pass
         if receiver.client_coord:
             try:
                 receiver.client_coord.close()
-            except:
+            except BaseException:
                 pass
         receiver.client_video = None
         receiver.client_coord = None
@@ -89,12 +89,12 @@ def main():
         if receiver.video_server:
             try:
                 receiver.video_server.close()
-            except:
+            except BaseException:
                 pass
         if receiver.coord_server:
             try:
                 receiver.coord_server.close()
-            except:
+            except BaseException:
                 pass
         receiver.video_server = None
         receiver.coord_server = None
