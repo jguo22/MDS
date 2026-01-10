@@ -20,9 +20,10 @@ class ClickProcessor:
                 # Convert to normalized coordinates (0-1)
                 x_norm = x / (self.frame_size[0] - 1)
                 y_norm = y / (self.frame_size[1] - 1)
+                scale = 10
                 # Scale to -150 to 150 range (centered at 0)
-                x_scaled = (x_norm * 300) - 150
-                y_scaled = (y_norm * 300) - 150
+                x_scaled = (x_norm * scale) - scale / 2
+                y_scaled = (y_norm * scale) - scale / 2
                 self.click_coords = (x_scaled, y_scaled)
                 print(
                     f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
@@ -68,22 +69,35 @@ def main():
         return
 
     # Main loop - wait for connections and process
+    # In the main loop, replace the reconnection logic with:
     while True:
-        if receiver.wait_for_connection():
-            try:
-                # run the receiving loops
-                # which displays video
-                # and runs the frame callback
-                receiver.receive_loop(
-                    show_video=not args.no_display,
-                    window_name=window_name)
-            except KeyboardInterrupt:
-                print("\nShutting down...")
-                break
-            except Exception as e:
-                print(f"Error in receive_loop: {e}")
-        print("Waiting for reconnection...")
-        time.sleep(config.RECONNECT_DELAY)
+        if not receiver.wait_for_connection():
+            print("Waiting for Pi to connect...")
+            time.sleep(1)
+            continue
+
+        try:
+            print("Starting receive loop...")
+            receiver.receive_loop(
+                show_video=not args.no_display,
+                window_name=window_name
+            )
+        except (ConnectionError, OSError) as e:
+            print(f"Connection error: {e}")
+            # Close existing connections
+            if receiver.client_video:
+                receiver.client_video.close()
+            if receiver.client_coord:
+                receiver.client_coord.close()
+            receiver.client_video = None
+            receiver.client_coord = None
+            print("Disconnected. Waiting for new connection...")
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+            break
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            break
 
 
 if __name__ == "__main__":

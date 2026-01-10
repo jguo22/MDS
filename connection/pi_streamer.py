@@ -10,7 +10,6 @@ Run on the Raspberry Pi.
 import socket
 import threading
 import time
-import argparse
 from typing import Callable, Optional
 import cv2
 import numpy as np
