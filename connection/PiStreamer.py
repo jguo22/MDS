@@ -13,7 +13,7 @@ from typing import Callable, Optional
 
 from . import config
 from . import protocol
-from . import CameraCapture
+from .CameraCapture import CameraCapture
 
 
 class PiStreamer(protocol.ConnectionBase):
