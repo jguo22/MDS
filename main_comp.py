@@ -51,7 +51,7 @@ class MovementCommander:
                     # check if the first plan is ready to be executed
                     if (time.time() >= plan[0]):
                         self.planned_moves = self.planned_moves[1:]
-                        movement = plan[:1]
+                        movement = plan[1:]
             if movement:
                 self.computerReceiver.send_movement(*movement)
 
