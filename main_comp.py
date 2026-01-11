@@ -27,12 +27,12 @@ class ClickProcessor:
         if event == cv2.EVENT_LBUTTONDOWN:
             start = time.time()
             # Convert to normalized coordinates (0-1)
-            x_norm = x / (self.frame_size[0] - 1)
-            y_norm = y / (self.frame_size[1] - 1)
+            x_norm = x / (self.frame_size[1] - 1)
+            y_norm = y / (self.frame_size[0] - 1)
             # Scale to range of [-scale, scale] (centered at 0)
             scale = 10
             x_scaled = (x_norm * scale * 2) - scale
-            y_scaled = -(y_norm * scale * 2) - scale
+            y_scaled = -((y_norm * scale * 2) - scale)
             print(
                 f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
 
