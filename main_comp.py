@@ -13,7 +13,9 @@ from connection.ComputerReceiver import ComputerReceiver
 class MovementCommander:
     def __init__(self, computerReceiver: ComputerReceiver):
         self.running = True
+
         self.planned_moves: list[Tuple[float, float, float, float]] = []
+        self._lock = threading.Lock()
 
         self.computerReceiver = computerReceiver
         self.nav = Nav()
@@ -35,17 +37,23 @@ class MovementCommander:
 
         print(
             f'sent movement x={x} y={y} theta={theta} distance={distance} rotate={rotate} move={move}')
-        self.planned_moves = [rotate, move]
+
+        with self._lock:
+            self.planned_moves = [rotate, move]
 
     def _commandLoop(self):
         while self.running:
-            if self.planned_moves:
-                # get the earliest planned move
-                plan = self.planned_moves[0]
-                # check if the first plan is ready to be executed
-                if (time.time() >= plan[0]):
-                    self.planned_moves = self.planned_moves[1:]
-                    self.computerReceiver.send_movement(*plan[1:])
+            movement = []
+            with self._lock:
+                if self.planned_moves:
+                    # get the earliest planned move
+                    plan = self.planned_moves[0]
+                    # check if the first plan is ready to be executed
+                    if (time.time() >= plan[0]):
+                        self.planned_moves = self.planned_moves[1:]
+                        movement = plan[:1]
+            if movement:
+                self.computerReceiver.send_movement(*movement)
 
             time.sleep(1 / config.DEFAULT_MAX_FPS)
 
