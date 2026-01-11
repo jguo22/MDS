@@ -2,8 +2,8 @@
 Connection module for video streaming between Raspberry Pi and computer.
 
 Components:
-- PiStreamer: Run on Pi to stream video and receive coordinates
-- ComputerReceiver: Run on computer to receive video and send coordinates
+- PiStreamer: Run on Pi to stream video and receive movement
+- ComputerReceiver: Run on computer to receive video and send movement
 - CameraCapture: Modular camera capture (USB, PiCamera)
 - FrameProcessor: Base class for custom frame processing
 

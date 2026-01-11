@@ -96,6 +96,12 @@ class PiStreamer(protocol.ConnectionBase):
                 self.movement_client_socket.connect((self.host, self.movement_port))
                 print(f"Connected to movement command server at {self.host}:{self.movement_port}")
 
+                # Start movement receiver thread
+                if not hasattr(self, '_movement_thread') or not self._movement_thread.is_alive():
+                    self._movement_thread = threading.Thread(target=self._movement_receiver, daemon=True)
+                    self._movement_thread.start()
+                    print("Movement receiver thread started")
+
                 return True
                 
             except socket.error as e:

@@ -13,7 +13,6 @@ from connection.ComputerReceiver import ComputerReceiver
 class ClickProcessor:
     def __init__(self, window_name: str = "Pi Camera"):
         self.window_name = window_name
-        self.click_coords = None
         self.frame_size = (1000, 1000)  # (width, height)
         # list of time of starting path, l_c, r_c, dist
         self.planned_moves: list[Tuple[float, float, float, float]] = []
@@ -34,12 +33,11 @@ class ClickProcessor:
             scale = 10
             x_scaled = (x_norm * scale * 2) - scale
             y_scaled = -(y_norm * scale * 2) - scale
-            self.click_coords = (x_scaled, y_scaled)
             print(
                 f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
 
-            distance = math.sqrt(x * x + y * y)
-            theta = math.atan(x / y)
+            distance = math.sqrt(x_scaled * x_scaled + y_scaled * y_scaled)
+            theta = math.atan(x_scaled / y_scaled)
             print(distance)
             print(theta)
 
