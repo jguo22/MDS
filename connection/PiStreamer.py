@@ -79,7 +79,7 @@ class PiStreamer(protocol.ConnectionBase):
         Returns:
             bool: True if connection was successful, False otherwise
         """
-        self.close()
+        self.running = True
         attempt = 0
         delay = initial_delay
 
@@ -102,9 +102,6 @@ class PiStreamer(protocol.ConnectionBase):
                     (self.host, self.movement_port))
                 print(
                     f"Connected to movement command server at {self.host}:{self.movement_port}")
-
-                # Set running flag before starting threads
-                self.running = True
 
                 # Start movement receiver thread
                 if not hasattr(
@@ -177,54 +174,34 @@ class PiStreamer(protocol.ConnectionBase):
         while self.running:
             try:
                 if not self.movement_client_socket:
-                    print("No movement client socket, reconnecting...")
-                    if not self.connect():
-                        time.sleep(2)  # Wait longer if connection fails
-                        continue
+                    raise Exception("No Movement Socket")
 
-                try:
-                    # Each movement command is 12 bytes (3 floats)
-                    data = protocol._recv_exact(
-                        self.movement_client_socket, 12)
-                    if data is None:
-                        print("Received None data, connection may be closed")
-                        self.movement_client_socket = None
-                        continue
+                # Receive movement command using protocol helper
+                movement = protocol.recv_movement(
+                    self.movement_client_socket)
+                if movement is None:
+                    continue
 
-                    if len(data) != 12:
-                        print(
-                            f"Received invalid data length: {len(data)} bytes, expected 12")
-                        print(f"Data: {data}")
-                        self.movement_client_socket = None
-                        continue
+                left_coef = movement['left_coef']
+                right_coef = movement['right_coef']
+                distance = movement['distance']
 
+                print(
+                    f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
+
+                if self.movement_callback:
                     try:
-                        # Unpack the three floats
-                        left_coef, right_coef, distance = struct.unpack(
-                            '!fff', data)
+                        self.movement_callback(
+                            left_coef, right_coef, distance)
+                    except Exception as e:
                         print(
-                            f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
+                            f"Error in movement callback: {type(e).__name__}: {e}")
+                        import traceback
+                        traceback.print_exc()
 
-                        if self.movement_callback:
-                            try:
-                                self.movement_callback(
-                                    float(left_coef), float(right_coef), float(distance))
-                            except Exception as e:
-                                print(
-                                    f"Error in movement callback: {type(e).__name__}: {e}")
-                                import traceback
-                                traceback.print_exc()
-
-                    except struct.error as e:
-                        print(f"Failed to unpack movement command: {e}")
-                        print(f"Raw data: {data}")
-                        self.movement_client_socket = None
-                        continue
-
-                except (socket.timeout, socket.error, ConnectionResetError, BrokenPipeError) as e:
-                    print(f"Movement socket error ({type(e).__name__}): {e}")
-                    self.movement_client_socket = None
-                    time.sleep(1)
+            except (socket.error) as e:
+                print(f"Movement socket error: {e}")
+                time.sleep(1)
 
             except Exception as e:
                 print(
