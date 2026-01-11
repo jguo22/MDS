@@ -25,6 +25,80 @@ Example workflow in `main.py`:
 2. Set mode: `raven_board.set_motor_mode(channel, Raven.MotorMode.DIRECT)`
 3. Control: `raven_board.set_motor_speed_factor(channel, percentage, reverse=True/False)`
 
+## Remote Communication System
+
+### PiStreamer - TCP Video Streaming and Movement Control
+The `connection/` module provides a bidirectional communication system between the Raspberry Pi and a computer. **Important:** This system uses **TCP sockets with a custom protocol**, not RTP/UDP.
+
+**Architecture:**
+- `connection/PiStreamer.py`: Raspberry Pi client that streams video and receives movement commands
+- `connection/ComputerReceiver.py`: Computer server that receives video and sends movement commands
+- `connection/protocol.py`: Custom TCP-based messaging protocol
+- `connection/config.py`: Configuration (ports, timeouts, video settings)
+- `connection/CameraCapture.py`: Unified camera interface (USB, PiCamera)
+
+**Protocol Details:**
+- **Transport**: TCP (`socket.SOCK_STREAM`) for reliable delivery
+- **Message Format**: Custom framing with 8-byte length headers (`struct.pack('!Q', len(data))`)
+- **Video Frames**: 4-byte frame_id + JPEG-encoded data
+- **Movement Commands**: 12 bytes with three 4-byte floats (left_coef, right_coef, distance)
+- **Why TCP not RTP**: Provides reliable, ordered delivery with automatic retransmission. RTP/UDP would offer lower latency but no delivery guarantees.
+
+**Running on Raspberry Pi:**
+```bash
+# Run PiStreamer to send video and receive movement commands
+python3 -m connection.pi_streamer --camera usb0 --host 192.168.1.101
+
+# Options:
+#   --camera: usb0, usb1, picamera0, etc.
+#   --host: Computer IP address to connect to
+#   --video-port: Video streaming port (default from config)
+#   --movement-port: Movement command port (default from config)
+```
+
+**Running on Computer:**
+```bash
+# Run ComputerReceiver to receive video and send movement commands
+python3 -m connection.computer_receiver
+
+# The computer acts as a server listening for Pi connections
+```
+
+**PiStreamer API:**
+```python
+from connection import PiStreamer
+
+# Initialize and configure
+streamer = PiStreamer(host="192.168.1.101")
+streamer.start_camera("usb0")
+
+# Set callback for movement commands
+def handle_movement(left_coef, right_coef, distance):
+    print(f"Move: L={left_coef}, R={right_coef}, D={distance}")
+    # Control motors here
+
+streamer.set_movement_callback(handle_movement)
+
+# Connect and stream
+if streamer.connect():
+    streamer.stream(max_fps=30.0)
+```
+
+**Connection Features:**
+- Automatic reconnection with exponential backoff
+- Camera auto-recovery on frame capture failures
+- Configurable socket timeouts and buffer sizes
+- Frame rate limiting
+- Thread-safe movement command reception
+
+**Configuration (connection/config.py):**
+- `VIDEO_PORT`: Default 5000
+- `MOVEMENT_PORT`: Default 5001
+- `FRAME_WIDTH`, `FRAME_HEIGHT`: Video resolution (default 640x480)
+- `JPEG_QUALITY`: Compression quality (default 80)
+- `SOCKET_TIMEOUT`: Network timeout in seconds
+- `BUFFER_SIZE`: Socket buffer size
+
 ## Vision System
 
 ### YOLO Detection Pipeline
@@ -230,6 +304,18 @@ When integrating vision with motor control:
 3. Send commands to Raven board to actuate motors
 4. Main control loop should handle both vision processing and motor updates
 
+### Remote Operation Workflow
+For remote control operation (computer controlling Pi robot):
+1. **On Raspberry Pi**: Run PiStreamer to stream camera feed and receive movement commands
+2. **On Computer**: Run ComputerReceiver to display video and send movement commands
+3. **Integration**: PiStreamer movement callback translates commands to Raven motor control
+4. **Example**: `main_pi.py` shows full integration of PiStreamer + Raven + optional YOLO
+
+**Typical deployment:**
+- Pi runs `main_pi.py` with PiStreamer for video streaming and movement callback for motor control
+- Computer runs receiver to view video stream and issue movement commands (manual or YOLO-based)
+- TCP protocol ensures reliable command delivery but adds ~10-50ms latency vs UDP/RTP
+
 ### Common Pitfalls and Solutions
 
 **Detection Issues:**
@@ -253,14 +339,29 @@ When integrating vision with motor control:
 - **Coordinate systems**: YOLO returns pixel coordinates in xyxy format; convert to robot coordinates for navigation
 - **MPS acceleration**: Training uses Apple Silicon GPU (`device: 'mps'`); inference auto-detects available hardware
 
+**Connection and Networking:**
+- **Connection failures**: Verify Pi and computer are on same network, check firewall settings, verify correct IP addresses
+- **Video lag**: Reduce JPEG_QUALITY in config.py, lower resolution, or reduce max_fps in stream() call
+- **Dropped frames**: TCP guarantees delivery but can cause frame buildup under poor network conditions; monitor frame_id gaps
+- **Movement command latency**: TCP adds 10-50ms vs UDP; factor this into control loops for time-sensitive operations
+- **Socket timeout errors**: Increase SOCKET_TIMEOUT in config.py for unreliable networks
+
 ## File Organization
 
 ```
 MDS/
 ├── main.py                    # Raven motor controller example
+├── main_pi.py                 # Raspberry Pi main script with PiStreamer integration
 ├── requirements.txt           # Python dependencies (ultralytics, ncnn, numpy, maslab-lib)
 ├── out.jpg                   # Example output image
 ├── runs/                     # Root-level runs directory (generated)
+├── connection/               # Remote communication system (TCP-based)
+│   ├── __init__.py
+│   ├── PiStreamer.py         # Pi-side video streamer and movement receiver
+│   ├── ComputerReceiver.py   # Computer-side video receiver and movement sender
+│   ├── protocol.py           # Custom TCP messaging protocol
+│   ├── config.py             # Network and video configuration
+│   └── CameraCapture.py      # Unified camera interface (USB/PiCamera)
 └── yolo/
     ├── yolo11n.pt            # Pretrained YOLOv11n model (COCO dataset, 80 classes)
     ├── yolo_detect.py        # Main detection script for inference

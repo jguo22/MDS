@@ -87,6 +87,8 @@ def main():
     # Set the frame callback to use our processor
     receiver.set_frame_callback(click_processor.process)
 
+    # use protocol.sendmovement to send movement without waiting for frame
+
     # Start servers
     if not receiver.start_servers():
         return
