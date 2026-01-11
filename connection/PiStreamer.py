@@ -49,7 +49,7 @@ class PiStreamer():
     def __init__(self, camera: CameraCapture,
                  host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
-                 movement_port: int = config.MOVEMENT_PORT):
+                 command_port: int = config.COMMAND_PORT):
         """
         Initialize the streamer for a single-use connection.
 
@@ -57,13 +57,13 @@ class PiStreamer():
             camera: CameraCapture instance (managed externally)
             host: Computer IP address to connect to
             video_port: Port for video streaming
-            movement_port: Port for receiving movement commands
+            command_port: Port for receiving commands
         """
 
         self.camera = camera
         self.host = host
         self.video_port = video_port
-        self.movement_port = movement_port
+        self.command_port = command_port
         # Client sockets for communication
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
@@ -104,16 +104,16 @@ class PiStreamer():
             print(
                 f"Connected video stream to {self.host}:{self.video_port}")
 
-            # Connect to movement command server
+            # Connect to command server
             self.command_client_socket = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
             self.command_client_socket.settimeout(config.SOCKET_TIMEOUT)
             self.command_client_socket.connect(
-                (self.host, self.movement_port))
+                (self.host, self.command_port))
             print(
-                f"Connected to movement command server at {self.host}:{self.movement_port}")
+                f"Connected to command server at {self.host}:{self.command_port}")
 
-            # Start movement receiver thread
+            # Start command receiver thread
             self.running = True
             self._command_receiver_thread = threading.Thread(
                 target=self._command_receiver, daemon=True)

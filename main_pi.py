@@ -55,17 +55,17 @@ def main():
                 print("Stream ended")
             else:
                 print("Connection failed")
-
-            # Brief pause before reconnecting
-            print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
-            time.sleep(config.RECONNECT_DELAY)
         except KeyboardInterrupt:
             print("\nShutting down...")
             break
         except Exception as e:
             print(e)
             traceback.print_exc()
-            continue
+        finally:
+            # Brief pause before reconnecting
+            print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
+            time.sleep(config.RECONNECT_DELAY)
+
     camera.close()
     print("Camera closed")
 

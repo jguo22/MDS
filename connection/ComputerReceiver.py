@@ -36,19 +36,19 @@ class ComputerReceiver():
 
     def __init__(self, host: str = "0.0.0.0",
                  video_port: int = config.VIDEO_PORT,
-                 movement_port: int = config.MOVEMENT_PORT):
+                 command_port: int = config.COMMAND_PORT):
         """
         Initialize the receiver.
 
         Args:
             host: Host to bind to (0.0.0.0 for all interfaces)
             video_port: Port for video receiving
-            movement_port: Port for sending movement commands
+            command_port: Port for sending commands
         """
         super().__init__()
         self.host = host
         self.video_port = video_port
-        self.movement_port = movement_port
+        self.command_port = command_port
 
         # Server sockets (listen for incoming connections)
         self.video_server_socket: Optional[socket.socket] = None
@@ -92,15 +92,15 @@ class ComputerReceiver():
             self.video_server_socket.listen(1)
             print(f"Video server listening on {self.host}:{self.video_port}")
 
-            # Set up movement command server socket
+            # Set up command server socket
             self.command_server_socket = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
             self.command_server_socket.setsockopt(
                 socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.command_server_socket.bind((self.host, self.movement_port))
+            self.command_server_socket.bind((self.host, self.command_port))
             self.command_server_socket.listen(1)
             print(
-                f"Movement command server listening on {self.host}:{self.movement_port}")
+                f"Command server listening on {self.host}:{self.command_port}")
 
             return True
         except socket.error as e:
@@ -120,10 +120,10 @@ class ComputerReceiver():
             print(
                 f"Video connection from {self.video_client_socket.getpeername()}")
 
-            # Accept movement command connection
+            # Accept command connection
             self.command_client_socket, _ = self.command_server_socket.accept()
             print(
-                f"Movement command connection from {self.command_client_socket.getpeername()}")
+                f"Command connection from {self.command_client_socket.getpeername()}")
             return True
         except socket.error as e:
             print(f"Connection error: {e}")

@@ -51,16 +51,13 @@ The `connection/` module provides a bidirectional communication system between t
 
 **Running on Raspberry Pi:**
 ```bash
-# Run main_pi.py to send video and receive movement commands
-python3 main_pi.py --camera usb0 --host 192.168.1.101
+# Run main_pi.py to send video and receive commands
+python3 main_pi.py --camera usb0
 
 # Options:
-#   --camera: usb0, usb1, picamera0, etc.
-#   --host: Computer IP address to connect to
-#   --video-port: Video streaming port (default from config)
-#   --coord-port: Movement command port (default from config)
-#   --fps: Maximum FPS (default from config.DEFAULT_MAX_FPS)
-#   --reconnect-delay: Delay between reconnection attempts (default 2.0s)
+#   --camera: usb0, usb1, picamera0, etc. (default: usb0)
+#
+# All other settings (host, ports, FPS, reconnect delay) are configured in connection/config.py
 ```
 
 **Running on Computer:**
@@ -129,12 +126,12 @@ receiver.send_close()
 
 **Configuration (connection/config.py):**
 - `VIDEO_PORT`: Default 5000
-- `MOVEMENT_PORT`: Default 5001
+- `COMMAND_PORT`: Default 5001
 - `FRAME_WIDTH`, `FRAME_HEIGHT`: Video resolution (default 640x480)
 - `JPEG_QUALITY`: Compression quality (default 80)
 - `DEFAULT_MAX_FPS`: Default maximum FPS for streaming (default 30.0)
 - `SOCKET_TIMEOUT`: Network timeout in seconds (default 180.0)
-- `RECONNECT_DELAY`: Delay between reconnection attempts (default 2.0s)
+- `RECONNECT_DELAY`: Delay between reconnection attempts (default 5.0s)
 - `BUFFER_SIZE`: Socket buffer size
 - `MSG_TYPE_CLOSE`: Message type constant (0) for closing connection
 - `MSG_TYPE_MOVEMENT`: Message type constant (1) for movement commands

@@ -73,8 +73,8 @@ def main():
     parser.add_argument(
         "--coord-port",
         type=int,
-        default=config.MOVEMENT_PORT,
-        help=f"Coordinate port (default: {config.MOVEMENT_PORT})")
+        default=config.COMMAND_PORT,
+        help=f"Coordinate port (default: {config.COMMAND_PORT})")
     parser.add_argument("--no-display", action="store_true",
                         help="Disable video display")
     args = parser.parse_args()
