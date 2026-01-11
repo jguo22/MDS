@@ -51,7 +51,7 @@ class ComputerReceiver(protocol.ConnectionBase):
         # Server sockets (listen for incoming connections)
         self.video_server_socket: Optional[socket.socket] = None
         self.movement_server_socket: Optional[socket.socket] = None
-        
+
         # Client sockets (active connections for data transfer)
         self.video_client_socket: Optional[socket.socket] = None
         self.movement_client_socket: Optional[socket.socket] = None
@@ -81,19 +81,23 @@ class ComputerReceiver(protocol.ConnectionBase):
         """Start listening for connections. Returns True if successful."""
         try:
             # Set up video server socket
-            self.video_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.video_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.video_server_socket = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.video_server_socket.setsockopt(
+                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.video_server_socket.bind((self.host, self.video_port))
             self.video_server_socket.listen(1)
-            self.video_server_socket.settimeout(1.0)  # Add timeout to allow checking self.running
             print(f"Video server listening on {self.host}:{self.video_port}")
 
             # Set up movement command server socket
-            self.movement_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.movement_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.movement_server_socket = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.movement_server_socket.setsockopt(
+                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.movement_server_socket.bind((self.host, self.movement_port))
             self.movement_server_socket.listen(1)
-            print(f"Movement command server listening on {self.host}:{self.movement_port}")
+            print(
+                f"Movement command server listening on {self.host}:{self.movement_port}")
 
             return True
         except socket.error as e:
@@ -111,11 +115,13 @@ class ComputerReceiver(protocol.ConnectionBase):
         try:
             # Accept video connection
             self.video_client_socket, _ = self.video_server_socket.accept()
-            print(f"Video connection from {self.video_client_socket.getpeername()}")
+            print(
+                f"Video connection from {self.video_client_socket.getpeername()}")
 
             # Accept movement command connection
             self.movement_client_socket, _ = self.movement_server_socket.accept()
-            print(f"Movement command connection from {self.movement_client_socket.getpeername()}")
+            print(
+                f"Movement command connection from {self.movement_client_socket.getpeername()}")
             return True
         except socket.error as e:
             print(f"Connection error: {e}")
@@ -252,14 +258,14 @@ class ComputerReceiver(protocol.ConnectionBase):
             except Exception:
                 pass
             self.video_client_socket = None
-            
+
         if self.movement_client_socket:
             try:
                 self.movement_client_socket.close()
             except Exception:
                 pass
             self.movement_client_socket = None
-            
+
         # Close server sockets
         if self.video_server_socket:
             try:
@@ -267,7 +273,7 @@ class ComputerReceiver(protocol.ConnectionBase):
             except Exception:
                 pass
             self.video_server_socket = None
-            
+
         if self.movement_server_socket:
             try:
                 self.movement_server_socket.close()

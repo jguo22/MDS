@@ -26,26 +26,27 @@ class ClickProcessor:
 
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            if self.frame_size[0] > 0 and self.frame_size[1] > 0:
-                # Convert to normalized coordinates (0-1)
-                x_norm = x / (self.frame_size[0] - 1)
-                y_norm = y / (self.frame_size[1] - 1)
-                # Scale to range of [-scale, scale] (centered at 0)
-                scale = 10
-                x_scaled = (x_norm * scale * 2) - scale
-                y_scaled = -(y_norm * scale * 2) - scale
-                self.click_coords = (x_scaled, y_scaled)
-                print(
-                    f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
+            start = time.time()
+            # Convert to normalized coordinates (0-1)
+            x_norm = x / (self.frame_size[0] - 1)
+            y_norm = y / (self.frame_size[1] - 1)
+            # Scale to range of [-scale, scale] (centered at 0)
+            scale = 10
+            x_scaled = (x_norm * scale * 2) - scale
+            y_scaled = -(y_norm * scale * 2) - scale
+            self.click_coords = (x_scaled, y_scaled)
+            print(
+                f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
 
-                distance = math.sqrt(x * x + y * y)
-                theta = math.atan(x / y)
-                print(distance)
-                print(theta)
+            distance = math.sqrt(x * x + y * y)
+            theta = math.atan(x / y)
+            print(distance)
+            print(theta)
 
-                rotate = (time.time(), *self.nav.get_rotate(theta))
-                move = (time.time() + 1, *self.nav.get_forward_mm(distance))
-                self.planned_moves = [rotate, move]
+            rotate = (time.time(), *self.nav.get_rotate(theta))
+            move = (time.time() + 1, *self.nav.get_forward_mm(distance))
+            self.planned_moves = [rotate, move]
+            print(f'mouse  callback took: {time.time()-start}')
 
     def process(self, frame: np.ndarray,
                 frame_id: int) -> Optional[Tuple[float, float, float]]:
