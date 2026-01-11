@@ -34,21 +34,22 @@ class PiStreamer(protocol.ConnectionBase):
 
     def __init__(self, host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
-                 coord_port: int = config.MOVEMENT_PORT):
+                 movement_port: int = config.MOVEMENT_PORT):
         """
         Initialize the streamer.
 
         Args:
             host: Computer IP address to connect to
             video_port: Port for video streaming
-            coord_port: Port for receiving coordinates
+            movement_port: Port for receiving movement commands
         """
         super().__init__()
         self.host = host
         self.video_port = video_port
-        self.coord_port = coord_port
-        self.camera: Optional[CameraCapture] = None
-        self._camera_source: Optional[str] = None  # Store source for reopening
+        self.movement_port = movement_port
+        # Client sockets for communication
+        self.video_client_socket: Optional[socket.socket] = None
+        self.movement_client_socket: Optional[socket.socket] = None  # Store source for reopening
         self.frame_id = 0
         self.movement_callback: Optional[Callable[[
             float, float, float], None]] = None
@@ -56,43 +57,63 @@ class PiStreamer(protocol.ConnectionBase):
     def set_movement_callback(
             self, callback: Callable[[float, float, float], None]):
         """
-        Set callback for when coordinates are received.
+        Set callback for when movement commands are received.
 
         Args:
-            callback: Function(x, y, frame_id, extra) called on coordinate receipt
+            callback: Function(x, y, frame_id, extra) called on movement command receipt
         """
         self.movement_callback = callback
 
-    def connect(self) -> bool:
-        """Connect to the computer. Returns True if successful."""
-        # Clean up any existing sockets first
+    def connect(self, max_attempts: int = 5, initial_delay: float = 1.0) -> bool:
+        """
+        Connect to the computer. Returns True if successful.
+        
+        Args:
+            max_attempts: Maximum number of connection attempts
+            initial_delay: Initial delay between attempts in seconds (will double after each attempt)
+            
+        Returns:
+            bool: True if connection was successful, False otherwise
+        """
         self.close()
+        attempt = 0
+        delay = initial_delay
+        
+        while attempt < max_attempts and self.running:
+            attempt += 1
+            try:
+                # Connect video client socket
+                self.video_client_socket = socket.socket(
+                    socket.AF_INET, socket.SOCK_STREAM)
+                self.video_client_socket.settimeout(config.SOCKET_TIMEOUT)
+                self.video_client_socket.connect((self.host, self.video_port))
+                print(f"Connected video stream to {self.host}:{self.video_port}")
 
-        try:
-            # Connect video socket
-            self.video_socket = socket.socket(
-                socket.AF_INET, socket.SOCK_STREAM)
-            self.video_socket.settimeout(config.SOCKET_TIMEOUT)
-            self.video_socket.connect((self.host, self.video_port))
-            print(f"Connected video stream to {self.host}:{self.video_port}")
+                # Connect to movement command server
+                self.movement_client_socket = socket.socket(
+                    socket.AF_INET, socket.SOCK_STREAM)
+                self.movement_client_socket.settimeout(config.SOCKET_TIMEOUT)
+                self.movement_client_socket.connect((self.host, self.movement_port))
+                print(f"Connected to movement command server at {self.host}:{self.movement_port}")
 
-            # Connect coordinate socket
-            self.movement_socket = socket.socket(
-                socket.AF_INET, socket.SOCK_STREAM)
-            self.movement_socket.settimeout(config.SOCKET_TIMEOUT)
-            self.movement_socket.connect((self.host, self.coord_port))
-            print(
-                f"Connected coordinate channel to {self.host}:{self.coord_port}")
-
-            return True
-        except socket.error as e:
-            print(f"Connection failed: {e}")
-            self.close()
-            return False
-        except Exception as e:
-            print(f"Unexpected connection error: {e}")
-            self.close()
-            return False
+                return True
+                
+            except socket.error as e:
+                if attempt >= max_attempts:
+                    print(f"Failed to connect after {max_attempts} attempts: {e}")
+                    self.close()
+                    return False
+                    
+                print(f"Connection attempt {attempt} failed: {e}, retrying in {delay:.1f}s...")
+                time.sleep(delay)
+                delay = min(delay * 2, 10)  # Exponential backoff with max 10s
+                
+            except Exception as e:
+                print(f"Unexpected error during connection: {e}")
+                self.close()
+                return False
+                
+        return False
 
     def start_camera(self, source: str = "usb0") -> bool:
         """
@@ -131,33 +152,58 @@ class PiStreamer(protocol.ConnectionBase):
         return True
 
     def _movement_receiver(self):
-        """Background thread to receive movement commands."""
+        """Background thread to receive and process movement commands."""
         while self.running:
             try:
-                # Each movement command is 12 bytes (3 floats)
-                data = protocol._recv_exact(self.movement_socket, 12)
-                if data is None or len(data) != 12:
-                    print(
-                        "Movement command connection lost. Disconnecting to find new client...")
-                    self.running = False  # Signal main stream loop to stop
-                    break
+                if not self.movement_client_socket:
+                    print("No movement client socket, reconnecting...")
+                    if not self.connect():
+                        time.sleep(2)  # Wait longer if connection fails
+                        continue
 
-                # Unpack the three floats
-                left_coef, right_coef, distance = struct.unpack('!fff', data)
+                try:
+                    # Each movement command is 12 bytes (3 floats)
+                    data = protocol._recv_exact(self.movement_client_socket, 12)
+                    if data is None:
+                        print("Received None data, connection may be closed")
+                        self.movement_client_socket = None
+                        continue
+                        
+                    if len(data) != 12:
+                        print(f"Received invalid data length: {len(data)} bytes, expected 12")
+                        print(f"Data: {data}")
+                        self.movement_client_socket = None
+                        continue
 
-                if self.movement_callback:
-                    self.movement_callback(left_coef, right_coef, distance)
+                    try:
+                        # Unpack the three floats
+                        left_coef, right_coef, distance = struct.unpack('!fff', data)
+                        print(f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
+                        
+                        if self.movement_callback:
+                            try:
+                                self.movement_callback(float(left_coef), float(right_coef), float(distance))
+                            except Exception as e:
+                                print(f"Error in movement callback: {type(e).__name__}: {e}")
+                                import traceback
+                                traceback.print_exc()
+                    
+                    except struct.error as e:
+                        print(f"Failed to unpack movement command: {e}")
+                        print(f"Raw data: {data}")
+                        self.movement_client_socket = None
+                        continue
 
-            except socket.timeout:
-                continue
-            except struct.error as e:
-                print(f"Invalid movement command format: {e}")
-                continue
+                except (socket.timeout, socket.error, ConnectionResetError, BrokenPipeError) as e:
+                    print(f"Movement socket error ({type(e).__name__}): {e}")
+                    self.movement_client_socket = None
+                    time.sleep(1)
+                    
             except Exception as e:
-                print(
-                    f"Movement command receiver error: {e}. Disconnecting to find new client...")
-                self.running = False  # Signal main stream loop to stop
-                break
+                print(f"Unexpected error in movement receiver: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
+                time.sleep(1)
 
     def stream(self, max_fps: float = 30.0):
         """
@@ -170,8 +216,8 @@ class PiStreamer(protocol.ConnectionBase):
         if not self._ensure_camera_open():
             print("Cannot start streaming: camera not available")
             return
-        if not self.video_socket:
-            print("Not connected")
+        if not self.video_client_socket:
+            print("Not connected to video server")
             return
 
         self.running = True
@@ -222,7 +268,7 @@ class PiStreamer(protocol.ConnectionBase):
                 # Send frame
                 try:
                     if not protocol.send_frame(
-                            self.video_socket,
+                            self.video_client_socket,
                             encoded.tobytes(),
                             self.frame_id):
                         print("Failed to send frame. Disconnecting...")

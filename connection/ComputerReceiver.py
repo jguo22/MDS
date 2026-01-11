@@ -41,7 +41,7 @@ class ComputerReceiver(protocol.ConnectionBase):
         Args:
                 host: Host to bind to (0.0.0.0 for all interfaces)
                 video_port: Port for video receiving
-                movement_port: Port for sending movements
+                movement_port: Port for sending movement commands
         """
         super().__init__()
         self.host = host
@@ -88,12 +88,12 @@ class ComputerReceiver(protocol.ConnectionBase):
             self.video_server_socket.settimeout(1.0)  # Add timeout to allow checking self.running
             print(f"Video server listening on {self.host}:{self.video_port}")
 
-            # Set up movement server socket
+            # Set up movement command server socket
             self.movement_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.movement_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.movement_server_socket.bind((self.host, self.movement_port))
             self.movement_server_socket.listen(1)
-            print(f"Movement server listening on {self.host}:{self.movement_port}")
+            print(f"Movement command server listening on {self.host}:{self.movement_port}")
 
             return True
         except socket.error as e:

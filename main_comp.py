@@ -3,6 +3,7 @@ import argparse
 import cv2
 import numpy as np
 import math
+import traceback
 from nav import Nav
 from typing import Optional, Tuple
 from connection import config
@@ -101,10 +102,12 @@ def main():
             window_name=window_name
         )
     except (ConnectionError, OSError) as e:
+        traceback.print_exc()
         print(f"Connection error: {e}")
     except KeyboardInterrupt:
         print("\nShutting down...")
     except Exception as e:
+        traceback.print_exc()
         print(f"Unexpected error: {e}")
 
 
