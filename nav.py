@@ -129,9 +129,10 @@ class Nav:
         if theta < -math.pi:
             theta += 2 * math.pi
 
+        # CCW is positive angle
         if theta >= 0:
-            return (1, -1, self.TICK_ROTATION /
+            return (-1, 1, self.TICK_ROTATION /
                     self.BASE_RATIO * theta / (2 * math.pi))
         else:
-            return (-1, 1, self.TICK_ROTATION /
+            return (1, -1, self.TICK_ROTATION /
                     self.BASE_RATIO * -theta / (2 * math.pi))

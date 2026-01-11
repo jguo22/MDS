@@ -62,11 +62,20 @@ python3 main_pi.py --camera usb0
 
 **Running on Computer:**
 ```bash
-# Run ComputerReceiver to receive video and send movement commands
+# Run main_comp.py for full control interface with interactive input
+python3 main_comp.py
+
+# Or run basic ComputerReceiver module
 python3 -m connection.computer_receiver
 
 # The computer acts as a server listening for Pi connections
 ```
+
+**main_comp.py features:**
+- Interactive terminal input for manual movement commands
+- Click-to-move on video window
+- Movement command queueing and timing
+- Automatic reconnection handling
 
 ### Development Workflow
 
@@ -83,14 +92,15 @@ python3 -m connection.computer_receiver
 2. **Start the computer receiver:**
    ```bash
    # On Computer
-   python3 -m connection.computer_receiver
+   python3 main_comp.py
    ```
    The Pi will automatically connect within a few seconds and begin streaming video.
+   You can now send movement commands by typing in the terminal or clicking on the video window.
 
 3. **Making changes to computer code:**
    - Press `Ctrl+C` on the computer to stop the receiver
    - Make your code changes
-   - Restart: `python3 -m connection.computer_receiver`
+   - Restart: `python3 main_comp.py`
    - **The Pi will automatically reconnect** (no need to restart it)
 
 4. **Making changes to Pi code:**
@@ -105,11 +115,29 @@ python3 -m connection.computer_receiver
 - **Rapid iteration**: Modify computer vision code on the computer, restart receiver, and the Pi immediately reconnects
 - **Persistent camera**: The Pi keeps the camera open across reconnections, avoiding reinitialization delays
 
+**Interactive manual control:**
+
+When running `main_comp.py`, you can manually send movement commands by typing in the terminal:
+```bash
+# Type two numbers (left_coef right_coef) and press Enter
+Enter movement (left right): 0.5 0.5    # Move forward
+Enter movement (left right): -0.5 0.5   # Turn left
+Enter movement (left right): 0.5 -0.5   # Turn right
+Enter movement (left right): 0 0        # Stop
+
+# Optional: specify distance as third parameter
+Enter movement (left right): 0.5 0.5 200.0
+```
+
+This allows you to test movement commands interactively without modifying code or clicking on the video window.
+
 **Common scenarios:**
 
 | Scenario | Action |
 |----------|--------|
-| Testing different movement commands | Modify computer code → Ctrl+C → Restart → Pi auto-reconnects |
+| Testing movement commands interactively | Run `main_comp.py`, type coefficients in terminal (e.g., `0.5 0.5`) |
+| Testing movement via clicking | Run `main_comp.py`, click on video window to send robot to that position |
+| Modifying movement logic | Modify computer code → Ctrl+C → Restart → Pi auto-reconnects |
 | Adjusting camera settings | Modify Pi code → Ctrl+C on Pi → Restart Pi |
 | Network disconnection | Both sides handle gracefully → Auto-reconnect when network restored |
 | Changing config (IP, ports, FPS) | Edit `connection/config.py` → Restart both sides |

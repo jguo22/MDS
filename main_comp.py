@@ -3,19 +3,65 @@ import argparse
 import cv2
 import numpy as np
 import math
-
+import threading
 from nav import Nav
 from typing import Optional, Tuple
 from connection import config
 from connection.ComputerReceiver import ComputerReceiver
 
 
+class MovementCommander:
+    def __init__(self, computerReceiver: ComputerReceiver):
+        self.running = True
+        self.planned_moves: list[Tuple[float, float, float, float]] = []
+
+        self.computerReceiver = computerReceiver
+        self.nav = Nav()
+
+        threading.Thread(target=self._commandLoop, daemon=True).start()
+
+    def queue_xy(self, x, y):
+        """
+        take in x,y in mm and plan send out instructions
+        """
+        distance = math.sqrt(x * x + y * y)
+
+        # forward is y axis, so we want angle from y axis
+        # while atan calculates angle from x axis
+        theta = math.atan2(y, x) - math.pi / 2
+
+        rotate = (time.time(), *self.nav.get_rotate(theta))
+        move = (time.time() + 1, *self.nav.get_forward_mm(distance))
+
+        print(
+            f'sent movement x={x} y={y} theta={theta} distance={distance} rotate={rotate} move={move}')
+        self.planned_moves = [rotate, move]
+
+    def _commandLoop(self):
+        while self.running:
+            if self.planned_moves:
+                # get the earliest planned move
+                plan = self.planned_moves[0]
+                # check if the first plan is ready to be executed
+                if (time.time() >= plan[0]):
+                    self.planned_moves = self.planned_moves[1:]
+                    self.computerReceiver.send_movement(*plan[1:])
+
+            time.sleep(1 / config.DEFAULT_MAX_FPS)
+
+    def stop(self):
+        self.running = False
+
+
 class ClickProcessor:
-    def __init__(self, window_name: str = "Pi Camera"):
+    def __init__(
+            self,
+            movementCommander: MovementCommander,
+            window_name: str = "Pi Camera"):
+        self.movementCommander = movementCommander
         self.window_name = window_name
         self.frame_size = (1000, 1000)  # (width, height)
         # list of time of starting path, l_c, r_c, dist
-        self.planned_moves: list[Tuple[float, float, float, float]] = []
 
         cv2.namedWindow(self.window_name)
         cv2.setMouseCallback(self.window_name, self._mouse_callback)
@@ -25,7 +71,6 @@ class ClickProcessor:
 
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            start = time.time()
             # Convert to normalized coordinates (0-1)
             x_norm = x / (self.frame_size[1] - 1)
             y_norm = y / (self.frame_size[0] - 1)
@@ -36,32 +81,12 @@ class ClickProcessor:
             print(
                 f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
 
-            distance = math.sqrt(x_scaled * x_scaled + y_scaled * y_scaled)
-            theta = math.atan(x_scaled / y_scaled)
-            print(distance)
-            print(theta)
-
-            rotate = (time.time(), *self.nav.get_rotate(theta))
-            move = (time.time() + 1, *self.nav.get_forward_mm(distance))
-            self.planned_moves = [rotate, move]
-            print(f'mouse  callback took: {time.time()-start}')
+            self.movementCommander.queue_xy(x_scaled, y_scaled)
 
     def process(self, frame: np.ndarray,
                 frame_id: int) -> Optional[Tuple[float, float, float]]:
         # Update frame dimensions
         self.frame_size = (frame.shape[1], frame.shape[0])
-
-        if len(self.planned_moves) == 0:
-            return None
-
-        # get the earliest planned move
-        plan = self.planned_moves[0]
-        # check if the first plan is ready to be executed
-        if (time.time() >= plan[0]):
-            self.planned_moves = self.planned_moves[1:]
-            return plan[1:]
-        else:
-            return None
 
 
 def main():
@@ -82,12 +107,40 @@ def main():
     window_name = "Pi Camera"
     # Create receiver and click processor
     receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
-    click_processor = ClickProcessor(window_name)
+    movementCommander = MovementCommander(receiver)
+    click_processor = ClickProcessor(movementCommander, window_name)
 
     # Set the frame callback to use our processor
     receiver.set_frame_callback(click_processor.process)
 
-    # use protocol.sendmovement to send movement without waiting for frame
+    # Interactive input thread for manual movement commands
+    def input_thread():
+        print("\n--- Manual Movement Control ---")
+        print("Type two numbers separated by space (x y) and press Enter")
+        print("Type 'quit' to exit\n")
+        while True:
+            try:
+                user_input = input("Enter movement (x y): ").strip()
+                if user_input.lower() == 'quit':
+                    break
+                if not user_input:
+                    continue
+
+                parts = user_input.split()
+                if len(parts) == 2:
+                    x = float(parts[0])
+                    y = float(parts[1])
+                    movementCommander.queue_xy(x, y)
+                    print(f"Queued movement to: x={x} y={y}")
+            except ValueError:
+                print("Invalid numbers. Try again.")
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                break
+
+    # Start input thread
+    threading.Thread(target=input_thread, daemon=True).start()
 
     # Start servers
     if not receiver.start_servers():
