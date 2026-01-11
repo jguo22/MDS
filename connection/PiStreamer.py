@@ -103,6 +103,9 @@ class PiStreamer(protocol.ConnectionBase):
                 print(
                     f"Connected to movement command server at {self.host}:{self.movement_port}")
 
+                # Set running flag before starting threads
+                self.running = True
+
                 # Start movement receiver thread
                 if not hasattr(
                         self,
