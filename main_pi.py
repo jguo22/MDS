@@ -20,8 +20,11 @@ def main():
                         help="Maximum FPS (default: 30)")
     parser.add_argument("--video-port", type=int, default=config.VIDEO_PORT,
                         help=f"Video port (default: {config.VIDEO_PORT})")
-    parser.add_argument("--coord-port", type=int, default=config.COORD_PORT,
-                        help=f"Coordinate port (default: {config.COORD_PORT})")
+    parser.add_argument(
+        "--coord-port",
+        type=int,
+        default=config.MOVEMENT_PORT,
+        help=f"Coordinate port (default: {config.MOVEMENT_PORT})")
     args = parser.parse_args()
 
     # Create streamer
@@ -29,7 +32,7 @@ def main():
     nav = Nav()
 
     # activate the navigation in another thread
-    thread = threading.Thread(target=nav.activate)
+    thread = threading.Thread(target=nav.activate, daemon=True)
     thread.start()
 
     # Set up movement callback

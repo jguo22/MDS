@@ -29,10 +29,10 @@ class ClickProcessor:
                 # Convert to normalized coordinates (0-1)
                 x_norm = x / (self.frame_size[0] - 1)
                 y_norm = y / (self.frame_size[1] - 1)
+                # Scale to range of [-scale, scale] (centered at 0)
                 scale = 10
-                # Scale to -150 to 150 range (centered at 0)
-                x_scaled = (x_norm * scale) - scale / 2
-                y_scaled = -(y_norm * scale) - scale / 2
+                x_scaled = (x_norm * scale * 2) - scale
+                y_scaled = -(y_norm * scale * 2) - scale
                 self.click_coords = (x_scaled, y_scaled)
                 print(
                     f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
@@ -70,8 +70,11 @@ def main():
                         help="Host to bind to (default: 0.0.0.0)")
     parser.add_argument("--video-port", type=int, default=config.VIDEO_PORT,
                         help=f"Video port (default: {config.VIDEO_PORT})")
-    parser.add_argument("--coord-port", type=int, default=config.COORD_PORT,
-                        help=f"Coordinate port (default: {config.COORD_PORT})")
+    parser.add_argument(
+        "--coord-port",
+        type=int,
+        default=config.MOVEMENT_PORT,
+        help=f"Coordinate port (default: {config.MOVEMENT_PORT})")
     parser.add_argument("--no-display", action="store_true",
                         help="Disable video display")
     args = parser.parse_args()
@@ -88,70 +91,21 @@ def main():
     if not receiver.start_servers():
         return
 
-    # Main loop - wait for connections and process
-    def restart_servers():
-        """Close everything and restart servers."""
-        # Close client connections
-        if receiver.client_video:
-            try:
-                receiver.client_video.close()
-            except BaseException:
-                pass
-        if receiver.client_coord:
-            try:
-                receiver.client_coord.close()
-            except BaseException:
-                pass
-        receiver.client_video = None
-        receiver.client_coord = None
+    if not receiver.wait_for_connection():
+        return
 
-        # Close servers
-        if receiver.video_server:
-            try:
-                receiver.video_server.close()
-            except BaseException:
-                pass
-        if receiver.coord_server:
-            try:
-                receiver.coord_server.close()
-            except BaseException:
-                pass
-        receiver.video_server = None
-        receiver.coord_server = None
-
-        # Restart servers
-        time.sleep(0.5)  # Brief delay before rebinding
-        return receiver.start_servers()
-
-    while True:
-        if not receiver.wait_for_connection():
-            print("Connection failed. Restarting servers...")
-            if not restart_servers():
-                print("Failed to restart servers. Retrying...")
-                time.sleep(1)
-            continue
-
-        try:
-            print("Starting receive loop...")
-            receiver.receive_loop(
-                show_video=not args.no_display,
-                window_name=window_name
-            )
-        except (ConnectionError, OSError) as e:
-            print(f"Connection error: {e}")
-            print("Disconnected. Restarting servers...")
-            if not restart_servers():
-                print("Failed to restart servers. Retrying...")
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nShutting down...")
-            break
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            print("Restarting servers...")
-            if not restart_servers():
-                print("Failed to restart servers. Retrying...")
-                time.sleep(1)
+    try:
+        print("Starting receive loop...")
+        receiver.receive_loop(
+            show_video=not args.no_display,
+            window_name=window_name
+        )
+    except (ConnectionError, OSError) as e:
+        print(f"Connection error: {e}")
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 
 if __name__ == "__main__":

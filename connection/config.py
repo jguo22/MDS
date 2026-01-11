@@ -8,7 +8,7 @@ COMPUTER_IP = "10.42.0.179"  # Change to your computer's IP address
 
 # Ports
 VIDEO_PORT = 5000  # Port for video streaming
-COORD_PORT = 5001  # Port for coordinate data
+MOVEMENT_PORT = 5001  # Port for coordinate data
 
 # Video settings
 FRAME_WIDTH = 640

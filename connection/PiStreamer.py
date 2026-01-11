@@ -34,7 +34,7 @@ class PiStreamer(protocol.ConnectionBase):
 
     def __init__(self, host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
-                 coord_port: int = config.COORD_PORT):
+                 coord_port: int = config.MOVEMENT_PORT):
         """
         Initialize the streamer.
 
@@ -52,7 +52,6 @@ class PiStreamer(protocol.ConnectionBase):
         self.frame_id = 0
         self.movement_callback: Optional[Callable[[
             float, float, float], None]] = None
-        self._coord_thread: Optional[threading.Thread] = None
 
     def set_movement_callback(
             self, callback: Callable[[float, float, float], None]):
@@ -78,10 +77,10 @@ class PiStreamer(protocol.ConnectionBase):
             print(f"Connected video stream to {self.host}:{self.video_port}")
 
             # Connect coordinate socket
-            self.coord_socket = socket.socket(
+            self.movement_socket = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
-            self.coord_socket.settimeout(config.SOCKET_TIMEOUT)
-            self.coord_socket.connect((self.host, self.coord_port))
+            self.movement_socket.settimeout(config.SOCKET_TIMEOUT)
+            self.movement_socket.connect((self.host, self.coord_port))
             print(
                 f"Connected coordinate channel to {self.host}:{self.coord_port}")
 
@@ -131,14 +130,12 @@ class PiStreamer(protocol.ConnectionBase):
             print("Camera reopened successfully")
         return True
 
-    latest_coords = None
-
     def _movement_receiver(self):
         """Background thread to receive movement commands."""
         while self.running:
             try:
                 # Each movement command is 12 bytes (3 floats)
-                data = protocol._recv_exact(self.coord_socket, 12)
+                data = protocol._recv_exact(self.movement_socket, 12)
                 if data is None or len(data) != 12:
                     print(
                         "Movement command connection lost. Disconnecting to find new client...")
@@ -179,11 +176,6 @@ class PiStreamer(protocol.ConnectionBase):
 
         self.running = True
         frame_interval = 1.0 / max_fps
-
-        # Start coordinate receiver thread
-        self._coord_thread = threading.Thread(
-            target=self._movement_receiver, daemon=True)
-        self._coord_thread.start()
 
         print("Streaming started. Press Ctrl+C to stop.")
         consecutive_failures = 0

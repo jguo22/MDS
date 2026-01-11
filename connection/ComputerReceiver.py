@@ -34,24 +34,27 @@ class ComputerReceiver(protocol.ConnectionBase):
 
     def __init__(self, host: str = "0.0.0.0",
                  video_port: int = config.VIDEO_PORT,
-                 coord_port: int = config.COORD_PORT):
+                 movement_port: int = config.MOVEMENT_PORT):
         """
         Initialize the receiver.
 
         Args:
                 host: Host to bind to (0.0.0.0 for all interfaces)
                 video_port: Port for video receiving
-                coord_port: Port for sending coordinates
+                movement_port: Port for sending movements
         """
         super().__init__()
         self.host = host
         self.video_port = video_port
-        self.coord_port = coord_port
+        self.movement_port = movement_port
 
-        self.video_server: Optional[socket.socket] = None
-        self.coord_server: Optional[socket.socket] = None
-        self.client_video: Optional[socket.socket] = None
-        self.client_coord: Optional[socket.socket] = None
+        # Server sockets (listen for incoming connections)
+        self.video_server_socket: Optional[socket.socket] = None
+        self.movement_server_socket: Optional[socket.socket] = None
+        
+        # Client sockets (active connections for data transfer)
+        self.video_client_socket: Optional[socket.socket] = None
+        self.movement_client_socket: Optional[socket.socket] = None
 
         self.on_frame: Optional[Callable[[np.ndarray, int],
                                 Optional[Tuple[float, float, float]]]] = None
@@ -77,24 +80,20 @@ class ComputerReceiver(protocol.ConnectionBase):
     def start_servers(self) -> bool:
         """Start listening for connections. Returns True if successful."""
         try:
-            # Video server
-            self.video_server = socket.socket(
-                socket.AF_INET, socket.SOCK_STREAM)
-            self.video_server.setsockopt(
-                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.video_server.bind((self.host, self.video_port))
-            self.video_server.listen(1)
+            # Set up video server socket
+            self.video_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.video_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.video_server_socket.bind((self.host, self.video_port))
+            self.video_server_socket.listen(1)
+            self.video_server_socket.settimeout(1.0)  # Add timeout to allow checking self.running
             print(f"Video server listening on {self.host}:{self.video_port}")
 
-            # Coordinate server
-            self.coord_server = socket.socket(
-                socket.AF_INET, socket.SOCK_STREAM)
-            self.coord_server.setsockopt(
-                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.coord_server.bind((self.host, self.coord_port))
-            self.coord_server.listen(1)
-            print(
-                f"Coordinate server listening on {self.host}:{self.coord_port}")
+            # Set up movement server socket
+            self.movement_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.movement_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.movement_server_socket.bind((self.host, self.movement_port))
+            self.movement_server_socket.listen(1)
+            print(f"Movement server listening on {self.host}:{self.movement_port}")
 
             return True
         except socket.error as e:
@@ -103,17 +102,20 @@ class ComputerReceiver(protocol.ConnectionBase):
             return False
 
     def wait_for_connection(self) -> bool:
-        """Wait for Pi to connect. Returns True when connected."""
+        """Wait for both video and movement command connections."""
+        if self.video_server_socket is None or self.movement_server_socket is None:
+            print("Server sockets not initialized. Call start_servers() first.")
+            return False
+
         print("Waiting for Pi to connect...")
         try:
-            self.video_server.settimeout(None)  # Block until connection
-            self.client_video, addr = self.video_server.accept()
-            print(f"Video connection from {addr}")
+            # Accept video connection
+            self.video_client_socket, _ = self.video_server_socket.accept()
+            print(f"Video connection from {self.video_client_socket.getpeername()}")
 
-            self.coord_server.settimeout(config.SOCKET_TIMEOUT)
-            self.client_coord, addr = self.coord_server.accept()
-            print(f"Coordinate connection from {addr}")
-
+            # Accept movement command connection
+            self.movement_client_socket, _ = self.movement_server_socket.accept()
+            print(f"Movement command connection from {self.movement_client_socket.getpeername()}")
             return True
         except socket.error as e:
             print(f"Connection error: {e}")
@@ -135,13 +137,13 @@ class ComputerReceiver(protocol.ConnectionBase):
         Returns:
                 True if successful
         """
-        if not self.client_coord:
+        if not self.movement_client_socket:
             return False
 
         try:
             # Pack three 4-byte floats (12 bytes total)
             data = struct.pack('!fff', left_coef, right_coef, distance)
-            return protocol.send_message(self.client_coord, data)
+            return protocol.send_message(self.movement_client_socket, data)
         except struct.error as e:
             print(f"Failed to pack movement command: {e}")
             return False
@@ -162,7 +164,7 @@ class ComputerReceiver(protocol.ConnectionBase):
                 show_video: Whether to display video in window
                 window_name: OpenCV window name
         """
-        if not self.client_video:
+        if not self.video_client_socket:
             print("No video connection")
             return
 
@@ -171,13 +173,20 @@ class ComputerReceiver(protocol.ConnectionBase):
         frame_count = 0
 
         print("Receiving frames. Press 'q' to quit.")
+        failed_frames: int = 0
         try:
             while self.running:
                 # Receive frame
-                result = protocol.recv_frame(self.client_video)
+                result = protocol.recv_frame(self.video_client_socket)
                 if result is None:
-                    print("Connection lost")
-                    break
+                    failed_frames += 1
+                    if (failed_frames & (failed_frames - 1) == 0):
+                        print(
+                            f"Didn't Receive Frame (Connection Lost) {failed_frames}")
+                    time.sleep(0.5)
+                    continue
+                else:
+                    failed_frames = 0
 
                 frame_id, frame_data = result
 
@@ -232,23 +241,36 @@ class ComputerReceiver(protocol.ConnectionBase):
     def stop(self):
         """Stop receiving and close connections."""
         self.running = False
-        if self.client_video:
+        self.close()
+
+    def close(self) -> None:
+        """Close all connections and server sockets."""
+        # Close client connections
+        if self.video_client_socket:
             try:
-                self.client_video.close()
-            except BaseException:
+                self.video_client_socket.close()
+            except Exception:
                 pass
-        if self.client_coord:
+            self.video_client_socket = None
+            
+        if self.movement_client_socket:
             try:
-                self.client_coord.close()
-            except BaseException:
+                self.movement_client_socket.close()
+            except Exception:
                 pass
-        if self.video_server:
+            self.movement_client_socket = None
+            
+        # Close server sockets
+        if self.video_server_socket:
             try:
-                self.video_server.close()
-            except BaseException:
+                self.video_server_socket.close()
+            except Exception:
                 pass
-        if self.coord_server:
+            self.video_server_socket = None
+            
+        if self.movement_server_socket:
             try:
-                self.coord_server.close()
-            except BaseException:
+                self.movement_server_socket.close()
+            except Exception:
                 pass
+            self.movement_server_socket = None

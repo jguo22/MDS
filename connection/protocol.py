@@ -169,7 +169,7 @@ class ConnectionBase:
 
     def __init__(self):
         self.video_socket: Optional[socket.socket] = None
-        self.coord_socket: Optional[socket.socket] = None
+        self.movement_socket: Optional[socket.socket] = None
         self.running = False
 
     def close(self):
@@ -181,9 +181,9 @@ class ConnectionBase:
             except BaseException:
                 pass
             self.video_socket = None
-        if self.coord_socket:
+        if self.movement_socket:
             try:
-                self.coord_socket.close()
+                self.movement_socket.close()
             except BaseException:
                 pass
-            self.coord_socket = None
+            self.movement_socket = None
