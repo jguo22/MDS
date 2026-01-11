@@ -48,6 +48,7 @@ def main():
     # Connect and stream
     try:
         if streamer.connect():
+            print("connected")
             streamer.stream(max_fps=args.fps)
     except KeyboardInterrupt:
         print("\nShutting down...")

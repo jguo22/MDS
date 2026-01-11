@@ -49,7 +49,8 @@ class PiStreamer(protocol.ConnectionBase):
         self.movement_port = movement_port
         # Client sockets for communication
         self.video_client_socket: Optional[socket.socket] = None
-        self.movement_client_socket: Optional[socket.socket] = None  # Store source for reopening
+        # Store source for reopening
+        self.movement_client_socket: Optional[socket.socket] = None
         self.frame_id = 0
         self.movement_callback: Optional[Callable[[
             float, float, float], None]] = None
@@ -64,22 +65,25 @@ class PiStreamer(protocol.ConnectionBase):
         """
         self.movement_callback = callback
 
-    def connect(self, max_attempts: int = 5, initial_delay: float = 1.0) -> bool:
+    def connect(
+            self,
+            max_attempts: int = 5,
+            initial_delay: float = 1.0) -> bool:
         """
         Connect to the computer. Returns True if successful.
-        
+
         Args:
             max_attempts: Maximum number of connection attempts
             initial_delay: Initial delay between attempts in seconds (will double after each attempt)
-            
+
         Returns:
             bool: True if connection was successful, False otherwise
         """
         self.close()
         attempt = 0
         delay = initial_delay
-        
-        while attempt < max_attempts and self.running:
+
+        while True:
             attempt += 1
             try:
                 # Connect video client socket
@@ -87,38 +91,46 @@ class PiStreamer(protocol.ConnectionBase):
                     socket.AF_INET, socket.SOCK_STREAM)
                 self.video_client_socket.settimeout(config.SOCKET_TIMEOUT)
                 self.video_client_socket.connect((self.host, self.video_port))
-                print(f"Connected video stream to {self.host}:{self.video_port}")
+                print(
+                    f"Connected video stream to {self.host}:{self.video_port}")
 
                 # Connect to movement command server
                 self.movement_client_socket = socket.socket(
                     socket.AF_INET, socket.SOCK_STREAM)
                 self.movement_client_socket.settimeout(config.SOCKET_TIMEOUT)
-                self.movement_client_socket.connect((self.host, self.movement_port))
-                print(f"Connected to movement command server at {self.host}:{self.movement_port}")
+                self.movement_client_socket.connect(
+                    (self.host, self.movement_port))
+                print(
+                    f"Connected to movement command server at {self.host}:{self.movement_port}")
 
                 # Start movement receiver thread
-                if not hasattr(self, '_movement_thread') or not self._movement_thread.is_alive():
-                    self._movement_thread = threading.Thread(target=self._movement_receiver, daemon=True)
+                if not hasattr(
+                        self,
+                        '_movement_thread') or not self._movement_thread.is_alive():
+                    self._movement_thread = threading.Thread(
+                        target=self._movement_receiver, daemon=True)
                     self._movement_thread.start()
                     print("Movement receiver thread started")
 
                 return True
-                
+
             except socket.error as e:
                 if attempt >= max_attempts:
-                    print(f"Failed to connect after {max_attempts} attempts: {e}")
+                    print(
+                        f"Failed to connect after {max_attempts} attempts: {e}")
                     self.close()
                     return False
-                    
-                print(f"Connection attempt {attempt} failed: {e}, retrying in {delay:.1f}s...")
+
+                print(
+                    f"Connection attempt {attempt} failed: {e}, retrying in {delay:.1f}s...")
                 time.sleep(delay)
                 delay = min(delay * 2, 10)  # Exponential backoff with max 10s
-                
+
             except Exception as e:
                 print(f"Unexpected error during connection: {e}")
                 self.close()
                 return False
-                
+
         return False
 
     def start_camera(self, source: str = "usb0") -> bool:
@@ -169,31 +181,37 @@ class PiStreamer(protocol.ConnectionBase):
 
                 try:
                     # Each movement command is 12 bytes (3 floats)
-                    data = protocol._recv_exact(self.movement_client_socket, 12)
+                    data = protocol._recv_exact(
+                        self.movement_client_socket, 12)
                     if data is None:
                         print("Received None data, connection may be closed")
                         self.movement_client_socket = None
                         continue
-                        
+
                     if len(data) != 12:
-                        print(f"Received invalid data length: {len(data)} bytes, expected 12")
+                        print(
+                            f"Received invalid data length: {len(data)} bytes, expected 12")
                         print(f"Data: {data}")
                         self.movement_client_socket = None
                         continue
 
                     try:
                         # Unpack the three floats
-                        left_coef, right_coef, distance = struct.unpack('!fff', data)
-                        print(f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
-                        
+                        left_coef, right_coef, distance = struct.unpack(
+                            '!fff', data)
+                        print(
+                            f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
+
                         if self.movement_callback:
                             try:
-                                self.movement_callback(float(left_coef), float(right_coef), float(distance))
+                                self.movement_callback(
+                                    float(left_coef), float(right_coef), float(distance))
                             except Exception as e:
-                                print(f"Error in movement callback: {type(e).__name__}: {e}")
+                                print(
+                                    f"Error in movement callback: {type(e).__name__}: {e}")
                                 import traceback
                                 traceback.print_exc()
-                    
+
                     except struct.error as e:
                         print(f"Failed to unpack movement command: {e}")
                         print(f"Raw data: {data}")
@@ -204,9 +222,10 @@ class PiStreamer(protocol.ConnectionBase):
                     print(f"Movement socket error ({type(e).__name__}): {e}")
                     self.movement_client_socket = None
                     time.sleep(1)
-                    
+
             except Exception as e:
-                print(f"Unexpected error in movement receiver: {type(e).__name__}: {e}")
+                print(
+                    f"Unexpected error in movement receiver: {type(e).__name__}: {e}")
                 import traceback
                 traceback.print_exc()
                 time.sleep(1)
