@@ -3,7 +3,6 @@ Protocol utilities for reliable message passing over TCP sockets.
 """
 
 import struct
-import json
 import socket
 from typing import Optional, Tuple
 
@@ -114,50 +113,54 @@ def recv_frame(sock: socket.socket) -> Optional[Tuple[int, bytes]]:
     return frame_id, frame_data
 
 
-def send_coordinates(sock: socket.socket, x: float, y: float,
-                     frame_id: int = 0, extra: dict = None) -> bool:
+def send_movement(sock: socket.socket, left_coef: float, right_coef: float,
+                  distance: float) -> bool:
     """
-    Send x,y coordinates back to the Pi.
+    Send movement commands to the Pi.
 
     Args:
         sock: Socket to send on
-        x: X coordinate
-        y: Y coordinate
-        frame_id: Corresponding frame ID
-        extra: Optional extra data dict
+        left_coef: Left motor coefficient (-1.0 to 1.0)
+        right_coef: Right motor coefficient (-1.0 to 1.0)
+        distance: Distance to move (in meters)
 
     Returns:
         True if successful
     """
-    payload = {
-        'x': x,
-        'y': y,
-        'frame_id': frame_id,
-    }
-    if extra:
-        payload['extra'] = extra
-
-    data = json.dumps(payload).encode('utf-8')
-    return send_message(sock, data)
+    try:
+        # Pack three 4-byte floats (12 bytes total)
+        data = struct.pack('!fff', left_coef, right_coef, distance)
+        return send_message(sock, data)
+    except struct.error as e:
+        print(f"Failed to pack movement command: {e}")
+        return False
 
 
-def recv_coordinates(sock: socket.socket) -> Optional[dict]:
+def recv_movement(sock: socket.socket) -> Optional[dict]:
     """
-    Receive x,y coordinates.
+    Receive movement commands.
 
     Args:
         sock: Socket to receive from
 
     Returns:
-        Dict with 'x', 'y', 'frame_id' keys or None if failed
+        Dict with 'left_coef', 'right_coef', 'distance' or None if failed
     """
-    data = recv_message(sock)
-    if data is None:
+    # Each float is 4 bytes, so we expect 12 bytes total
+    data = _recv_exact(sock, 12)
+    if data is None or len(data) != 12:
         return None
 
     try:
-        return json.loads(data.decode('utf-8'))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        # Unpack three 4-byte floats
+        left_coef, right_coef, distance = struct.unpack('!fff', data)
+        return {
+            'left_coef': left_coef,
+            'right_coef': right_coef,
+            'distance': distance
+        }
+    except struct.error as e:
+        print(f"Failed to unpack movement command: {e}")
         return None
 
 

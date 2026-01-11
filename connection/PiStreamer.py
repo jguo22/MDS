@@ -1,10 +1,14 @@
 """
-Raspberry Pi video streamer - sends video frames to computer and receives coordinates.
+Raspberry Pi video streamer - sends video frames to computer and receives movement commands.
+
+This module handles the Raspberry Pi side of the video streaming and movement control system.
+It streams video frames to a connected computer and receives movement commands consisting
+of left/right motor coefficients and distance.
 
 Usage:
     python -m connection.pi_streamer --camera usb0 --host 192.168.1.101
 
-Run on the Raspberry Pi.
+Run on the Raspberry Pi that will stream video and receive movement commands.
 """
 
 import socket
@@ -12,6 +16,7 @@ import threading
 import time
 import cv2
 from typing import Callable, Optional
+import struct
 
 from . import config
 from . import protocol
@@ -20,9 +25,11 @@ from .CameraCapture import CameraCapture
 
 class PiStreamer(protocol.ConnectionBase):
     """
-    Video streamer for Raspberry Pi.
+    Video streamer and movement command receiver for Raspberry Pi.
 
-    Streams video frames to a computer and receives x,y coordinates back.
+    Handles the Raspberry Pi side of the video streaming and movement control system.
+    Streams video frames to a connected computer and receives movement commands
+    consisting of left/right motor coefficients and distance.
     """
 
     def __init__(self, host: str = config.COMPUTER_IP,
@@ -43,19 +50,19 @@ class PiStreamer(protocol.ConnectionBase):
         self.camera: Optional[CameraCapture] = None
         self._camera_source: Optional[str] = None  # Store source for reopening
         self.frame_id = 0
-        self.on_coordinates: Optional[Callable[[
-            float, float, int, dict], None]] = None
+        self.movement_callback: Optional[Callable[[
+            float, float, float], None]] = None
         self._coord_thread: Optional[threading.Thread] = None
 
-    def set_coordinate_callback(
-            self, callback: Callable[[float, float, int, dict], None]):
+    def set_movement_callback(
+            self, callback: Callable[[float, float, float], None]):
         """
         Set callback for when coordinates are received.
 
         Args:
             callback: Function(x, y, frame_id, extra) called on coordinate receipt
         """
-        self.on_coordinates = callback
+        self.movement_callback = callback
 
     def connect(self) -> bool:
         """Connect to the computer. Returns True if successful."""
@@ -124,28 +131,34 @@ class PiStreamer(protocol.ConnectionBase):
             print("Camera reopened successfully")
         return True
 
-    def _coordinate_receiver(self):
-        """Background thread to receive coordinates."""
+    latest_coords = None
+
+    def _movement_receiver(self):
+        """Background thread to receive movement commands."""
         while self.running:
             try:
-                coords = protocol.recv_coordinates(self.coord_socket)
-                if coords is None:
+                # Each movement command is 12 bytes (3 floats)
+                data = protocol._recv_exact(self.coord_socket, 12)
+                if data is None or len(data) != 12:
                     print(
-                        "Coordinate connection lost. Disconnecting to find new client...")
+                        "Movement command connection lost. Disconnecting to find new client...")
                     self.running = False  # Signal main stream loop to stop
                     break
-                if self.on_coordinates:
-                    self.on_coordinates(
-                        coords.get('x', 0),
-                        coords.get('y', 0),
-                        coords.get('frame_id', 0),
-                        coords.get('extra', {})
-                    )
+
+                # Unpack the three floats
+                left_coef, right_coef, distance = struct.unpack('!fff', data)
+
+                if self.movement_callback:
+                    self.movement_callback(left_coef, right_coef, distance)
+
             except socket.timeout:
+                continue
+            except struct.error as e:
+                print(f"Invalid movement command format: {e}")
                 continue
             except Exception as e:
                 print(
-                    f"Coordinate receiver error: {e}. Disconnecting to find new client...")
+                    f"Movement command receiver error: {e}. Disconnecting to find new client...")
                 self.running = False  # Signal main stream loop to stop
                 break
 
@@ -169,7 +182,7 @@ class PiStreamer(protocol.ConnectionBase):
 
         # Start coordinate receiver thread
         self._coord_thread = threading.Thread(
-            target=self._coordinate_receiver, daemon=True)
+            target=self._movement_receiver, daemon=True)
         self._coord_thread.start()
 
         print("Streaming started. Press Ctrl+C to stop.")

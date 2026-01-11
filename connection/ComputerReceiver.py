@@ -1,10 +1,14 @@
 """
-Computer video receiver - receives video from Pi and sends coordinates back.
+Computer video receiver - receives video from Pi and sends movement commands back.
+
+This module handles the computer-side video streaming and movement command interface.
+It receives video frames from the Raspberry Pi and sends back movement commands
+consisting of motor coefficients and distance.
 
 Usage:
-	python -m connection.computer_receiver --host 0.0.0.0
+    python -m connection.computer_receiver --host 0.0.0.0
 
-Run on the computer that will process the video.
+Run on the computer that will process the video and send movement commands.
 """
 
 import socket
@@ -13,6 +17,7 @@ import time
 from typing import Callable, Optional, Tuple
 import cv2
 import numpy as np
+import struct
 
 from . import config
 from . import protocol
@@ -20,9 +25,11 @@ from . import protocol
 
 class ComputerReceiver(protocol.ConnectionBase):
     """
-    Video receiver for computer.
+    Video receiver and movement command sender for computer.
 
-    Receives video frames from Raspberry Pi and sends x,y coordinates back.
+    Handles the computer-side of the video streaming and movement control system.
+    Receives video frames from Raspberry Pi and sends back movement commands
+    consisting of left/right motor coefficients and distance.
     """
 
     def __init__(self, host: str = "0.0.0.0",
@@ -46,8 +53,8 @@ class ComputerReceiver(protocol.ConnectionBase):
         self.client_video: Optional[socket.socket] = None
         self.client_coord: Optional[socket.socket] = None
 
-        self.on_frame: Optional[Callable[[np.ndarray,
-                                          int], Optional[Tuple[float, float]]]] = None
+        self.on_frame: Optional[Callable[[np.ndarray, int],
+                                         Optional[Tuple[float, float, float]]]] = None
         self.latest_frame: Optional[np.ndarray] = None
         self.latest_frame_id: int = 0
         self._lock = threading.Lock()
@@ -55,11 +62,15 @@ class ComputerReceiver(protocol.ConnectionBase):
     def set_frame_callback(
             self, callback: Callable[[np.ndarray, int], Optional[Tuple[float, float]]]):
         """
-        Set callback for processing frames.
+        Set callback for processing frames and generating movement commands.
 
         Args:
-                callback: Function(frame, frame_id) -> (x, y) or None
-                                 Return coordinates to send back, or None to skip
+                callback: Function(frame, frame_id) -> (left_coef, right_coef, distance) or None
+                                 Return movement command as a tuple of (left_coef, right_coef, distance),
+                                 or None to skip sending movement command.
+                                 - left_coef: Left motor coefficient (-1.0 to 1.0)
+                                 - right_coef: Right motor coefficient (-1.0 to 1.0)
+                                 - distance: Distance to move (in meters)
         """
         self.on_frame = callback
 
@@ -108,24 +119,32 @@ class ComputerReceiver(protocol.ConnectionBase):
             print(f"Connection error: {e}")
             return False
 
-    def send_coordinates(self, x: float, y: float, frame_id: int = 0,
-                         extra: dict = None) -> bool:
+    def send_movement(
+            self,
+            left_coef: float,
+            right_coef: float,
+            distance: float) -> bool:
         """
-        Send coordinates back to the Pi.
+        Send movement commands to the Pi.
 
         Args:
-                x: X coordinate
-                y: Y coordinate
-                frame_id: Corresponding frame ID
-                extra: Optional extra data
+                left_coef: Left motor coefficient (-1.0 to 1.0)
+                right_coef: Right motor coefficient (-1.0 to 1.0)
+                distance: Distance to move (in meters)
 
         Returns:
                 True if successful
         """
         if not self.client_coord:
             return False
-        return protocol.send_coordinates(
-            self.client_coord, x, y, frame_id, extra)
+
+        try:
+            # Pack three 4-byte floats (12 bytes total)
+            data = struct.pack('!fff', left_coef, right_coef, distance)
+            return protocol.send_message(self.client_coord, data)
+        except struct.error as e:
+            print(f"Failed to pack movement command: {e}")
+            return False
 
     def get_latest_frame(self) -> Optional[Tuple[np.ndarray, int]]:
         """Get the latest received frame. Thread-safe."""
@@ -174,15 +193,12 @@ class ComputerReceiver(protocol.ConnectionBase):
                     self.latest_frame = frame.copy()
                     self.latest_frame_id = frame_id
 
-                # Process frame with callback
-                coords = None
+                # Process frame with callback and get movement command
                 if self.on_frame:
-                    coords = self.on_frame(frame, frame_id)
-
-                # Send coordinates if provided
-                if coords is not None:
-                    x, y = coords
-                    self.send_coordinates(x, y, frame_id)
+                    movement = self.on_frame(frame, frame_id)
+                    if movement is not None:
+                        left_coef, right_coef, distance = movement
+                        self.send_movement(left_coef, right_coef, distance)
 
                 # Calculate FPS
                 frame_count += 1

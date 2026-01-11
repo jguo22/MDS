@@ -33,18 +33,11 @@ def main():
     thread = threading.Thread(target=nav.activate)
     thread.start()
 
-    # Set up coordinate callback
-    def on_coords(x, y, frame_id, extra):
-        print(f"Received coords: x={x:.2f}, y={y:.2f}, frame={frame_id}")
-        distance = math.sqrt(x * x + y * y)
-        theta = math.atan(x / y)
-        print(distance)
-        print(theta)
-        nav.start_rotate(theta)
-        time.sleep(1)  # TODO: make it actually check when its finished
-        nav.start_forward_mm(distance)
-
-    streamer.set_coordinate_callback(on_coords)
+    # Set up movement callback
+    # movement callback gets called when the pi receives a movement command
+    # from the computer in the form of l_c, r_c, dist,
+    # and calls a function with those three arguments
+    streamer.set_movement_callback(nav.startPath)
 
     # Start camera
     if not streamer.start_camera(args.camera):
