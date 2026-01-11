@@ -146,13 +146,8 @@ class ComputerReceiver(protocol.ConnectionBase):
         if not self.movement_client_socket:
             return False
 
-        try:
-            # Pack three 4-byte floats (12 bytes total)
-            data = struct.pack('!fff', left_coef, right_coef, distance)
-            return protocol.send_message(self.movement_client_socket, data)
-        except struct.error as e:
-            print(f"Failed to pack movement command: {e}")
-            return False
+        return protocol.send_movement(
+            self.movement_client_socket, left_coef, right_coef, distance)
 
     def get_latest_frame(self) -> Optional[Tuple[np.ndarray, int]]:
         """Get the latest received frame. Thread-safe."""

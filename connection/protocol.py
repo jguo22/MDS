@@ -146,8 +146,8 @@ def recv_movement(sock: socket.socket) -> Optional[dict]:
     Returns:
         Dict with 'left_coef', 'right_coef', 'distance' or None if failed
     """
-    # Each float is 4 bytes, so we expect 12 bytes total
-    data = _recv_exact(sock, 12)
+    # Receive message with length header
+    data = recv_message(sock)
     if data is None or len(data) != 12:
         return None
 

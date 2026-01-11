@@ -16,7 +16,6 @@ import threading
 import time
 import cv2
 from typing import Callable, Optional
-import struct
 
 from . import config
 from . import protocol
