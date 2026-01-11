@@ -47,13 +47,8 @@ def main():
 
     # Connect and stream
     try:
-        while True:
-            print("a")
-            if streamer.connect():
-                streamer.stream(max_fps=args.fps)
-            print("b")
-            print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
-            time.sleep(config.RECONNECT_DELAY)
+        if streamer.connect():
+            streamer.stream(max_fps=args.fps)
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
