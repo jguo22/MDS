@@ -2,6 +2,7 @@ from raven import Raven
 import math
 import time
 import threading
+from typing import Tuple
 
 
 class Nav:
@@ -116,11 +117,11 @@ class Nav:
             self.requested_path = [
                 left_coefficient, right_coefficient, distance]
 
-    def get_forward_mm(self, distance_mm):
+    def get_forward_mm(self, distance_mm: float) -> Tuple[float, float, float]:
         distance = distance_mm / (self.WHEEL_D * math.pi) * self.TICK_ROTATION
-        return [1, 1, distance]
+        return (1, 1, distance)
 
-    def get_rotate(self, theta):
+    def get_rotate(self, theta: float) -> Tuple[float, float, float]:
         # make into range -pi to pi
         theta = theta % (2 * math.pi)
         if theta > math.pi:
@@ -129,6 +130,6 @@ class Nav:
             theta += 2 * math.pi
 
         if theta >= 0:
-            return [1, -1, self.TICK_ROTATION * theta]
+            return (1, -1, self.TICK_ROTATION * theta)
         else:
-            return [-1, 1, self.TICK_ROTATION * -theta]
+            return (-1, 1, self.TICK_ROTATION * -theta)

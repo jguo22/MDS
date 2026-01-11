@@ -2,6 +2,8 @@ import time
 import argparse
 import cv2
 import numpy as np
+import math
+from nav import Nav
 from typing import Optional, Tuple
 from connection import config
 from connection.ComputerReceiver import ComputerReceiver
@@ -18,6 +20,9 @@ class ClickProcessor:
         cv2.namedWindow(self.window_name)
         cv2.setMouseCallback(self.window_name, self._mouse_callback)
 
+        # using this for calcuations only
+        self.nav = Nav()
+
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             if self.frame_size[0] > 0 and self.frame_size[1] > 0:
@@ -31,6 +36,15 @@ class ClickProcessor:
                 self.click_coords = (x_scaled, y_scaled)
                 print(
                     f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
+
+                distance = math.sqrt(x * x + y * y)
+                theta = math.atan(x / y)
+                print(distance)
+                print(theta)
+
+                rotate = (time.time(), *self.nav.get_rotate(theta))
+                move = (time.time() + 1, *self.nav.get_forward_mm(distance))
+                self.planned_moves = [rotate, move]
 
     def process(self, frame: np.ndarray,
                 frame_id: int) -> Optional[Tuple[float, float, float]]:
