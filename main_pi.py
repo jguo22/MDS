@@ -1,7 +1,6 @@
 import time
 import argparse
 from nav import Nav
-import math
 import threading
 from connection import config
 from connection.PiStreamer import PiStreamer

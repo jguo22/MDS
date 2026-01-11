@@ -54,13 +54,13 @@ class ComputerReceiver(protocol.ConnectionBase):
         self.client_coord: Optional[socket.socket] = None
 
         self.on_frame: Optional[Callable[[np.ndarray, int],
-                                         Optional[Tuple[float, float, float]]]] = None
+                                Optional[Tuple[float, float, float]]]] = None
         self.latest_frame: Optional[np.ndarray] = None
         self.latest_frame_id: int = 0
         self._lock = threading.Lock()
 
-    def set_frame_callback(
-            self, callback: Callable[[np.ndarray, int], Optional[Tuple[float, float]]]):
+    def set_frame_callback(self, callback: Callable[[
+            np.ndarray, int], Optional[Tuple[float, float, float]]]):
         """
         Set callback for processing frames and generating movement commands.
 
@@ -70,7 +70,7 @@ class ComputerReceiver(protocol.ConnectionBase):
                                  or None to skip sending movement command.
                                  - left_coef: Left motor coefficient (-1.0 to 1.0)
                                  - right_coef: Right motor coefficient (-1.0 to 1.0)
-                                 - distance: Distance to move (in meters)
+                                 - distance: Distance to move (in ticks)
         """
         self.on_frame = callback
 

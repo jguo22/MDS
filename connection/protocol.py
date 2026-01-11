@@ -122,7 +122,7 @@ def send_movement(sock: socket.socket, left_coef: float, right_coef: float,
         sock: Socket to send on
         left_coef: Left motor coefficient (-1.0 to 1.0)
         right_coef: Right motor coefficient (-1.0 to 1.0)
-        distance: Distance to move (in meters)
+        distance: Distance to move (in ticks)
 
     Returns:
         True if successful

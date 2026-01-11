@@ -35,6 +35,7 @@ class Nav:
         # for thread safety
         # make sure to not spam use the lock
         # and make operations inside the lock quick
+        self.has_requested_path = False
         self.requested_path = [0, 0, 0]
         self.lock = threading.Lock()
 
@@ -63,9 +64,9 @@ class Nav:
             with self.lock:
                 # if there is a requested path, start the path
                 # and clear the request
-                if self.requested_path[2] != 0:
+                if self.has_requested_path:
                     self._startRequestedPath(*self.requested_path)
-                    self.requested_path = [0, 0, 0]
+                    self.has_requested_path = False
 
             # get delta_time and sleep
             delta_time = time.time() - start_time
@@ -111,14 +112,15 @@ class Nav:
         also, spamming is useless because each path overrides the previous
         """
         with self.lock:
+            self.has_requested_path = True
             self.requested_path = [
                 left_coefficient, right_coefficient, distance]
 
-    def start_forward_mm(self, distance_mm):
+    def get_forward_mm(self, distance_mm):
         distance = distance_mm / (self.WHEEL_D * math.pi) * self.TICK_ROTATION
-        self.startPath(1, 1, distance)
+        return [1, 1, distance]
 
-    def start_rotate(self, theta):
+    def get_rotate(self, theta):
         # make into range -pi to pi
         theta = theta % (2 * math.pi)
         if theta > math.pi:
@@ -127,8 +129,6 @@ class Nav:
             theta += 2 * math.pi
 
         if theta >= 0:
-            self.startPath(
-                1, -1, self.TICK_ROTATION * theta)
+            return [1, -1, self.TICK_ROTATION * theta]
         else:
-            self.startPath(
-                -1, 1, self.TICK_ROTATION * -theta)
+            return [-1, 1, self.TICK_ROTATION * -theta]

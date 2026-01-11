@@ -12,7 +12,11 @@ class ClickProcessor:
         self.window_name = window_name
         self.click_coords = None
         self.frame_size = (1000, 1000)  # (width, height)
-        self._setup = False
+        # list of time of starting path, l_c, r_c, dist
+        self.planned_moves: list[Tuple[float, float, float, float]] = []
+
+        cv2.namedWindow(self.window_name)
+        cv2.setMouseCallback(self.window_name, self._mouse_callback)
 
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -29,19 +33,21 @@ class ClickProcessor:
                     f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
 
     def process(self, frame: np.ndarray,
-                frame_id: int) -> Optional[Tuple[float, float]]:
-        if not self._setup:
-            cv2.namedWindow(self.window_name)
-            cv2.setMouseCallback(self.window_name, self._mouse_callback)
-            self._setup = True
-
+                frame_id: int) -> Optional[Tuple[float, float, float]]:
         # Update frame dimensions
         self.frame_size = (frame.shape[1], frame.shape[0])
 
-        # Return and clear click coordinates
-        coords = self.click_coords
-        self.click_coords = None
-        return coords
+        if len(self.planned_moves) == 0:
+            return None
+
+        # get the earliest planned move
+        plan = self.planned_moves[0]
+        # check if the first plan is ready to be executed
+        if (time.time() >= plan[0]):
+            self.planned_moves = self.planned_moves[1:]
+            return plan[1:]
+        else:
+            return None
 
 
 def main():
