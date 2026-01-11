@@ -3,7 +3,7 @@ import argparse
 import cv2
 import numpy as np
 import math
-import traceback
+
 from nav import Nav
 from typing import Optional, Tuple
 from connection import config
@@ -93,23 +93,18 @@ def main():
     if not receiver.start_servers():
         return
 
-    if not receiver.wait_for_connection():
-        return
+    while True:
+        print("connecting")
+        if receiver.wait_for_connection():
+            print("Starting receive loop...")
+            receiver.receive_loop(
+                show_video=not args.no_display,
+                window_name=window_name
+            )
 
-    try:
-        print("Starting receive loop...")
-        receiver.receive_loop(
-            show_video=not args.no_display,
-            window_name=window_name
-        )
-    except (ConnectionError, OSError) as e:
-        traceback.print_exc()
-        print(f"Connection error: {e}")
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-    except Exception as e:
-        traceback.print_exc()
-        print(f"Unexpected error: {e}")
+        wait_time = config.RECONNECT_DELAY
+        print(f"Waiting for {wait_time} seconds before reconnecting")
+        time.sleep(wait_time)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,31 @@ from typing import Optional, Tuple
 from . import config
 
 
+def close_socket(sock: Optional[socket.socket]) -> None:
+    """
+    Safely close a socket with proper error handling.
+
+    Args:
+        sock: Socket to close, or None
+    """
+    if sock is None:
+        return
+
+    try:
+        # Shutdown socket to stop any ongoing operations
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except (OSError, socket.error):
+            # Socket may already be closed or not connected
+            pass
+
+        # Close the socket
+        sock.close()
+    except Exception as e:
+        # Catch any other unexpected errors during close
+        print(f"Error closing socket: {e}")
+
+
 def send_message(sock: socket.socket, data: bytes) -> bool:
     """
     Send a message with a length header.
@@ -113,77 +138,83 @@ def recv_frame(sock: socket.socket) -> Optional[Tuple[int, bytes]]:
     return frame_id, frame_data
 
 
-def send_movement(sock: socket.socket, left_coef: float, right_coef: float,
-                  distance: float) -> bool:
+def send_command(
+        sock: socket.socket,
+        msg_type: int,
+        args: list[float]) -> bool:
     """
-    Send movement commands to the Pi.
+    Send a generic command message.
 
     Args:
         sock: Socket to send on
-        left_coef: Left motor coefficient (-1.0 to 1.0)
-        right_coef: Right motor coefficient (-1.0 to 1.0)
-        distance: Distance to move (in ticks)
+        msg_type: Message type identifier (0-255)
+        args: List of float arguments
 
     Returns:
         True if successful
     """
     try:
-        # Pack three 4-byte floats (12 bytes total)
-        data = struct.pack('!fff', left_coef, right_coef, distance)
+        # Validate message type and argument count
+        if msg_type not in config.MESSAGE_ARG_COUNTS:
+            print(f"Unknown message type: {msg_type}")
+            return False
+
+        expected_arg_count = config.MESSAGE_ARG_COUNTS[msg_type]
+        if len(args) != expected_arg_count:
+            print(
+                f"Invalid argument count for message type {msg_type}: expected {expected_arg_count}, got {len(args)}")
+            return False
+
+        # Pack: 1-byte message type + N 4-byte floats
+        data = struct.pack('!B', msg_type) + \
+            struct.pack(f'!{len(args)}f', *args)
         return send_message(sock, data)
     except struct.error as e:
-        print(f"Failed to pack movement command: {e}")
+        print(f"Failed to pack command: {e}")
         return False
 
 
-def recv_movement(sock: socket.socket) -> Optional[dict]:
+def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
     """
-    Receive movement commands.
+    Receive a generic command message.
 
     Args:
         sock: Socket to receive from
 
     Returns:
-        Dict with 'left_coef', 'right_coef', 'distance' or None if failed
+        Tuple of (msg_type, args) where args is a list of floats, or None if failed
     """
     # Receive message with length header
     data = recv_message(sock)
-    if data is None or len(data) != 12:
+    if data is None or len(data) < 1:
         return None
 
     try:
-        # Unpack three 4-byte floats
-        left_coef, right_coef, distance = struct.unpack('!fff', data)
-        return {
-            'left_coef': left_coef,
-            'right_coef': right_coef,
-            'distance': distance
-        }
+        # Unpack message type (1 byte)
+        msg_type = struct.unpack('!B', data[:1])[0]
+
+        # Get expected argument count for this message type
+        if msg_type not in config.MESSAGE_ARG_COUNTS:
+            print(f"Unknown message type: {msg_type}")
+            return None
+
+        expected_arg_count = config.MESSAGE_ARG_COUNTS[msg_type]
+
+        # Validate message length
+        # 1 byte type + N floats
+        expected_length = 1 + (expected_arg_count * 4)
+        if len(data) != expected_length:
+            print(
+                f"Invalid message length for type {msg_type}: expected {expected_length}, got {len(data)}")
+            return None
+
+        # Unpack float arguments based on message type
+        if expected_arg_count > 0:
+            args = list(struct.unpack(f'!{expected_arg_count}f', data[1:]))
+        else:
+            args = []
+
+        return msg_type, args
     except struct.error as e:
-        print(f"Failed to unpack movement command: {e}")
+        print(f"Failed to unpack command: {e}")
         return None
-
-
-class ConnectionBase:
-    """Base class for connection handling."""
-
-    def __init__(self):
-        self.video_socket: Optional[socket.socket] = None
-        self.movement_socket: Optional[socket.socket] = None
-        self.running = False
-
-    def close(self):
-        """Close all sockets."""
-        self.running = False
-        if self.video_socket:
-            try:
-                self.video_socket.close()
-            except BaseException:
-                pass
-            self.video_socket = None
-        if self.movement_socket:
-            try:
-                self.movement_socket.close()
-            except BaseException:
-                pass
-            self.movement_socket = None

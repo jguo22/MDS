@@ -2,58 +2,72 @@ import time
 import argparse
 from nav import Nav
 import threading
+import traceback
 from connection import config
 from connection.PiStreamer import PiStreamer
+from connection.CameraCapture import CameraCapture
 
 
 def main():
     parser = argparse.ArgumentParser(description="Raspberry Pi Video Streamer")
     parser.add_argument(
-        "--host",
-        default=config.COMPUTER_IP,
-        help=f"Computer IP address (default: {config.COMPUTER_IP})")
-    parser.add_argument(
         "--camera",
         default="usb0",
         help="Camera source: usb0, usb1, picamera0, etc. (default: usb0)")
-    parser.add_argument("--fps", type=float, default=30.0,
-                        help="Maximum FPS (default: 30)")
-    parser.add_argument("--video-port", type=int, default=config.VIDEO_PORT,
-                        help=f"Video port (default: {config.VIDEO_PORT})")
-    parser.add_argument(
-        "--coord-port",
-        type=int,
-        default=config.MOVEMENT_PORT,
-        help=f"Coordinate port (default: {config.MOVEMENT_PORT})")
     args = parser.parse_args()
 
-    # Create streamer
-    streamer = PiStreamer(args.host, args.video_port, args.coord_port)
+    # Create camera (managed externally, persists across reconnections)
+    camera = CameraCapture(
+        args.camera,
+        config.FRAME_WIDTH,
+        config.FRAME_HEIGHT)
+    if not camera.open():
+        print(f"Failed to open camera: {args.camera}")
+        return
+
     nav = Nav()
 
     # activate the navigation in another thread
     thread = threading.Thread(target=nav.activate, daemon=True)
     thread.start()
 
-    # Set up movement callback
-    # movement callback gets called when the pi receives a movement command
-    # from the computer in the form of l_c, r_c, dist,
-    # and calls a function with those three arguments
-    streamer.set_movement_callback(nav.startPath)
+    # Reconnection loop - each connection uses a new PiStreamer instance
+    while True:
+        try:
+            print(f"\nConnecting to {config.COMPUTER_IP}...")
 
-    # Start camera
-    if not streamer.start_camera(args.camera):
-        return
+            # Create new streamer instance for this connection
+            streamer = PiStreamer(
+                camera=camera,
+                host=config.COMPUTER_IP,
+                video_port=config.VIDEO_PORT,
+                command_port=config.COMMAND_PORT
+            )
 
-    # Connect and stream
-    try:
-        if streamer.connect():
-            print("connected")
-            streamer.stream(max_fps=args.fps)
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-    finally:
-        streamer.shutdown()
+            # Set up movement callback
+            streamer.set_movement_callback(nav.startPath)
+
+            # Attempt connection and stream
+            if streamer.connect():
+                print("Connected! Streaming...")
+                streamer.stream(max_fps=config.DEFAULT_MAX_FPS)
+                # stream() blocks until disconnected
+                print("Stream ended")
+            else:
+                print("Connection failed")
+
+            # Brief pause before reconnecting
+            print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
+            time.sleep(config.RECONNECT_DELAY)
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+            break
+        except Exception as e:
+            print(e)
+            traceback.print_exc()
+            continue
+    camera.close()
+    print("Camera closed")
 
 
 if __name__ == "__main__":

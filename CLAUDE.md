@@ -39,21 +39,28 @@ The `connection/` module provides a bidirectional communication system between t
 
 **Protocol Details:**
 - **Transport**: TCP (`socket.SOCK_STREAM`) for reliable delivery
-- **Message Format**: Custom framing with 8-byte length headers (`struct.pack('!Q', len(data))`)
+- **Message Framing**: Custom framing with 8-byte length headers (`struct.pack('!Q', len(data))`)
 - **Video Frames**: 4-byte frame_id + JPEG-encoded data
-- **Movement Commands**: 12 bytes with three 4-byte floats (left_coef, right_coef, distance)
+- **Command Messages**: Generic message protocol with 1-byte message type + fixed-length float arguments
+  - Message Type 0 (Close): No arguments - gracefully closes connection
+  - Message Type 1 (Movement): `[left_coef, right_coef, distance]` (3 floats)
+  - Format: `struct.pack('!B', msg_type) + struct.pack('!Nf', *args)` where N is defined per message type
+  - Argument counts are validated based on message type in `config.MESSAGE_ARG_COUNTS`
+  - Extensible design allows adding new message types (0-255) with different argument counts
 - **Why TCP not RTP**: Provides reliable, ordered delivery with automatic retransmission. RTP/UDP would offer lower latency but no delivery guarantees.
 
 **Running on Raspberry Pi:**
 ```bash
-# Run PiStreamer to send video and receive movement commands
-python3 -m connection.pi_streamer --camera usb0 --host 192.168.1.101
+# Run main_pi.py to send video and receive movement commands
+python3 main_pi.py --camera usb0 --host 192.168.1.101
 
 # Options:
 #   --camera: usb0, usb1, picamera0, etc.
 #   --host: Computer IP address to connect to
 #   --video-port: Video streaming port (default from config)
-#   --movement-port: Movement command port (default from config)
+#   --coord-port: Movement command port (default from config)
+#   --fps: Maximum FPS (default from config.DEFAULT_MAX_FPS)
+#   --reconnect-delay: Delay between reconnection attempts (default 2.0s)
 ```
 
 **Running on Computer:**
@@ -64,40 +71,109 @@ python3 -m connection.computer_receiver
 # The computer acts as a server listening for Pi connections
 ```
 
-**PiStreamer API:**
+**PiStreamer API (Single-Use Pattern):**
 ```python
-from connection import PiStreamer
+from connection.PiStreamer import PiStreamer
+from connection.CameraCapture import CameraCapture
+import time
 
-# Initialize and configure
-streamer = PiStreamer(host="192.168.1.101")
-streamer.start_camera("usb0")
+# Create camera once (reused across reconnections)
+camera = CameraCapture("usb0", 640, 480)
+camera.open()
 
-# Set callback for movement commands
+# Movement callback
 def handle_movement(left_coef, right_coef, distance):
     print(f"Move: L={left_coef}, R={right_coef}, D={distance}")
     # Control motors here
 
-streamer.set_movement_callback(handle_movement)
+# Reconnection loop - create new PiStreamer for each connection
+while True:
+    # Create new streamer instance for this connection
+    streamer = PiStreamer(camera=camera, host="192.168.1.101")
+    streamer.set_movement_callback(handle_movement)
 
-# Connect and stream
-if streamer.connect():
-    streamer.stream(max_fps=30.0)
+    # Connect and stream (blocks until disconnected)
+    if streamer.connect():
+        streamer.stream()  # Uses DEFAULT_MAX_FPS from config
+
+    # Brief pause before reconnecting
+    time.sleep(2.0)
+```
+
+**IMPORTANT:** PiStreamer is designed for single-use. Each instance handles one connection lifecycle.
+For reconnection, create a new PiStreamer instance while reusing the same camera.
+
+**ComputerReceiver API:**
+```python
+from connection import ComputerReceiver
+
+receiver = ComputerReceiver()
+receiver.start_servers()
+receiver.wait_for_connection()
+
+# Send movement command
+receiver.send_movement(left_coef=0.5, right_coef=0.5, distance=100.0)
+
+# Gracefully close Pi connection
+receiver.send_close()
 ```
 
 **Connection Features:**
-- Automatic reconnection with exponential backoff
-- Camera auto-recovery on frame capture failures
+- Single-use connection instances (no race conditions)
+- Clean connection lifecycle (create → connect → stream → done)
+- Camera management external to streamer (reuse across connections)
 - Configurable socket timeouts and buffer sizes
 - Frame rate limiting
-- Thread-safe movement command reception
+- Thread-safe command message reception
+- Extensible message protocol for future command types
 
 **Configuration (connection/config.py):**
 - `VIDEO_PORT`: Default 5000
 - `MOVEMENT_PORT`: Default 5001
 - `FRAME_WIDTH`, `FRAME_HEIGHT`: Video resolution (default 640x480)
 - `JPEG_QUALITY`: Compression quality (default 80)
-- `SOCKET_TIMEOUT`: Network timeout in seconds
+- `DEFAULT_MAX_FPS`: Default maximum FPS for streaming (default 30.0)
+- `SOCKET_TIMEOUT`: Network timeout in seconds (default 180.0)
+- `RECONNECT_DELAY`: Delay between reconnection attempts (default 2.0s)
 - `BUFFER_SIZE`: Socket buffer size
+- `MSG_TYPE_CLOSE`: Message type constant (0) for closing connection
+- `MSG_TYPE_MOVEMENT`: Message type constant (1) for movement commands
+- `MESSAGE_ARG_COUNTS`: Dict mapping message types to their expected argument counts
+
+**Protocol API (connection/protocol.py):**
+```python
+# Send generic command message
+protocol.send_command(socket, msg_type: int, args: list[float]) -> bool
+
+# Receive generic command message (validates arg count based on message type)
+msg_type, args = protocol.recv_command(socket) -> tuple[int, list[float]] | None
+
+# Safely close socket with proper shutdown and error handling
+protocol.close_socket(socket: Optional[socket.socket]) -> None
+
+# Example: Send close command (type 0, no args)
+protocol.send_command(sock, config.MSG_TYPE_CLOSE, [])
+
+# Example: Send movement command (type 1, 3 args)
+protocol.send_command(sock, config.MSG_TYPE_MOVEMENT, [0.5, 0.5, 100.0])
+
+# Example: Receive and handle commands
+result = protocol.recv_command(sock)
+if result:
+    msg_type, args = result
+    if msg_type == config.MSG_TYPE_CLOSE:
+        print("Connection closing...")
+        protocol.close_socket(sock)
+        break
+    elif msg_type == config.MSG_TYPE_MOVEMENT:
+        left_coef, right_coef, distance = args
+        # Handle movement...
+
+# Adding new message types:
+# 1. Add to config.py: MSG_TYPE_CUSTOM = 2
+# 2. Add to MESSAGE_ARG_COUNTS: MSG_TYPE_CUSTOM: 4
+# 3. Handle in receiver code
+```
 
 ## Vision System
 

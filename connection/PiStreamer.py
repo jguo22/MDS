@@ -5,8 +5,22 @@ This module handles the Raspberry Pi side of the video streaming and movement co
 It streams video frames to a connected computer and receives movement commands consisting
 of left/right motor coefficients and distance.
 
-Usage:
-    python -m connection.pi_streamer --camera usb0 --host 192.168.1.101
+IMPORTANT: PiStreamer is designed for single-use. Each instance handles one connection lifecycle.
+For reconnection, create a new PiStreamer instance while reusing the same camera.
+
+Usage example:
+    from connection.CameraCapture import CameraCapture
+    from connection.PiStreamer import PiStreamer
+
+    camera = CameraCapture("usb0", 640, 480)
+    camera.open()
+
+    while True:
+        streamer = PiStreamer(camera=camera, host="192.168.1.101")
+        streamer.set_movement_callback(handle_movement)
+        if streamer.connect():
+            streamer.stream()  # Blocks until disconnected
+        time.sleep(2)  # Brief pause before reconnecting
 
 Run on the Raspberry Pi that will stream video and receive movement commands.
 """
@@ -16,13 +30,14 @@ import threading
 import time
 import cv2
 from typing import Callable, Optional
+import traceback
 
 from . import config
 from . import protocol
 from .CameraCapture import CameraCapture
 
 
-class PiStreamer(protocol.ConnectionBase):
+class PiStreamer():
     """
     Video streamer and movement command receiver for Raspberry Pi.
 
@@ -31,260 +46,184 @@ class PiStreamer(protocol.ConnectionBase):
     consisting of left/right motor coefficients and distance.
     """
 
-    def __init__(self, host: str = config.COMPUTER_IP,
+    def __init__(self, camera: CameraCapture,
+                 host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
                  movement_port: int = config.MOVEMENT_PORT):
         """
-        Initialize the streamer.
+        Initialize the streamer for a single-use connection.
 
         Args:
+            camera: CameraCapture instance (managed externally)
             host: Computer IP address to connect to
             video_port: Port for video streaming
             movement_port: Port for receiving movement commands
         """
-        super().__init__()
+
+        self.camera = camera
         self.host = host
         self.video_port = video_port
         self.movement_port = movement_port
         # Client sockets for communication
         self.video_client_socket: Optional[socket.socket] = None
-        # Store source for reopening
-        self.movement_client_socket: Optional[socket.socket] = None
+        self.command_client_socket: Optional[socket.socket] = None
         self.frame_id = 0
+        self.running = False
+
+        # NOTE: movement callback blocks the movement receiving thread
         self.movement_callback: Optional[Callable[[
             float, float, float], None]] = None
+
+        self._command_receiver_thread: Optional[threading.Thread] = None
 
     def set_movement_callback(
             self, callback: Callable[[float, float, float], None]):
         """
         Set callback for when movement commands are received.
+        NOTE: movement callback blocks the command receiver thread
 
         Args:
             callback: Function(x, y, frame_id, extra) called on movement command receipt
         """
         self.movement_callback = callback
 
-    def connect(
-            self,
-            max_attempts: int = 5,
-            initial_delay: float = 1.0) -> bool:
+    def connect(self) -> bool:
         """
-        Connect to the computer. Returns True if successful.
-
-        Args:
-            max_attempts: Maximum number of connection attempts
-            initial_delay: Initial delay between attempts in seconds (will double after each attempt)
+        Connect to the computer. Single attempt only.
+        For reconnection, create a new PiStreamer instance.
 
         Returns:
             bool: True if connection was successful, False otherwise
         """
-        self.running = True
-        attempt = 0
-        delay = initial_delay
+        try:
+            # Connect video client socket
+            self.video_client_socket = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.video_client_socket.settimeout(config.SOCKET_TIMEOUT)
+            self.video_client_socket.connect((self.host, self.video_port))
+            print(
+                f"Connected video stream to {self.host}:{self.video_port}")
 
-        while True:
-            attempt += 1
-            try:
-                # Connect video client socket
-                self.video_client_socket = socket.socket(
-                    socket.AF_INET, socket.SOCK_STREAM)
-                self.video_client_socket.settimeout(config.SOCKET_TIMEOUT)
-                self.video_client_socket.connect((self.host, self.video_port))
-                print(
-                    f"Connected video stream to {self.host}:{self.video_port}")
+            # Connect to movement command server
+            self.command_client_socket = socket.socket(
+                socket.AF_INET, socket.SOCK_STREAM)
+            self.command_client_socket.settimeout(config.SOCKET_TIMEOUT)
+            self.command_client_socket.connect(
+                (self.host, self.movement_port))
+            print(
+                f"Connected to movement command server at {self.host}:{self.movement_port}")
 
-                # Connect to movement command server
-                self.movement_client_socket = socket.socket(
-                    socket.AF_INET, socket.SOCK_STREAM)
-                self.movement_client_socket.settimeout(config.SOCKET_TIMEOUT)
-                self.movement_client_socket.connect(
-                    (self.host, self.movement_port))
-                print(
-                    f"Connected to movement command server at {self.host}:{self.movement_port}")
+            # Start movement receiver thread
+            self.running = True
+            self._command_receiver_thread = threading.Thread(
+                target=self._command_receiver, daemon=True)
+            self._command_receiver_thread.start()
+            print("Command receiver thread started")
 
-                # Start movement receiver thread
-                if not hasattr(
-                        self,
-                        '_movement_thread') or not self._movement_thread.is_alive():
-                    self._movement_thread = threading.Thread(
-                        target=self._movement_receiver, daemon=True)
-                    self._movement_thread.start()
-                    print("Movement receiver thread started")
-
-                return True
-
-            except socket.error as e:
-                if attempt >= max_attempts:
-                    print(
-                        f"Failed to connect after {max_attempts} attempts: {e}")
-                    self.close()
-                    return False
-
-                print(
-                    f"Connection attempt {attempt} failed: {e}, retrying in {delay:.1f}s...")
-                time.sleep(delay)
-                delay = min(delay * 2, 10)  # Exponential backoff with max 10s
-
-            except Exception as e:
-                print(f"Unexpected error during connection: {e}")
-                self.close()
-                return False
-
-        return False
-
-    def start_camera(self, source: str = "usb0") -> bool:
-        """
-        Start camera capture.
-
-        Args:
-            source: Camera source ("usb0", "picamera0", etc.)
-
-        Returns:
-            True if camera opened successfully
-        """
-        self._camera_source = source  # Store for reopening
-        self.camera = CameraCapture(
-            source, config.FRAME_WIDTH, config.FRAME_HEIGHT)
-        if self.camera.open():
-            print(f"Camera opened: {source}")
             return True
-        else:
-            print(f"Failed to open camera: {source}")
+
+        except Exception as e:
+            print(f"Unexpected error during connection: {e}")
+            traceback.print_exc()
+            self.stop()
             return False
 
-    def _ensure_camera_open(self) -> bool:
-        """Ensure camera is open, reopen if needed. Returns True if camera is ready."""
-        if self.camera is None:
-            if self._camera_source is None:
-                print("No camera source configured")
-                return False
-            return self.start_camera(self._camera_source)
-
-        if not self.camera.is_open():
-            print("Camera closed, attempting to reopen...")
-            if not self.camera.reopen():
-                print("Failed to reopen camera")
-                return False
-            print("Camera reopened successfully")
-        return True
-
-    def _movement_receiver(self):
-        """Background thread to receive and process movement commands."""
+    def _command_receiver(self):
+        """Background thread to receive and process command messages."""
         while self.running:
             try:
-                if not self.movement_client_socket:
-                    raise Exception("No Movement Socket")
-
-                # Receive movement command using protocol helper
-                movement = protocol.recv_movement(
-                    self.movement_client_socket)
-                if movement is None:
+                if not self.command_client_socket:
+                    time.sleep(0.1)
                     continue
 
-                left_coef = movement['left_coef']
-                right_coef = movement['right_coef']
-                distance = movement['distance']
+                # Receive command using protocol helper
+                result = protocol.recv_command(self.command_client_socket)
+                if result is None:
+                    # Failed to receive/parse command - could be malformed data, timeout, etc.
+                    # Just log and continue - don't treat as shutdown signal
+                    print("Failure receiving/processing command")
+                    time.sleep(0.1)
+                    continue
 
-                print(
-                    f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
+                msg_type, args = result
 
-                if self.movement_callback:
-                    try:
-                        self.movement_callback(
-                            left_coef, right_coef, distance)
-                    except Exception as e:
-                        print(
-                            f"Error in movement callback: {type(e).__name__}: {e}")
-                        import traceback
-                        traceback.print_exc()
+                # Handle close command (type 0) - explicit shutdown signal
+                if msg_type == config.MSG_TYPE_CLOSE:
+                    print("Received close command from computer")
+                    self.stop()
+                    break
 
-            except (socket.error) as e:
-                print(f"Movement socket error: {e}")
-                time.sleep(1)
+                # Handle movement command (type 1)
+                elif msg_type == config.MSG_TYPE_MOVEMENT:
+                    left_coef, right_coef, distance = args
+                    print(
+                        f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
+
+                    if self.movement_callback:
+                        try:
+                            self.movement_callback(
+                                left_coef, right_coef, distance)
+                        except Exception as e:
+                            print(
+                                f"Error in movement callback: {type(e).__name__}: {e}")
+                            traceback.print_exc()
+                else:
+                    print(f"Unknown message type: {msg_type}")
 
             except Exception as e:
                 print(
-                    f"Unexpected error in movement receiver: {type(e).__name__}: {e}")
-                import traceback
+                    f"Unexpected error in command receiver: {type(e).__name__}: {e}")
                 traceback.print_exc()
-                time.sleep(1)
+                # don't shut down entire robot from just one frame of failure
+                continue
 
-    def stream(self, max_fps: float = 30.0):
+        print("Command receiver thread exiting")
+
+    def stream(self, max_fps: float = config.DEFAULT_MAX_FPS):
         """
-        Start streaming video frames.
+        Start streaming video frames. Blocks until connection is lost or stopped.
 
         Args:
-            max_fps: Maximum frames per second to stream
+            max_fps: Maximum frames per second to stream (default: config.DEFAULT_MAX_FPS)
         """
-        # Ensure camera is open before streaming
-        if not self._ensure_camera_open():
+        if self.camera is None or not self.camera.is_open():
             print("Cannot start streaming: camera not available")
             return
         if not self.video_client_socket:
             print("Not connected to video server")
             return
 
-        self.running = True
         frame_interval = 1.0 / max_fps
 
         print("Streaming started. Press Ctrl+C to stop.")
-        consecutive_failures = 0
-        max_consecutive_failures = 10
 
-        try:
-            while self.running:
+        while self.running:
+            try:
                 start_time = time.time()
 
                 # Capture frame
                 frame = self.camera.read()
                 if frame is None:
-                    consecutive_failures += 1
-                    # Try to reopen camera after a few failures
-                    if consecutive_failures == 5:
-                        print("Multiple frame failures, attempting camera reopen...")
-                        if self.camera.reopen():
-                            print("Camera reopened, retrying...")
-                            consecutive_failures = 0
-                            continue
-                    if consecutive_failures >= max_consecutive_failures:
-                        print(
-                            f"Too many consecutive frame capture failures ({max_consecutive_failures}). Disconnecting...")
-                        break
+                    print("failed to read frame from camera")
                     time.sleep(0.1)
                     continue
 
-                # Reset failure counter on successful capture
-                consecutive_failures = 0
-
                 # Encode as JPEG
-                try:
-                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
-                                    config.JPEG_QUALITY]
-                    success, encoded = cv2.imencode(
-                        '.jpg', frame, encode_param)
-                    if not success:
-                        print("Failed to encode frame")
-                        continue
-                except Exception as e:
-                    print(f"Frame encoding error: {e}")
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
+                                config.JPEG_QUALITY]
+                success, encoded = cv2.imencode(
+                    '.jpg', frame, encode_param)
+                if not success:
+                    print("Failed to encode frame")
                     continue
 
                 # Send frame
-                try:
-                    if not protocol.send_frame(
-                            self.video_client_socket,
-                            encoded.tobytes(),
-                            self.frame_id):
-                        print("Failed to send frame. Disconnecting...")
-                        break
-                except (socket.error, OSError, BrokenPipeError) as e:
-                    print(
-                        f"Socket error while sending frame: {e}. Disconnecting...")
-                    break
-                except Exception as e:
-                    print(
-                        f"Unexpected error sending frame: {e}. Disconnecting...")
-                    break
+                if not protocol.send_frame(
+                        self.video_client_socket,
+                        encoded.tobytes(),
+                        self.frame_id):
+                    print("Failed to send frame. Continuing...")
+                    continue
 
                 self.frame_id += 1
 
@@ -292,22 +231,19 @@ class PiStreamer(protocol.ConnectionBase):
                 elapsed = time.time() - start_time
                 if elapsed < frame_interval:
                     time.sleep(frame_interval - elapsed)
-
-        except KeyboardInterrupt:
-            print("\nStreaming stopped by user")
-        except Exception as e:
-            print(f"Unexpected streaming error: {e}")
-        finally:
-            self.stop()
+            except KeyboardInterrupt:
+                print("\nStreaming stopped by user")
+                self.stop()
+                raise KeyboardInterrupt
+            except Exception as e:
+                print(f"Unexpected streaming error: {e}")
+                traceback.print_exc()
 
     def stop(self):
-        """Stop streaming and close socket connections. Camera stays open for reconnect."""
+        """Stop streaming and close socket connections."""
         self.running = False
-        self.close()  # Uses parent's safe close method (sockets only)
-
-    def shutdown(self):
-        """Full shutdown - close everything including camera."""
-        self.stop()
-        if self.camera:
-            self.camera.close()
-            self.camera = None
+        protocol.close_socket(self.video_client_socket)
+        self.video_client_socket = None
+        protocol.close_socket(self.command_client_socket)
+        self.command_client_socket = None
+        print("PiStreamer stopped")

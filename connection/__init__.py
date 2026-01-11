@@ -31,6 +31,8 @@ from .config import (
     FRAME_WIDTH,
     FRAME_HEIGHT,
     JPEG_QUALITY,
+    DEFAULT_MAX_FPS,
+    RECONNECT_DELAY,
 )
 
 __all__ = [
@@ -41,4 +43,6 @@ __all__ = [
     'FRAME_WIDTH',
     'FRAME_HEIGHT',
     'JPEG_QUALITY',
+    'DEFAULT_MAX_FPS',
+    'RECONNECT_DELAY',
 ]
