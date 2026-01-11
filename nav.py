@@ -130,6 +130,8 @@ class Nav:
             theta += 2 * math.pi
 
         if theta >= 0:
-            return (1, -1, self.TICK_ROTATION * theta)
+            return (1, -1, self.TICK_ROTATION /
+                    self.BASE_RATIO * theta / (2 * math.pi))
         else:
-            return (-1, 1, self.TICK_ROTATION * -theta)
+            return (-1, 1, self.TICK_ROTATION /
+                    self.BASE_RATIO * -theta / (2 * math.pi))

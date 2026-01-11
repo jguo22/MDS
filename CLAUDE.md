@@ -68,6 +68,52 @@ python3 -m connection.computer_receiver
 # The computer acts as a server listening for Pi connections
 ```
 
+### Development Workflow
+
+**Typical startup sequence:**
+
+1. **Start the Raspberry Pi first:**
+   ```bash
+   # On Raspberry Pi
+   python3 main_pi.py --camera usb0
+   ```
+   The Pi will continuously attempt to connect to the computer (configured in `connection/config.py`).
+   It will retry every 5 seconds (default `RECONNECT_DELAY`) until successful.
+
+2. **Start the computer receiver:**
+   ```bash
+   # On Computer
+   python3 -m connection.computer_receiver
+   ```
+   The Pi will automatically connect within a few seconds and begin streaming video.
+
+3. **Making changes to computer code:**
+   - Press `Ctrl+C` on the computer to stop the receiver
+   - Make your code changes
+   - Restart: `python3 -m connection.computer_receiver`
+   - **The Pi will automatically reconnect** (no need to restart it)
+
+4. **Making changes to Pi code:**
+   - Press `Ctrl+C` on the Raspberry Pi
+   - Make your code changes
+   - Restart: `python3 main_pi.py --camera usb0`
+   - The Pi will reconnect to the computer
+
+**Key benefits:**
+- **Pi-initiated reconnection**: The Pi actively tries to connect, so you can restart the computer at any time
+- **No manual reconnection**: After stopping either side, just restart and they'll automatically reconnect
+- **Rapid iteration**: Modify computer vision code on the computer, restart receiver, and the Pi immediately reconnects
+- **Persistent camera**: The Pi keeps the camera open across reconnections, avoiding reinitialization delays
+
+**Common scenarios:**
+
+| Scenario | Action |
+|----------|--------|
+| Testing different movement commands | Modify computer code → Ctrl+C → Restart → Pi auto-reconnects |
+| Adjusting camera settings | Modify Pi code → Ctrl+C on Pi → Restart Pi |
+| Network disconnection | Both sides handle gracefully → Auto-reconnect when network restored |
+| Changing config (IP, ports, FPS) | Edit `connection/config.py` → Restart both sides |
+
 **PiStreamer API (Single-Use Pattern):**
 ```python
 from connection.PiStreamer import PiStreamer
@@ -378,16 +424,18 @@ When integrating vision with motor control:
 4. Main control loop should handle both vision processing and motor updates
 
 ### Remote Operation Workflow
-For remote control operation (computer controlling Pi robot):
-1. **On Raspberry Pi**: Run PiStreamer to stream camera feed and receive movement commands
-2. **On Computer**: Run ComputerReceiver to display video and send movement commands
-3. **Integration**: PiStreamer movement callback translates commands to Raven motor control
-4. **Example**: `main_pi.py` shows full integration of PiStreamer + Raven + optional YOLO
+See the **Development Workflow** section under "Remote Communication System" for detailed startup and reconnection procedures.
 
-**Typical deployment:**
-- Pi runs `main_pi.py` with PiStreamer for video streaming and movement callback for motor control
-- Computer runs receiver to view video stream and issue movement commands (manual or YOLO-based)
+**Integration with motor control:**
+1. **On Raspberry Pi**: `main_pi.py` runs PiStreamer to stream camera feed and receive movement commands
+2. **On Computer**: Run ComputerReceiver to display video and send movement commands
+3. **Movement callback**: PiStreamer callback translates commands to Raven motor control via `nav.startPath()`
+4. **Automatic reconnection**: Pi continuously attempts to reconnect, enabling rapid development iteration
+
+**Key characteristics:**
 - TCP protocol ensures reliable command delivery but adds ~10-50ms latency vs UDP/RTP
+- Pi-initiated reconnection allows restarting computer code without touching the robot
+- Persistent camera across reconnections avoids reinitialization delays
 
 ### Common Pitfalls and Solutions
 
@@ -413,11 +461,13 @@ For remote control operation (computer controlling Pi robot):
 - **MPS acceleration**: Training uses Apple Silicon GPU (`device: 'mps'`); inference auto-detects available hardware
 
 **Connection and Networking:**
-- **Connection failures**: Verify Pi and computer are on same network, check firewall settings, verify correct IP addresses
-- **Video lag**: Reduce JPEG_QUALITY in config.py, lower resolution, or reduce max_fps in stream() call
+- **Pi won't connect**: Verify Pi and computer are on same network, check firewall settings, verify `COMPUTER_IP` in config.py matches your computer's IP
+- **Automatic reconnection**: Connection failures are expected and handled automatically - Pi retries every 5 seconds (configurable via `RECONNECT_DELAY`)
+- **Restarting computer code**: Just Ctrl+C and restart - Pi will automatically reconnect within seconds (no need to restart Pi)
+- **Video lag**: Reduce `JPEG_QUALITY` in config.py, lower resolution, or reduce `DEFAULT_MAX_FPS`
 - **Dropped frames**: TCP guarantees delivery but can cause frame buildup under poor network conditions; monitor frame_id gaps
-- **Movement command latency**: TCP adds 10-50ms vs UDP; factor this into control loops for time-sensitive operations
-- **Socket timeout errors**: Increase SOCKET_TIMEOUT in config.py for unreliable networks
+- **Command latency**: TCP adds 10-50ms vs UDP; factor this into control loops for time-sensitive operations
+- **Socket timeout errors**: Increase `SOCKET_TIMEOUT` in config.py for unreliable networks (default is 180s)
 
 ## File Organization
 
