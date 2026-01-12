@@ -41,6 +41,16 @@ class CameraCapture:
 
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+
+        # disable auto exposure and white balance to prevent messing up calibration
+        # TODO: maybe remove this later
+        # Set to manual exposure mode with 0.25 "magic number"
+        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+        # Set exposure time to 2^-7 = 1/128 second
+        self.cap.set(cv2.CAP_PROP_EXPOSURE, -7)
+        self.cap.set(cv2.CAP_PROP_AUTO_WB, 0.0)  # Disable auto white balance
+        # Set white balance temperature to 4200K
+        self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 4200)
         return True
 
     def read(self) -> Optional[np.ndarray]:
