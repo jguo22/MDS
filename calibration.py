@@ -3,8 +3,8 @@ import cv2 as cv
 import glob
 
 # Grid dimensions for chessboard calibration
-GRID_WIDTH = 6  # Number of inner corners along width
-GRID_HEIGHT = 7  # Number of inner corners along height
+GRID_WIDTH = 8  # Number of inner corners along width
+GRID_HEIGHT = 11  # Number of inner corners along height
 
 # termination criteria
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -17,7 +17,7 @@ objp[:, :2] = np.mgrid[0:GRID_HEIGHT, 0:GRID_WIDTH].T.reshape(-1, 2)
 objpoints = []  # 3d point in real world space
 imgpoints = []  # 2d points in image plane.
 
-images = glob.glob('*.jpg')
+images = glob.glob('images/*.jpg')
 
 for fname in images:
     img = cv.imread(fname)
@@ -41,50 +41,49 @@ for fname in images:
         # Draw and display the corners
         cv.drawChessboardCorners(img, (GRID_HEIGHT, GRID_WIDTH), corners2, ret)
         cv.imshow('img', img)
-        cv.waitKey(500)
+        cv.waitKey(5)
 
 cv.destroyAllWindows()
 
-# Check if we found any valid calibration images
-if len(objpoints) == 0:
-    print("Error: No valid calibration images found!")
-    exit(1)
+print(f"number of good images: {len(imgpoints)}")
 
-# Get image size from first image in the list
-first_img = cv.imread(images[0])
-if first_img is None:
-    print("Error: Could not read first image for calibration")
-    exit(1)
-
-img_size = (first_img.shape[1], first_img.shape[0])
-
+# calibration
 ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(
-    objpoints, imgpoints, img_size, None, None)
+    objpoints, imgpoints, gray.shape[::-1], None, None)
 
+print(ret)
+print(mtx)
+print(dist)
+print(rvecs)
+print(tvecs)
 
-img = cv.imread('left12.jpg')
-if img is None:
-    print("Error: Could not read image 'left12.jpg'")
-    exit(1)
+for image_index in range(len(images)):
+    fname = images[image_index]
+    img = cv.imread(fname)
+# refine camera matrix
+    img = cv.imread(images[0])
+    h, w = img.shape[:2]
+    newcameramtx, roi = cv.getOptimalNewCameraMatrix(
+        mtx, dist, (w, h), 1, (w, h))
 
-h, w = img.shape[:2]
-newcameramtx, roi = cv.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
-
+    print("asdfsd")
+    print(newcameramtx)
+    print(roi)
 
 # undistort
-dst = cv.undistort(img, mtx, dist, None, newcameramtx)
+    dst = cv.undistort(img, mtx, dist, None, newcameramtx)
 
 # crop the image
-x, y, w, h = roi
-dst = dst[y:y + h, x:x + w]
-cv.imwrite('calibresult.png', dst)
+    x, y, w, h = roi
+    dst = dst[y:y + h, x:x + w]
+    cv.imwrite(f'calibration_results/calibresult{image_index}.png', dst)
 
+# reprojection error
+    mean_error = 0
+    for i in range(len(objpoints)):
+        imgpoints2, _ = cv.projectPoints(
+            objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+        error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2) / len(imgpoints2)
+        mean_error += error
 
-mean_error = 0
-for i in range(len(objpoints)):
-    imgpoints2, _ = cv.projectPoints(
-        objpoints[i], rvecs[i], tvecs[i], mtx, dist)
-    error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2) / len(imgpoints2)
-    mean_error += error
-
-print("total error: {}".format(mean_error / len(objpoints)))
+    print("total error: {}".format(mean_error / len(objpoints)))

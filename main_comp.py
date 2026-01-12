@@ -30,7 +30,7 @@ def main():
     receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
     movementCommander = MovementCommander(receiver)
     click_processor = ClickProcessor(movementCommander, window_name)
-    save_image_processor = SaveImageProcessor()
+    save_image_processor = SaveImageProcessor(2)
 
     def process(frame: np.ndarray,
                 frame_id: int) -> Optional[Tuple[float, float, float]]:
