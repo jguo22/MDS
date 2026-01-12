@@ -3,7 +3,7 @@ import time
 import cv2
 import numpy as np
 from typing import Optional, Tuple
-from FrameProcessor import FrameProcessor
+from .FrameProcessor import FrameProcessor
 
 
 class SaveImageProcessor(FrameProcessor):
@@ -61,4 +61,3 @@ class SaveImageProcessor(FrameProcessor):
                 print(f"Error saving frame: {e}")
 
         return None
-

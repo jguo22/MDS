@@ -3,7 +3,7 @@ import numpy as np
 from nav import Nav
 from typing import Optional, Tuple
 from MovementCommander import MovementCommander
-from FrameProcessor import FrameProcessor
+from .FrameProcessor import FrameProcessor
 
 
 class ClickProcessor(FrameProcessor):
