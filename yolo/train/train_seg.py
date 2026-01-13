@@ -46,35 +46,29 @@ def train_model():
         'name': run_name,              # Auto-incremented run name
         'exist_ok': False,             # Don't overwrite existing experiments
 
-        # Data Augmentation
+        # Data Augmentation (conservative to avoid numerical warnings)
         'fliplr': 0.3,                 # Horizontal flip probability
-        # Hue augmentation (reduced - preserve color)
-        'hsv_h': 0.01,
-        # Saturation augmentation (REDUCED from 0.7 - preserve red color)
-        'hsv_s': 0.3,
-        # Brightness/Value augmentation (REDUCED from 0.4)
-        'hsv_v': 0.2,
+        'hsv_h': 0.01,                 # Hue augmentation (minimal)
+        'hsv_s': 0.3,                  # Saturation augmentation
+        'hsv_v': 0.2,                  # Brightness augmentation
         'degrees': 10.0,               # Rotation range (+/- deg)
-        # Translation (+/- fraction) - moderate cropping
-        'translate': 0.2,
-        # Image scale (+/- gain) - moderate scale variation
-        'scale': 0.5,
-        'shear': 2.0,                  # Shear angle (+/- deg)
-        'perspective': 0.0001,         # Perspective distortion (0-0.001)
-        # Mosaic augmentation (probability) - includes random cropping
-        'mosaic': 1.0,
-        'mixup': 0.0,                  # MixUp augmentation (probability)
-        'copy_paste': 0.0,             # Copy-paste augmentation (probability)
-        # Random erasing probability (simulates occlusion/partial crops)
-        'erasing': 0.1,                # REDUCED from 0.3 - less aggressive occlusion
+        'translate': 0.1,              # Translation - REDUCED to prevent overflow
+        'scale': 0.3,                  # Scale variation - REDUCED to prevent overflow
+        'shear': 0.0,                  # Shear disabled - can cause numerical issues
+        'perspective': 0.0,            # Perspective disabled - causes divide by zero
+        'mosaic': 1.0,                 # Mosaic augmentation
+        'mixup': 0.0,                  # MixUp disabled
+        'copy_paste': 0.0,             # Copy-paste disabled
+        'erasing': 0.0,                # Erasing disabled - can cause issues with segmentation
 
         # Transfer Learning
         # Freeze first N layers (None=auto, 0=train all)
-        'freeze': 10,
+        'freeze': 11,
     }
 
     # Initialize model
-    model = YOLO(config['model'])
+    # model = YOLO(config['model'])
+    model = YOLO("yolo11n-seg.pt")
 
     # Start training
     results = model.train(**config)

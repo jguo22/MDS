@@ -68,7 +68,7 @@ class ComputerReceiver():
             np.ndarray, int], Optional[Tuple[float, float, float]]]):
         """
         Set callback for processing frames and generating movement commands.
-        This blocks the recieving frames loop.
+        THIS BLOCKS THE RECEIVING FRAMES LOOP
 
         Args:
             callback: Function(frame, frame_id) -> (left_coef, right_coef, distance) or None
