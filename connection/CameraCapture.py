@@ -6,7 +6,7 @@ from . import config
 
 
 class CameraCapture:
-    """Modular camera capture supporting USB and PiCamera."""
+    """Camera capture for USB cameras."""
 
     def __init__(self, source: str = "usb0",
                  width: int = config.FRAME_WIDTH,
@@ -15,7 +15,7 @@ class CameraCapture:
         Initialize camera capture.
 
         Args:
-            source: Camera source - "usb0", "usb1", "picamera0", etc.
+            source: Camera source - "usb0", "usb1", etc. or device index
             width: Frame width
             height: Frame height
         """
@@ -23,17 +23,10 @@ class CameraCapture:
         self.width = width
         self.height = height
         self.cap = None
-        self.picam = None
 
     def open(self) -> bool:
         """Open the camera. Returns True if successful."""
-        if self.source.startswith("picamera"):
-            return self._open_picamera()
-        elif self.source.startswith("usb"):
-            return self._open_usb()
-        else:
-            # Assume it's a device index or path
-            return self._open_usb()
+        return self._open_usb()
 
     def _open_usb(self) -> bool:
         """Open USB camera."""
@@ -48,35 +41,22 @@ class CameraCapture:
 
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        return True
 
-    def _open_picamera(self) -> bool:
-        """Open PiCamera using picamera2."""
-        try:
-            from picamera2 import Picamera2
-            index = int(self.source[9:]) if len(self.source) > 9 else 0
-            self.picam = Picamera2(index)
-            camera_config = self.picam.create_preview_configuration(
-                main={"size": (self.width, self.height), "format": "RGB888"}
-            )
-            self.picam.configure(camera_config)
-            self.picam.start()
-            return True
-        except ImportError:
-            print("picamera2 not installed. Install with: pip install picamera2")
-            return False
-        except Exception as e:
-            print(f"Failed to open PiCamera: {e}")
-            return False
+        # disable auto exposure and white balance to prevent messing up calibration
+        # TODO: maybe remove this later
+        # Set to manual exposure mode with 0.25 "magic number"
+        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+        # Set exposure time to 2^-7 = 1/128 second
+        self.cap.set(cv2.CAP_PROP_EXPOSURE, -7)
+        self.cap.set(cv2.CAP_PROP_AUTO_WB, 0.0)  # Disable auto white balance
+        # Set white balance temperature to 4200K
+        self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 4200)
+        return True
 
     def read(self) -> Optional[np.ndarray]:
         """Read a frame from the camera. Returns BGR numpy array or None."""
         try:
-            if self.picam is not None:
-                frame = self.picam.capture_array()
-                # Convert RGB to BGR for OpenCV compatibility
-                return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            elif self.cap is not None:
+            if self.cap is not None:
                 ret, frame = self.cap.read()
                 return frame if ret else None
         except Exception as e:
@@ -86,11 +66,7 @@ class CameraCapture:
 
     def is_open(self) -> bool:
         """Check if camera is currently open."""
-        if self.picam is not None:
-            return True
-        if self.cap is not None:
-            return self.cap.isOpened()
-        return False
+        return self.cap is not None and self.cap.isOpened()
 
     def reopen(self) -> bool:
         """Close and reopen the camera. Returns True if successful."""
@@ -105,9 +81,3 @@ class CameraCapture:
             except Exception:
                 pass
             self.cap = None
-        if self.picam is not None:
-            try:
-                self.picam.stop()
-            except Exception:
-                pass
-            self.picam = None

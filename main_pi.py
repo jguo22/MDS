@@ -13,7 +13,7 @@ def main():
     parser.add_argument(
         "--camera",
         default="usb0",
-        help="Camera source: usb0, usb1, picamera0, etc. (default: usb0)")
+        help="Camera source: usb0, usb1. (default: usb0)")
     args = parser.parse_args()
 
     # Create camera (managed externally, persists across reconnections)

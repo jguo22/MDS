@@ -92,7 +92,7 @@ class ComputerReceiver():
             self.video_server_socket.listen(1)
             print(f"Video server listening on {self.host}:{self.video_port}")
 
-            # Set up command server socket
+            # Set up movement command server socket
             self.command_server_socket = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
             self.command_server_socket.setsockopt(
@@ -100,7 +100,7 @@ class ComputerReceiver():
             self.command_server_socket.bind((self.host, self.command_port))
             self.command_server_socket.listen(1)
             print(
-                f"Command server listening on {self.host}:{self.command_port}")
+                f"Movement command server listening on {self.host}:{self.command_port}")
 
             return True
         except socket.error as e:
@@ -120,10 +120,10 @@ class ComputerReceiver():
             print(
                 f"Video connection from {self.video_client_socket.getpeername()}")
 
-            # Accept command connection
+            # Accept movement command connection
             self.command_client_socket, _ = self.command_server_socket.accept()
             print(
-                f"Command connection from {self.command_client_socket.getpeername()}")
+                f"Movement command connection from {self.command_client_socket.getpeername()}")
             return True
         except socket.error as e:
             print(f"Connection error: {e}")
