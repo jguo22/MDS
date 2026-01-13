@@ -124,15 +124,15 @@ class RavenMotorControllers:
         raven_board.set_motor_speed_factor(self.rightChannel, 0)
 
 
-img_source = "usb"
-min_thresh = float(0.2)
-user_res = None
+# img_source = "usb"
+# min_thresh = float(0.2)
+# user_res = None
 
-cap = cv2.VideoCapture(0)
+# cap = cv2.VideoCapture(0)
 
-# Set bounding box colors (using the Tableu 10 color scheme)
-bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106),
-              (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
+# # Set bounding box colors (using the Tableu 10 color scheme)
+# bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106),
+#               (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
 
 
 # Initialize Raven servo controller
@@ -144,14 +144,14 @@ servo = RavenServoController(
     max_us=MAX_US,
 )
 
-# Initialize control and status variables
-avg_frame_rate = 0
-frame_rate_buffer = []
-fps_avg_len = 200
-img_count = 0
+# # Initialize control and status variables
+# avg_frame_rate = 0
+# frame_rate_buffer = []
+# fps_avg_len = 200
+# img_count = 0
 
-if (not DISPLAY_ENABLED):
-    print("Running headless")
+# if (not DISPLAY_ENABLED):
+#     print("Running headless")
 
 # robot = Robot()
 # # Begin inference loop

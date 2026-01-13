@@ -1,10 +1,11 @@
 import time
+import cv2
 
 from enum import Enum
 from ultralytics import YOLO
 
 from test import RavenMotorControllers
-from nav import nav
+from nav import Nav
 
 class RobotState(Enum):
     SEARCHING = 1
@@ -25,18 +26,19 @@ MIDPOINT = 320
 MARGIN = 40
 
 class Robot:
-    def __init__(self):
+    def __init__(self, bno):
         self.state = RobotState.CHECKING_SEARCH
         self.state_start = time.monotonic()
         self.now = time.monotonic()
 
         # Initialize model
-        self.model = YOLO("yolo/yolo11n_ncnn_model", task='detect')
+        self.model = YOLO("yolo/last_ncnn_model", task='detect')
         self.labels = self.model.names
 
         self.motors = RavenMotorControllers()
 
-        self.nav = nav()
+        self.nav = Nav(bno)
+        self.cap = cv2.VideoCapture(0)
 
     def setNowTime(self):
         self.now = time.monotonic()
@@ -54,17 +56,9 @@ class Robot:
         self.state = RobotState.SEARCHING
         self.state_start = self.now
         self.motors.rotateInPlace(40)
-    # Check the image. If there's a human, correct. If not, switch to search mode.
-    def checkImage(self, cap):
-
-        ret, frame = cap.read()
-        # Run inference on frame
-        results = self.model(frame, verbose=False)
-        # Extract results
-        detections = results[0].boxes
-
-        # Variables for detected humans
-        humans_detected = False
+    def getGoldenPringleCan(self):
+        detections = self.getDetections()
+        golden_detected = False
         x_mid = 320
         biggest_human_area = 0
 
@@ -92,28 +86,24 @@ class Robot:
             #     drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
 
             if (classname == "person"):
-                humans_detected = True
                 human_area = (xmax - xmin) * (ymax - ymin)
                 if (human_area > biggest_human_area):
                     biggest_human_area = human_area
                     x_mid = (xmax + xmin)/2
                     print("BIGGEST HUMAN AT x: " + str(x_mid))
-
-        if (humans_detected):
-            self.state = RobotState.SEEKING_CORRECTION
-            self.state_start = self.now
-            # Point towards human
-            if (x_mid > MIDPOINT and x_mid - MIDPOINT > MARGIN):
-                print("rotating counterclockwise")
-                self.motors.rotateInPlace(10, False)
-            elif (x_mid < MIDPOINT and MIDPOINT - x_mid > MARGIN):
-                print("rotating clockwise")
-                self.motors.rotateInPlace(10, True)
-            else:
-                print("moving towards human")
-                self.moveToHuman()
-        else:
-            self.searchMode()
+    def getDetections(self):
+        if not self.cap or not self.cap.isOpened():
+            print(f'ERROR: CAMERA ISNT WORKING')
+            return []
+        ret, frame = self.cap.read()
+        if not ret or frame is None:
+            print(f'ERROR: NO FRAME RETURNED')
+            return []
+        # Run inference on frame
+        results = self.model(frame, verbose=False)
+        # Extract results
+        detections = results[0].boxes
+        return detections
     # Returns if there's a pringle can in view
     def seesPringleCan(self):
 
