@@ -4,16 +4,18 @@ import glob
 from pixelTo3D import pixel_to_camera_coords
 
 # Grid dimensions for chessboard calibration
-GRID_WIDTH = 8  # Number of inner corners along width
-GRID_HEIGHT = 11  # Number of inner corners along height
+GRID_ROWS = 11  # Number of inner corners along height
+GRID_COLUMNS = 8  # Number of inner corners along width
 
 # termination criteria
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
-objp = np.zeros((GRID_WIDTH * GRID_HEIGHT, 3), np.float32)
-objp[:, :2] = np.mgrid[0:GRID_HEIGHT, 0:GRID_WIDTH].T.reshape(-1, 2)
+objp = np.zeros((GRID_ROWS * GRID_COLUMNS, 3), np.float32)
+objp[:, :2] = np.mgrid[0:GRID_ROWS, 0:GRID_COLUMNS].T.reshape(-1, 2)
 objp = objp * 1.85  # square side length in cm
+# horizontal distance from first row to camera
+objp[:] += np.array([0, 27.94, 0])
 
 # Arrays to store object points and image points from all the images.
 objpoints = []  # 3d point in real world space
@@ -31,7 +33,7 @@ for fname in images:
 
     # Find the chess board corners
     ret, corners = cv.findChessboardCorners(
-        gray, (GRID_HEIGHT, GRID_WIDTH), None)
+        gray, (GRID_ROWS, GRID_COLUMNS), None)
 
     # If found, add object points, image points (after refining them)
     if ret:
@@ -41,7 +43,7 @@ for fname in images:
         imgpoints.append(corners2)
 
         # Draw and display the corners
-        cv.drawChessboardCorners(img, (GRID_HEIGHT, GRID_WIDTH), corners2, ret)
+        cv.drawChessboardCorners(img, (GRID_ROWS, GRID_COLUMNS), corners2, ret)
         # cv.imshow('img', img)
         # cv.waitKey(500)
 
