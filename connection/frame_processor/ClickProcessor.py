@@ -4,6 +4,7 @@ from nav import Nav
 from typing import Optional, Tuple
 from MovementCommander import MovementCommander
 from .FrameProcessor import FrameProcessor
+from pixelTo3D import pixel_to_robot_horizontal
 
 
 class ClickProcessor(FrameProcessor):
@@ -13,7 +14,7 @@ class ClickProcessor(FrameProcessor):
             window_name: str = "Pi Camera"):
         self.movementCommander = movementCommander
         self.window_name = window_name
-        self.frame_size = (1000, 1000)  # (width, height)
+        self.frame_size = (640, 480)  # (width, height)
         # list of time of starting path, l_c, r_c, dist
 
         cv2.namedWindow(self.window_name)
@@ -25,14 +26,16 @@ class ClickProcessor(FrameProcessor):
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             # Convert to normalized coordinates (0-1)
-            x_norm = x / (self.frame_size[1] - 1)
-            y_norm = y / (self.frame_size[0] - 1)
-            # Scale to range of [-scale, scale] (centered at 0)
-            scale = 10
-            x_scaled = (x_norm * scale * 2) - scale
-            y_scaled = -((y_norm * scale * 2) - scale)
+            x_norm = (x / (self.frame_size[1])) + 1 / self.frame_size[1] / 2
+            y_norm = y / (self.frame_size[0]) + 1 / self.frame_size[0] / 2
+            x = x_norm * 640
+            y = y_norm * 480
             print(
-                f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}, {y_norm:.3f}) -> Scaled: ({x_scaled:.1f}, {y_scaled:.1f})")
+                f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}")
+
+            x_scaled, y_scaled = pixel_to_robot_horizontal(x, y)
+
+            print(f'({x_scaled}, {y_scaled})')
 
             self.movementCommander.queue_xy(x_scaled, y_scaled)
 

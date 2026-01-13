@@ -1,6 +1,7 @@
 import numpy as np
 import cv2 as cv
 import glob
+from pixelTo3D import pixel_to_camera_coords
 
 # Grid dimensions for chessboard calibration
 GRID_WIDTH = 8  # Number of inner corners along width
@@ -12,6 +13,7 @@ criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 objp = np.zeros((GRID_WIDTH * GRID_HEIGHT, 3), np.float32)
 objp[:, :2] = np.mgrid[0:GRID_HEIGHT, 0:GRID_WIDTH].T.reshape(-1, 2)
+objp = objp * 1.85  # square side length in cm
 
 # Arrays to store object points and image points from all the images.
 objpoints = []  # 3d point in real world space
@@ -120,67 +122,17 @@ for i in range(len(objpoints)):
 print("total error: {}".format(mean_error / len(objpoints)))
 
 
-def pixel_to_camera_coords(pixel_x, pixel_y, camera_matrix, dist_coeffs, depth=None):
-    """
-    Convert a pixel coordinate to 3D camera coordinates.
-
-    Args:
-        pixel_x: X coordinate of the pixel (column, horizontal position)
-        pixel_y: Y coordinate of the pixel (row, vertical position)
-        camera_matrix: 3x3 camera intrinsic matrix
-        dist_coeffs: Distortion coefficients
-        depth: Optional depth value. If None, returns normalized ray direction.
-               If provided, returns 3D position at that depth.
-
-    Returns:
-        tuple: (ray_direction, point_3d_camera)
-            - ray_direction: 3D unit direction vector from camera center through pixel
-            - point_3d_camera: 3D position in camera coordinates (only if depth provided)
-    """
-    # Step 1: Undistort the pixel coordinate
-    pixel = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
-    undistorted = cv.undistortPoints(pixel, camera_matrix, dist_coeffs, None, camera_matrix)
-    u_undist = undistorted[0, 0, 0]
-    v_undist = undistorted[0, 0, 1]
-
-    # Step 2: Extract camera intrinsic parameters
-    fx = camera_matrix[0, 0]  # Focal length in x
-    fy = camera_matrix[1, 1]  # Focal length in y
-    cx = camera_matrix[0, 2]  # Principal point x (optical center)
-    cy = camera_matrix[1, 2]  # Principal point y (optical center)
-
-    # Step 3: Convert to normalized camera coordinates (ray direction)
-    x_normalized = (u_undist - cx) / fx
-    y_normalized = (v_undist - cy) / fy
-    z_normalized = 1.0
-
-    ray_direction = np.array([x_normalized, y_normalized, z_normalized])
-
-    # Step 4: If depth provided, calculate actual 3D position
-    if depth is not None:
-        point_3d_camera = ray_direction * depth
-        return ray_direction, point_3d_camera
-    else:
-        return ray_direction, None
-
-
 # Example usage: Convert a pixel to 3D camera coordinates
 print("\n--- Example: Pixel to 3D Camera Coordinates ---")
 
 # Test with center pixel
-pixel_x, pixel_y = 320.0, 240.0
+pixel_x, pixel_y = 320, 240
 print(f"Input pixel: ({pixel_x}, {pixel_y})")
 
 # Get ray direction only
 ray_dir, _ = pixel_to_camera_coords(pixel_x, pixel_y, mtx, distortion)
 print(f"\nRay direction in camera coordinates: {ray_dir}")
 print(f"  [X={ray_dir[0]:.4f}, Y={ray_dir[1]:.4f}, Z={ray_dir[2]:.4f}]")
-
-# Get 3D position at specific depth
-assumed_depth = 100.0
-ray_dir, pos_3d = pixel_to_camera_coords(pixel_x, pixel_y, mtx, distortion, depth=assumed_depth)
-print(f"\n3D position at depth={assumed_depth}:")
-print(f"  [X={pos_3d[0]:.2f}, Y={pos_3d[1]:.2f}, Z={pos_3d[2]:.2f}]")
 
 print("\nNote: Without depth info, you only get the ray direction.")
 print("To find exact 3D position, you need:")
