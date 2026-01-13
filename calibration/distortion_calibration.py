@@ -13,9 +13,6 @@ criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 objp = np.zeros((GRID_ROWS * GRID_COLUMNS, 3), np.float32)
 objp[:, :2] = np.mgrid[0:GRID_ROWS, 0:GRID_COLUMNS].T.reshape(-1, 2)
-objp = objp * 1.85  # square side length in cm
-# horizontal distance from first row to camera
-objp[:] += np.array([0, 27.94, 0])
 
 # Arrays to store object points and image points from all the images.
 objpoints = []  # 3d point in real world space
@@ -44,8 +41,8 @@ for fname in images:
 
         # Draw and display the corners
         cv.drawChessboardCorners(img, (GRID_ROWS, GRID_COLUMNS), corners2, ret)
-        # cv.imshow('img', img)
-        # cv.waitKey(500)
+        cv.imshow('img', img)
+        cv.waitKey(500)
 
 cv.destroyAllWindows()
 
@@ -132,7 +129,7 @@ pixel_x, pixel_y = 320, 240
 print(f"Input pixel: ({pixel_x}, {pixel_y})")
 
 # Get ray direction only
-ray_dir, _ = pixel_to_camera_coords(pixel_x, pixel_y, mtx, distortion)
+ray_dir = pixel_to_camera_coords(pixel_x, pixel_y, mtx, distortion)
 print(f"\nRay direction in camera coordinates: {ray_dir}")
 print(f"  [X={ray_dir[0]:.4f}, Y={ray_dir[1]:.4f}, Z={ray_dir[2]:.4f}]")
 

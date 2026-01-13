@@ -12,12 +12,18 @@ HEIGHT_MM = 99.06
 ANGLE_MATRIX = R.from_euler('x', -1).as_matrix()
 
 
+def undistort_pixel(pixel_x, pixel_y):
+    pixel = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
+    undistorted = cv.undistortPoints(
+        pixel, camera_matrix, distortion, None, camera_matrix)
+    pixel_undist = undistorted[0, 0]
+    return pixel_undist
+
+
 def pixel_to_camera_coords(
-        pixel_x,  # 0 to 640
-        pixel_y,  # 0 to 480
-        camera_matrix=CAMERA_MATRIX,
-        distortion=DISTORTION,
-        depth=None):
+    pixel_x,  # 0 to 640
+    pixel_y,  # 0 to 480
+):
     # TODO: FIX THIS
     """
     Convert a pixel coordinate to 3D camera coordinates.
@@ -39,7 +45,7 @@ def pixel_to_camera_coords(
     # Step 1: Undistort the pixel coordinate
     pixel = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
     undistorted = cv.undistortPoints(
-        pixel, camera_matrix, distortion, None, camera_matrix)
+        pixel, CAMERA_MATRIX, DISTORTION, None, CAMERA_MATRIX)
     pixel_undist = undistorted[0, 0]
     print("pixel undistorted is")
     print(pixel_undist)
@@ -48,15 +54,11 @@ def pixel_to_camera_coords(
         [pixel_undist[0], pixel_undist[1], 1]).T
 
     # Step 4: If depth provided, calculate actual 3D position
-    if depth is not None:
-        point_3d_camera = ray_direction * depth
-        return ray_direction, point_3d_camera
-    else:
-        return ray_direction, None
+    return ray_direction
 
 
 def pixel_to_robot_horizontal(pixel_x, pixel_y):
-    ray_direction = pixel_to_camera_coords(pixel_x, pixel_y)[0]
+    ray_direction = pixel_to_camera_coords(pixel_x, pixel_y)
 
     ray_direction = ANGLE_MATRIX @ ray_direction
 
