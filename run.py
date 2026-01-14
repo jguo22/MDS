@@ -2,9 +2,6 @@ from robot import Robot
 import time
 from robot import RobotState
 
-import cv2
-
-from nav import NavMove
 import board
 import busio
 from adafruit_bno08x.i2c import BNO08X_I2C
@@ -23,7 +20,8 @@ robot = Robot(bno)
 robot.state = RobotState.STEP_1
 while True:
     if (robot.state == RobotState.STEP_1):
-        robot.getGoldenPringleCan()
+        if (robot.fetchGoldenPringleCan()):
+            robot.state = RobotState.STEP_2
         # robot.nav.addPath(NavMove(1, 0, robot.nav.get() / 4, True))
         # robot.nav.addPath(NavMove(1, 1, 20000, False))
         # robot.nav.addPath(NavMove(1, 0.5, robot.nav.get() / 1, True))
@@ -31,7 +29,7 @@ while True:
         # robot.nav.addPath(NavMove(1, 1, robot.nav.get() / 1, True))
 
         # robot.state = RobotState.STEP_2
-    # robot.nav.updatePath(.05)
+    robot.nav.updatePath(.05)
     time.sleep(.05)
 
 while True:

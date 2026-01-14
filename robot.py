@@ -6,6 +6,7 @@ from ultralytics import YOLO
 
 from test import RavenMotorControllers
 from nav import Nav
+from nav import NavMove
 
 class RobotState(Enum):
     SEARCHING = 1
@@ -32,6 +33,7 @@ class Robot:
         self.now = time.monotonic()
 
         # Initialize model
+        print("initializing yolo model from robot.py")
         self.model = YOLO("yolo/last_ncnn_model", task='detect')
         self.labels = self.model.names
 
@@ -56,11 +58,13 @@ class Robot:
         self.state = RobotState.SEARCHING
         self.state_start = self.now
         self.motors.rotateInPlace(40)
-    def getGoldenPringleCan(self):
+    # Code to obtain the golden pringle can
+    # Only run this at the very start, when the robot is at the start zone
+    # Returns if the robot found a golden pringle can and is going to it
+    def fetchGoldenPringleCan(self):
         detections = self.getDetections()
-        golden_detected = False
-        x_mid = 320
-        biggest_human_area = 0
+        golden_pringle_x = 0
+        golden_pringle_conf = 0
 
         # Go through each detection and get bbox coords, confidence, and class
         for detection in detections:
@@ -74,23 +78,24 @@ class Robot:
             # Get bounding box class ID and name
             classidx = int(detection.cls.item())
             classname = self.labels[classidx]
-            print("found " + classname)
 
             # Get bounding box confidence
             conf = detection.conf.item()
+            print(f'found {classname}')
 
-            # Only get confident boxes
-            if conf < 0.5:
+            # Only get confident golden pringle cans
+            if conf < 0.7 or conf < golden_pringle_conf or classname != "Golden Can":
                 continue
-            # if (DISPLAY_ENABLED):
-            #     drawBox(classidx, frame, xmin, ymin, xmax, ymax, classname)
 
-            if (classname == "person"):
-                human_area = (xmax - xmin) * (ymax - ymin)
-                if (human_area > biggest_human_area):
-                    biggest_human_area = human_area
-                    x_mid = (xmax + xmin)/2
-                    print("BIGGEST HUMAN AT x: " + str(x_mid))
+            golden_pringle_conf = conf
+            golden_pringle_x = (xmax + xmin) / 2
+
+        if (golden_pringle_conf != 0):
+            print(f'found golden pringle can at x: {golden_pringle_x}')
+            self.nav.move_to(1000, 1270)
+            #self.nav.addPath(NavMove(1.0, 1.0, self.nav.mm_to_ticks(608), False))
+            return True
+        return False
     def getDetections(self):
         if not self.cap or not self.cap.isOpened():
             print(f'ERROR: CAMERA ISNT WORKING')
