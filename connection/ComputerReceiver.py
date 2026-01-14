@@ -315,6 +315,6 @@ class ComputerReceiver():
 
         return protocol.send_command(
             self.command_client_socket,
-            MessageType.OVERRIDE_MOVEMENTS,
+            message_types.OVERRIDE_MOVEMENTS,
             movements
         )

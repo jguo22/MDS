@@ -39,7 +39,7 @@ def main():
             moves = []
             for i in range(len(args) // 3):
                 moves.append(
-                    NavMove(args[3 * i], args[3 * i + 1], args[3 * i + 2], True))
+                    NavMove(args[3 * i], args[3 * i + 1], args[3 * i + 2], False))
             nav.overridePaths(moves)
 
     # activate the navigation in another thread
