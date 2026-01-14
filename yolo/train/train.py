@@ -27,10 +27,10 @@ def train_model():
 
     config = {
         # Path to your data.yaml
-        'data': str(SCRIPT_DIR / 'datasets/addnull/data.yaml'),
+        'data': str(SCRIPT_DIR / 'datasets/data1/data.yaml'),
         # Pretrained model
-        'model': str(SCRIPT_DIR / 'runs/train/exp7/weights/best.pt'),
-        'epochs': 300,                   # Number of training epochs
+        'model': str(SCRIPT_DIR / 'yolo11n.pt'),
+        'epochs': 30000,                   # Number of training epochs
         'imgsz': 640,                  # Image size
         # Use MPS (Metal Performance Shaders) for Apple Silicon
         'device': 'mps',
@@ -41,7 +41,7 @@ def train_model():
         'lr0': 0.01,                   # Initial learning rate
         'lrf': 0.01,                   # Final learning rate (lr0 * lrf)
         'weight_decay': 0.0005,        # Weight decay
-        'patience': 50,                # Early stopping patience
+        'patience': 30000,                # Early stopping patience
         'project': str(runs_dir),      # Directory to save results
         'name': run_name,              # Auto-incremented run name
         'exist_ok': False,             # Don't overwrite existing experiments

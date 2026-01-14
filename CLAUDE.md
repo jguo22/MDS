@@ -25,6 +25,227 @@ Example workflow in `main.py`:
 2. Set mode: `raven_board.set_motor_mode(channel, Raven.MotorMode.DIRECT)`
 3. Control: `raven_board.set_motor_speed_factor(channel, percentage, reverse=True/False)`
 
+## Remote Communication System
+
+### PiStreamer - TCP Video Streaming and Movement Control
+The `connection/` module provides a bidirectional communication system between the Raspberry Pi and a computer. **Important:** This system uses **TCP sockets with a custom protocol**, not RTP/UDP.
+
+**Architecture:**
+- `connection/PiStreamer.py`: Raspberry Pi client that streams video and receives movement commands
+- `connection/ComputerReceiver.py`: Computer server that receives video and sends movement commands
+- `connection/protocol.py`: Custom TCP-based messaging protocol
+- `connection/config.py`: Configuration (ports, timeouts, video settings)
+- `connection/CameraCapture.py`: Unified camera interface (USB, PiCamera)
+
+**Protocol Details:**
+- **Transport**: TCP (`socket.SOCK_STREAM`) for reliable delivery
+- **Message Framing**: Custom framing with 8-byte length headers (`struct.pack('!Q', len(data))`)
+- **Video Frames**: 4-byte frame_id + JPEG-encoded data
+- **Command Messages**: Generic message protocol with 1-byte message type + fixed-length float arguments
+  - Message Type 0 (Close): No arguments - gracefully closes connection
+  - Message Type 1 (Movement): `[left_coef, right_coef, distance]` (3 floats)
+  - Format: `struct.pack('!B', msg_type) + struct.pack('!Nf', *args)` where N is defined per message type
+  - Argument counts are validated based on message type in `config.MESSAGE_ARG_COUNTS`
+  - Extensible design allows adding new message types (0-255) with different argument counts
+- **Why TCP not RTP**: Provides reliable, ordered delivery with automatic retransmission. RTP/UDP would offer lower latency but no delivery guarantees.
+
+**Running on Raspberry Pi:**
+```bash
+# Run main_pi.py to send video and receive commands
+python3 main_pi.py --camera usb0
+
+# Options:
+#   --camera: usb0, usb1, picamera0, etc. (default: usb0)
+#
+# All other settings (host, ports, FPS, reconnect delay) are configured in connection/config.py
+```
+
+**Running on Computer:**
+```bash
+# Run main_comp.py for full control interface with interactive input
+python3 main_comp.py
+
+# Or run basic ComputerReceiver module
+python3 -m connection.computer_receiver
+
+# The computer acts as a server listening for Pi connections
+```
+
+**main_comp.py features:**
+- Interactive terminal input for manual movement commands
+- Click-to-move on video window
+- Movement command queueing and timing
+- Automatic reconnection handling
+
+### Development Workflow
+
+**Typical startup sequence:**
+
+1. **Start the Raspberry Pi first:**
+   ```bash
+   # On Raspberry Pi
+   python3 main_pi.py --camera usb0
+   ```
+   The Pi will continuously attempt to connect to the computer (configured in `connection/config.py`).
+   It will retry every 5 seconds (default `RECONNECT_DELAY`) until successful.
+
+2. **Start the computer receiver:**
+   ```bash
+   # On Computer
+   python3 main_comp.py
+   ```
+   The Pi will automatically connect within a few seconds and begin streaming video.
+   You can now send movement commands by typing in the terminal or clicking on the video window.
+
+3. **Making changes to computer code:**
+   - Press `Ctrl+C` on the computer to stop the receiver
+   - Make your code changes
+   - Restart: `python3 main_comp.py`
+   - **The Pi will automatically reconnect** (no need to restart it)
+
+4. **Making changes to Pi code:**
+   - Press `Ctrl+C` on the Raspberry Pi
+   - Make your code changes
+   - Restart: `python3 main_pi.py --camera usb0`
+   - The Pi will reconnect to the computer
+
+**Key benefits:**
+- **Pi-initiated reconnection**: The Pi actively tries to connect, so you can restart the computer at any time
+- **No manual reconnection**: After stopping either side, just restart and they'll automatically reconnect
+- **Rapid iteration**: Modify computer vision code on the computer, restart receiver, and the Pi immediately reconnects
+- **Persistent camera**: The Pi keeps the camera open across reconnections, avoiding reinitialization delays
+
+**Interactive manual control:**
+
+When running `main_comp.py`, you can manually send movement commands by typing in the terminal:
+```bash
+# Type two numbers (left_coef right_coef) and press Enter
+Enter movement (left right): 0.5 0.5    # Move forward
+Enter movement (left right): -0.5 0.5   # Turn left
+Enter movement (left right): 0.5 -0.5   # Turn right
+Enter movement (left right): 0 0        # Stop
+
+# Optional: specify distance as third parameter
+Enter movement (left right): 0.5 0.5 200.0
+```
+
+This allows you to test movement commands interactively without modifying code or clicking on the video window.
+
+**Common scenarios:**
+
+| Scenario | Action |
+|----------|--------|
+| Testing movement commands interactively | Run `main_comp.py`, type coefficients in terminal (e.g., `0.5 0.5`) |
+| Testing movement via clicking | Run `main_comp.py`, click on video window to send robot to that position |
+| Modifying movement logic | Modify computer code → Ctrl+C → Restart → Pi auto-reconnects |
+| Adjusting camera settings | Modify Pi code → Ctrl+C on Pi → Restart Pi |
+| Network disconnection | Both sides handle gracefully → Auto-reconnect when network restored |
+| Changing config (IP, ports, FPS) | Edit `connection/config.py` → Restart both sides |
+
+**PiStreamer API (Single-Use Pattern):**
+```python
+from connection.PiStreamer import PiStreamer
+from connection.CameraCapture import CameraCapture
+import time
+
+# Create camera once (reused across reconnections)
+camera = CameraCapture("usb0", 640, 480)
+camera.open()
+
+# Movement callback
+def handle_movement(left_coef, right_coef, distance):
+    print(f"Move: L={left_coef}, R={right_coef}, D={distance}")
+    # Control motors here
+
+# Reconnection loop - create new PiStreamer for each connection
+while True:
+    # Create new streamer instance for this connection
+    streamer = PiStreamer(camera=camera, host="192.168.1.101")
+    streamer.set_movement_callback(handle_movement)
+
+    # Connect and stream (blocks until disconnected)
+    if streamer.connect():
+        streamer.stream()  # Uses DEFAULT_MAX_FPS from config
+
+    # Brief pause before reconnecting
+    time.sleep(2.0)
+```
+
+**IMPORTANT:** PiStreamer is designed for single-use. Each instance handles one connection lifecycle.
+For reconnection, create a new PiStreamer instance while reusing the same camera.
+
+**ComputerReceiver API:**
+```python
+from connection import ComputerReceiver
+
+receiver = ComputerReceiver()
+receiver.start_servers()
+receiver.wait_for_connection()
+
+# Send movement command
+receiver.send_movement(left_coef=0.5, right_coef=0.5, distance=100.0)
+
+# Gracefully close Pi connection
+receiver.send_close()
+```
+
+**Connection Features:**
+- Single-use connection instances (no race conditions)
+- Clean connection lifecycle (create → connect → stream → done)
+- Camera management external to streamer (reuse across connections)
+- Configurable socket timeouts and buffer sizes
+- Frame rate limiting
+- Thread-safe command message reception
+- Extensible message protocol for future command types
+
+**Configuration (connection/config.py):**
+- `VIDEO_PORT`: Default 5000
+- `COMMAND_PORT`: Default 5001
+- `FRAME_WIDTH`, `FRAME_HEIGHT`: Video resolution (default 640x480)
+- `JPEG_QUALITY`: Compression quality (default 80)
+- `DEFAULT_MAX_FPS`: Default maximum FPS for streaming (default 30.0)
+- `SOCKET_TIMEOUT`: Network timeout in seconds (default 180.0)
+- `RECONNECT_DELAY`: Delay between reconnection attempts (default 5.0s)
+- `BUFFER_SIZE`: Socket buffer size
+- `MSG_TYPE_CLOSE`: Message type constant (0) for closing connection
+- `MSG_TYPE_MOVEMENT`: Message type constant (1) for movement commands
+- `MESSAGE_ARG_COUNTS`: Dict mapping message types to their expected argument counts
+
+**Protocol API (connection/protocol.py):**
+```python
+# Send generic command message
+protocol.send_command(socket, msg_type: int, args: list[float]) -> bool
+
+# Receive generic command message (validates arg count based on message type)
+msg_type, args = protocol.recv_command(socket) -> tuple[int, list[float]] | None
+
+# Safely close socket with proper shutdown and error handling
+protocol.close_socket(socket: Optional[socket.socket]) -> None
+
+# Example: Send close command (type 0, no args)
+protocol.send_command(sock, config.MSG_TYPE_CLOSE, [])
+
+# Example: Send movement command (type 1, 3 args)
+protocol.send_command(sock, config.MSG_TYPE_MOVEMENT, [0.5, 0.5, 100.0])
+
+# Example: Receive and handle commands
+result = protocol.recv_command(sock)
+if result:
+    msg_type, args = result
+    if msg_type == config.MSG_TYPE_CLOSE:
+        print("Connection closing...")
+        protocol.close_socket(sock)
+        break
+    elif msg_type == config.MSG_TYPE_MOVEMENT:
+        left_coef, right_coef, distance = args
+        # Handle movement...
+
+# Adding new message types:
+# 1. Add to config.py: MSG_TYPE_CUSTOM = 2
+# 2. Add to MESSAGE_ARG_COUNTS: MSG_TYPE_CUSTOM: 4
+# 3. Handle in receiver code
+```
+
 ## Vision System
 
 ### YOLO Detection Pipeline
@@ -230,6 +451,20 @@ When integrating vision with motor control:
 3. Send commands to Raven board to actuate motors
 4. Main control loop should handle both vision processing and motor updates
 
+### Remote Operation Workflow
+See the **Development Workflow** section under "Remote Communication System" for detailed startup and reconnection procedures.
+
+**Integration with motor control:**
+1. **On Raspberry Pi**: `main_pi.py` runs PiStreamer to stream camera feed and receive movement commands
+2. **On Computer**: Run ComputerReceiver to display video and send movement commands
+3. **Movement callback**: PiStreamer callback translates commands to Raven motor control via `nav.startPath()`
+4. **Automatic reconnection**: Pi continuously attempts to reconnect, enabling rapid development iteration
+
+**Key characteristics:**
+- TCP protocol ensures reliable command delivery but adds ~10-50ms latency vs UDP/RTP
+- Pi-initiated reconnection allows restarting computer code without touching the robot
+- Persistent camera across reconnections avoids reinitialization delays
+
 ### Common Pitfalls and Solutions
 
 **Detection Issues:**
@@ -253,14 +488,31 @@ When integrating vision with motor control:
 - **Coordinate systems**: YOLO returns pixel coordinates in xyxy format; convert to robot coordinates for navigation
 - **MPS acceleration**: Training uses Apple Silicon GPU (`device: 'mps'`); inference auto-detects available hardware
 
+**Connection and Networking:**
+- **Pi won't connect**: Verify Pi and computer are on same network, check firewall settings, verify `COMPUTER_IP` in config.py matches your computer's IP
+- **Automatic reconnection**: Connection failures are expected and handled automatically - Pi retries every 5 seconds (configurable via `RECONNECT_DELAY`)
+- **Restarting computer code**: Just Ctrl+C and restart - Pi will automatically reconnect within seconds (no need to restart Pi)
+- **Video lag**: Reduce `JPEG_QUALITY` in config.py, lower resolution, or reduce `DEFAULT_MAX_FPS`
+- **Dropped frames**: TCP guarantees delivery but can cause frame buildup under poor network conditions; monitor frame_id gaps
+- **Command latency**: TCP adds 10-50ms vs UDP; factor this into control loops for time-sensitive operations
+- **Socket timeout errors**: Increase `SOCKET_TIMEOUT` in config.py for unreliable networks (default is 180s)
+
 ## File Organization
 
 ```
 MDS/
 ├── main.py                    # Raven motor controller example
+├── main_pi.py                 # Raspberry Pi main script with PiStreamer integration
 ├── requirements.txt           # Python dependencies (ultralytics, ncnn, numpy, maslab-lib)
 ├── out.jpg                   # Example output image
 ├── runs/                     # Root-level runs directory (generated)
+├── connection/               # Remote communication system (TCP-based)
+│   ├── __init__.py
+│   ├── PiStreamer.py         # Pi-side video streamer and movement receiver
+│   ├── ComputerReceiver.py   # Computer-side video receiver and movement sender
+│   ├── protocol.py           # Custom TCP messaging protocol
+│   ├── config.py             # Network and video configuration
+│   └── CameraCapture.py      # Unified camera interface (USB/PiCamera)
 └── yolo/
     ├── yolo11n.pt            # Pretrained YOLOv11n model (COCO dataset, 80 classes)
     ├── yolo_detect.py        # Main detection script for inference
