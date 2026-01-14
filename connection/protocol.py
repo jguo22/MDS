@@ -193,7 +193,7 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
             return None
 
         # 1 byte type + N floats (4 bytes each) = length of data
-        arg_count = (len(data) - 1) / 4
+        arg_count = (len(data) - 1) // 4
 
         # Unpack float arguments
         args = list(struct.unpack(f'!{arg_count}f', data[1:]))
