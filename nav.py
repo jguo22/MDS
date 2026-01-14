@@ -51,8 +51,11 @@ class Nav:
             print(self.bno.quaternion)
             time.sleep(0.02)
 
-        self.max_velocity = 10.0 * TICK_ROTATION  # ticks/s
-        self.acceleration = 2.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
+        self._updateAngle()
+        self.start_angle = self.angle
+
+        self.max_velocity = 3.0 * TICK_ROTATION  # ticks/s
+        self.acceleration = 5.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
 
         self.moves: list[NavMove] = []
         self._lock = threading.Lock()
