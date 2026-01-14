@@ -32,4 +32,4 @@ class MessageType(Enum):
     CLOSE = 0  # Close connection (no arguments)
     # Movement command: [left_coef, right_coef, distance]
     ADD_MOVEMENT = 1  # One movement command
-    OVERRIDE_MOVEMENETS = 2  # List of movement commands
+    OVERRIDE_MOVEMENTS = 2  # List of movement commands
