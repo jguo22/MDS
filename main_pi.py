@@ -3,7 +3,7 @@ import argparse
 from nav import Nav, NavMove
 import threading
 import traceback
-from connection import config
+from connection import config, message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
 
@@ -28,12 +28,12 @@ def main():
     nav = Nav()
 
     def movement_callback(messageType: int, args: list[float]):
-        if messageType == config.MessageType.ADD_MOVEMENT.value:
+        if messageType == message_types.ADD_MOVEMENT:
             assert (len(args) == 3)
             print(
                 f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
             nav.addPath(NavMove(args[0], args[1], args[2], False))
-        elif messageType == config.MessageType.OVERRIDE_MOVEMENTS.value:
+        elif messageType == message_types.OVERRIDE_MOVEMENTS:
             assert (len(args) % 3 == 0)
             print(f"OVERRIDE_MOVEMENTS: {len(args)//3} moves")
             moves = []

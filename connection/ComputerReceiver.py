@@ -21,8 +21,7 @@ import traceback
 import math
 import nav
 
-from . import config
-from . import protocol
+from . import config, protocol, message_types
 
 
 class ComputerReceiver():
@@ -140,7 +139,7 @@ class ComputerReceiver():
             return False
 
         return protocol.send_command(
-            self.command_client_socket, config.MessageType.CLOSE.value, [])
+            self.command_client_socket, message_types.CLOSE, [])
 
     def get_latest_frame(self) -> Optional[Tuple[np.ndarray, int]]:
         """Get the latest received frame. Thread-safe."""
@@ -292,7 +291,7 @@ class ComputerReceiver():
 
         return protocol.send_command(
             self.command_client_socket,
-            config.MessageType.ADD_MOVEMENT.value,
+            message_types.ADD_MOVEMENT,
             [left_coef, right_coef, distance]
         )
 
@@ -316,6 +315,6 @@ class ComputerReceiver():
 
         return protocol.send_command(
             self.command_client_socket,
-            config.MessageType.OVERRIDE_MOVEMENTS.value,
+            MessageType.OVERRIDE_MOVEMENTS,
             movements
         )

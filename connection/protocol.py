@@ -6,6 +6,8 @@ import struct
 import socket
 from typing import Optional, Tuple
 
+from connection import message_types
+
 from . import config
 
 
@@ -155,7 +157,7 @@ def send_command(
     """
     try:
         # Validate message type
-        if msg_type not in [msgType.value for msgType in config.MessageType]:
+        if msg_type not in message_types.messageTypes:
             print(f"Unknown message type: {msg_type}")
             return False
 
@@ -189,7 +191,7 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
         msg_type: int = struct.unpack('!B', data[:1])[0]
 
         # Validate message type
-        if msg_type not in [msgType.value for msgType in config.MessageType]:
+        if msg_type not in message_types.messageTypes:
             print(f"Unknown message type: {msg_type}")
             return None
 

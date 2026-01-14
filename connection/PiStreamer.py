@@ -32,6 +32,8 @@ import cv2
 from typing import Callable, Optional
 import traceback
 
+from connection import message_types
+
 from . import config
 from . import protocol
 from .CameraCapture import CameraCapture
@@ -148,7 +150,7 @@ class PiStreamer():
                 msg_type, args = result
 
                 # Handle close command (type 0) - explicit shutdown signal
-                if msg_type == config.MessageType.CLOSE:
+                if msg_type == message_types.CLOSE:
                     print("Received close command from computer")
                     self.stop()
                     break

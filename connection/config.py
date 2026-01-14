@@ -25,11 +25,3 @@ BUFFER_SIZE = 65536  # receive buffer size
 # Timeouts (seconds)
 SOCKET_TIMEOUT = 180.0  # 3 mins, longer than match time
 RECONNECT_DELAY = 3.0  # Delay between reconnection attempts
-
-
-# Message types
-class MessageType(Enum):
-    CLOSE = 0  # Close connection (no arguments)
-    # Movement command: [left_coef, right_coef, distance]
-    ADD_MOVEMENT = 1  # One movement command
-    OVERRIDE_MOVEMENTS = 2  # List of movement commands
