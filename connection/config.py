@@ -24,7 +24,7 @@ BUFFER_SIZE = 65536  # receive buffer size
 
 # Timeouts (seconds)
 SOCKET_TIMEOUT = 180.0  # 3 mins, longer than match time
-RECONNECT_DELAY = 5.0  # Delay between reconnection attempts
+RECONNECT_DELAY = 3.0  # Delay between reconnection attempts
 
 
 # Message types
