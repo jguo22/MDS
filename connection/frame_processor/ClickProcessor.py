@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Tuple
 from connection.ComputerReceiver import ComputerReceiver
 from .FrameProcessor import FrameProcessor
-from pixelTo3D import pixel_to_robot_horizontal
+from pixelTo3D import pixel_to_robot_horizontal, transform_uv_to_xy
 
 
 class ClickProcessor(FrameProcessor):
@@ -22,16 +22,18 @@ class ClickProcessor(FrameProcessor):
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             # Convert to normalized coordinates (0-1)
-            x_norm = (x / (self.frame_size[1])) + 1 / self.frame_size[1] / 2
-            y_norm = y / (self.frame_size[0]) + 1 / self.frame_size[0] / 2
-            x = x_norm * 640
-            y = y_norm * 480
-            print(
-                f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}")
+            # x_norm = (x / (self.frame_size[1])) + 1 / self.frame_size[1] / 2
+            # y_norm = y / (self.frame_size[0]) + 1 / self.frame_size[0] / 2
+            # x = x_norm * 640
+            # y = y_norm * 480
+            # print(
+            #     f"Click: ({x}, {y}) -> Normalized: ({x_norm:.3f}")
+            #
+            # x_scaled, y_scaled = pixel_to_robot_horizontal(x, y)
+            #
+            # print(f'({x_scaled}, {y_scaled})')
 
-            x_scaled, y_scaled = pixel_to_robot_horizontal(x, y)
-
-            print(f'({x_scaled}, {y_scaled})')
+            x_scaled, y_scaled = transform_uv_to_xy(x, y)
 
             self.computerReceiver.send_xy(x_scaled, y_scaled)
 

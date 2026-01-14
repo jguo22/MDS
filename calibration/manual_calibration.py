@@ -62,7 +62,7 @@ PTS_GROUND_PLANE = np.array([
     [5, 2],
     [3, 3],
     [7, 5],
-]) * 1.85 + np.array([[-1.85 * 3.5, 27.94]])
+]) * 18.5 + np.array([[-18.5 * 3.5, 279.4]])
 
 
 print(PTS_IMAGE_PLANE)

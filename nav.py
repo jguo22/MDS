@@ -36,10 +36,26 @@ class NavMove:
 
 class Nav:
     def __init__(self):
+        # I put it here so that it doesn't run on computer
+        # IMU SETUP MUST BE BEFORE RAVEN SETUP
+        import board
+        import busio
+        from adafruit_bno08x.i2c import BNO08X_I2C
+        from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
+
+        # Let IMU Setup
+        i2c = busio.I2C(board.SCL, board.SDA, frequency=800000)
+        self.bno = BNO08X_I2C(i2c)
+        self.bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
+        for i in range(5):
+            print(self.bno.quaternion)
+            time.sleep(0.02)
+
         self.max_velocity = 10.0 * TICK_ROTATION  # ticks/s
         self.acceleration = 2.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
 
         self.moves: list[NavMove] = []
+        self._lock = threading.Lock()
         self.moving = False
 
         # for imu
@@ -59,23 +75,7 @@ class Nav:
         self.last_speed = 0
         self.current_distance = 0
 
-        self._lock = threading.Lock()
-
         self.raven = Raven()
-
-        # I put it here so that it doesn't run on computer
-        import board
-        import busio
-        from adafruit_bno08x.i2c import BNO08X_I2C
-        from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
-
-        # Let IMU Setup
-        i2c = busio.I2C(board.SCL, board.SDA, frequency=800000)
-        self.bno = BNO08X_I2C(i2c)
-        self.bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
-        for i in range(5):
-            print(self.bno.quaternion)
-            time.sleep(0.02)
 
         for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
             self.raven.set_motor_encoder(motor, 0)
