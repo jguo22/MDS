@@ -180,6 +180,7 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
     """
     # Receive message with length header
     data = recv_message(sock)
+    print(f'data is {data}')
     if data is None or len(data) < 1:
         return None
 
