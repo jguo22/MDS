@@ -30,7 +30,8 @@ def main():
     def movement_callback(messageType: int, args: list[float]):
         if messageType == config.MessageType.ADD_MOVEMENT.value:
             assert (len(args) == 3)
-            print(f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
+            print(
+                f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
             nav.addPath(NavMove(args[0], args[1], args[2], False))
         elif messageType == config.MessageType.OVERRIDE_MOVEMENTS.value:
             assert (len(args) % 3 == 0)

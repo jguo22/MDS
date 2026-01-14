@@ -100,6 +100,7 @@ class Nav:
             self.moves.append(nav_move)
 
     def overridePaths(self, nav_moves: list[NavMove]):
+        print(nav_moves)
         # copy it to not modify original
         nav_moves = nav_moves[:]
         # immediately use startPath to override current path
@@ -139,6 +140,10 @@ class Nav:
                 self.moving = True
                 self._startPath(self.moves[0])
                 self.moves.pop(0)
+
+            # Only update motors if we're actually moving
+            if not self.moving:
+                return
 
             # calculate target speed
             distance_left = self.total_distance - self.current_distance
