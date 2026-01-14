@@ -28,11 +28,13 @@ def main():
     nav = Nav()
 
     def movement_callback(messageType: int, args: list[float]):
-        if messageType == config.MessageType.ADD_MOVEMENT:
+        if messageType == config.MessageType.ADD_MOVEMENT.value:
             assert (len(args) == 3)
+            print(f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
             nav.addPath(NavMove(args[0], args[1], args[2], False))
-        elif messageType == config.MessageType.OVERRIDE_MOVEMENTS:
+        elif messageType == config.MessageType.OVERRIDE_MOVEMENTS.value:
             assert (len(args) % 3 == 0)
+            print(f"OVERRIDE_MOVEMENTS: {len(args)//3} moves")
             moves = []
             for i in range(len(args) // 3):
                 moves.append(
