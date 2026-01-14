@@ -1,12 +1,10 @@
 import time
 import argparse
 import threading
-from MovementCommander import MovementCommander
 from connection import config
 from connection.ComputerReceiver import ComputerReceiver
 from connection.frame_processor.ClickProcessor import ClickProcessor
 from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
-from typing import Optional, Tuple
 import numpy as np
 
 
@@ -28,15 +26,14 @@ def main():
     window_name = "Pi Camera"
     # Create receiver and click processor
     receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
-    movementCommander = MovementCommander(receiver)
-    click_processor = ClickProcessor(movementCommander, window_name)
+    click_processor = ClickProcessor(receiver, window_name)
     save_image_processor = SaveImageProcessor(2)
 
     def process(frame: np.ndarray,
-                frame_id: int) -> Optional[Tuple[float, float, float]]:
+                frame_id: int) -> None:
         # Update frame dimensions
-        save_image_processor.process(frame, frame_id)
-        return click_processor.process(frame, frame_id)
+        # save_image_processor.process(frame, frame_id)
+        click_processor.process(frame, frame_id)
 
     # Set the frame callback to use our processor
     receiver.set_frame_callback(process)
@@ -58,7 +55,7 @@ def main():
                 if len(parts) == 2:
                     x = float(parts[0])
                     y = float(parts[1])
-                    movementCommander.queue_xy(x, y)
+                    receiver.send_xy(x, y)
                     print(f"Queued movement to: x={x} y={y}")
             except ValueError:
                 print("Invalid numbers. Try again.")

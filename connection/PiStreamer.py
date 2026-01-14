@@ -32,6 +32,8 @@ import cv2
 from typing import Callable, Optional
 import traceback
 
+from connection import message_types
+
 from . import config
 from . import protocol
 from .CameraCapture import CameraCapture
@@ -71,13 +73,13 @@ class PiStreamer():
         self.running = False
 
         # NOTE: movement callback blocks the movement receiving thread
-        self.movement_callback: Optional[Callable[[
-            float, float, float], None]] = None
+        self.command_callback: Callable[[
+            int, list[float]], None] = (lambda _msg_type, _args: None)
 
         self._command_receiver_thread: Optional[threading.Thread] = None
 
     def set_movement_callback(
-            self, callback: Callable[[float, float, float], None]):
+            self, callback: Callable[[int, list[float]], None]):
         """
         Set callback for when movement commands are received.
         NOTE: movement callback blocks the command receiver thread
@@ -85,7 +87,7 @@ class PiStreamer():
         Args:
             callback: Function(x, y, frame_id, extra) called on movement command receipt
         """
-        self.movement_callback = callback
+        self.command_callback = callback
 
     def connect(self) -> bool:
         """
@@ -148,27 +150,17 @@ class PiStreamer():
                 msg_type, args = result
 
                 # Handle close command (type 0) - explicit shutdown signal
-                if msg_type == config.MSG_TYPE_CLOSE:
+                if msg_type == message_types.CLOSE:
                     print("Received close command from computer")
                     self.stop()
                     break
-
-                # Handle movement command (type 1)
-                elif msg_type == config.MSG_TYPE_MOVEMENT:
-                    left_coef, right_coef, distance = args
-                    print(
-                        f"Received movement command - L: {left_coef:.2f}, R: {right_coef:.2f}, D: {distance:.2f}")
-
-                    if self.movement_callback:
-                        try:
-                            self.movement_callback(
-                                left_coef, right_coef, distance)
-                        except Exception as e:
-                            print(
-                                f"Error in movement callback: {type(e).__name__}: {e}")
-                            traceback.print_exc()
                 else:
-                    print(f"Unknown message type: {msg_type}")
+                    try:
+                        self.command_callback(msg_type, args)
+                    except Exception as e:
+                        print(
+                            f"Error in movement callback: {type(e).__name__}: {e}")
+                        traceback.print_exc()
 
             except Exception as e:
                 print(

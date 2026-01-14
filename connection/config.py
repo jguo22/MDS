@@ -1,3 +1,5 @@
+from enum import Enum
+
 """
 Shared configuration for video streaming between Raspberry Pi and computer.
 """
@@ -20,16 +22,6 @@ DEFAULT_MAX_FPS = 30.0  # Default maximum frames per second for streaming
 HEADER_SIZE = 8  # bytes for message length header
 BUFFER_SIZE = 65536  # receive buffer size
 
-# Message types
-MSG_TYPE_CLOSE = 0  # Close connection (no arguments)
-MSG_TYPE_MOVEMENT = 1  # Movement command: [left_coef, right_coef, distance]
-
-# Message type argument counts
-MESSAGE_ARG_COUNTS = {
-    MSG_TYPE_CLOSE: 0,
-    MSG_TYPE_MOVEMENT: 3,
-}
-
 # Timeouts (seconds)
 SOCKET_TIMEOUT = 180.0  # 3 mins, longer than match time
-RECONNECT_DELAY = 5.0  # Delay between reconnection attempts
+RECONNECT_DELAY = 3.0  # Delay between reconnection attempts

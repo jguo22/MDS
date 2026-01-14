@@ -1,9 +1,9 @@
 import time
 import argparse
-from nav import Nav
+from nav import Nav, NavMove
 import threading
 import traceback
-from connection import config
+from connection import config, message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
 
@@ -27,8 +27,23 @@ def main():
 
     nav = Nav()
 
+    def movement_callback(messageType: int, args: list[float]):
+        if messageType == message_types.ADD_MOVEMENT:
+            assert (len(args) == 3)
+            print(
+                f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
+            nav.addPath(NavMove(args[0], args[1], args[2], False))
+        elif messageType == message_types.OVERRIDE_MOVEMENTS:
+            assert (len(args) % 3 == 0)
+            print(f"OVERRIDE_MOVEMENTS: {len(args)//3} moves")
+            moves = []
+            for i in range(len(args) // 3):
+                moves.append(
+                    NavMove(args[3 * i], args[3 * i + 1], args[3 * i + 2], False))
+            nav.overridePaths(moves)
+
     # activate the navigation in another thread
-    thread = threading.Thread(target=nav.activate, daemon=True)
+    thread = threading.Thread(target=nav.startLoop, daemon=True)
     thread.start()
 
     # Reconnection loop - each connection uses a new PiStreamer instance
@@ -45,7 +60,7 @@ def main():
             )
 
             # Set up movement callback
-            streamer.set_movement_callback(nav.startPath)
+            streamer.set_movement_callback(movement_callback)
 
             # Attempt connection and stream
             if streamer.connect():

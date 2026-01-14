@@ -2,3 +2,4 @@ ultralytics
 ncnn
 numpy
 git+https://github.com/MASLAB/maslab-lib.git
+adafruit-circuitpython-bno08x

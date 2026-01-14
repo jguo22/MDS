@@ -6,6 +6,8 @@ import struct
 import socket
 from typing import Optional, Tuple
 
+from connection import message_types
+
 from . import config
 
 
@@ -154,15 +156,9 @@ def send_command(
         True if successful
     """
     try:
-        # Validate message type and argument count
-        if msg_type not in config.MESSAGE_ARG_COUNTS:
+        # Validate message type
+        if msg_type not in message_types.messageTypes:
             print(f"Unknown message type: {msg_type}")
-            return False
-
-        expected_arg_count = config.MESSAGE_ARG_COUNTS[msg_type]
-        if len(args) != expected_arg_count:
-            print(
-                f"Invalid argument count for message type {msg_type}: expected {expected_arg_count}, got {len(args)}")
             return False
 
         # Pack: 1-byte message type + N 4-byte floats
@@ -186,33 +182,24 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
     """
     # Receive message with length header
     data = recv_message(sock)
+    print(f'data is {data}')
     if data is None or len(data) < 1:
         return None
 
     try:
         # Unpack message type (1 byte)
-        msg_type = struct.unpack('!B', data[:1])[0]
+        msg_type: int = struct.unpack('!B', data[:1])[0]
 
-        # Get expected argument count for this message type
-        if msg_type not in config.MESSAGE_ARG_COUNTS:
+        # Validate message type
+        if msg_type not in message_types.messageTypes:
             print(f"Unknown message type: {msg_type}")
             return None
 
-        expected_arg_count = config.MESSAGE_ARG_COUNTS[msg_type]
+        # 1 byte type + N floats (4 bytes each) = length of data
+        arg_count = (len(data) - 1) // 4
 
-        # Validate message length
-        # 1 byte type + N floats
-        expected_length = 1 + (expected_arg_count * 4)
-        if len(data) != expected_length:
-            print(
-                f"Invalid message length for type {msg_type}: expected {expected_length}, got {len(data)}")
-            return None
-
-        # Unpack float arguments based on message type
-        if expected_arg_count > 0:
-            args = list(struct.unpack(f'!{expected_arg_count}f', data[1:]))
-        else:
-            args = []
+        # Unpack float arguments
+        args = list(struct.unpack(f'!{arg_count}f', data[1:]))
 
         return msg_type, args
     except struct.error as e:

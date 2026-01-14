@@ -18,9 +18,10 @@ from typing import Callable, Optional, Tuple
 import cv2
 import numpy as np
 import traceback
+import math
+import nav
 
-from . import config
-from . import protocol
+from . import config, protocol, message_types
 
 
 class ComputerReceiver():
@@ -58,14 +59,12 @@ class ComputerReceiver():
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
 
-        self.on_frame: Optional[Callable[[np.ndarray, int],
-                                Optional[Tuple[float, float, float]]]] = None
+        self.on_frame: Callable[[np.ndarray, int], None] = (lambda x, y: None)
         self.latest_frame: Optional[np.ndarray] = None
         self.latest_frame_id: int = 0
         self._lock = threading.Lock()
 
-    def set_frame_callback(self, callback: Callable[[
-            np.ndarray, int], Optional[Tuple[float, float, float]]]):
+    def set_frame_callback(self, callback: Callable[[np.ndarray, int], None]):
         """
         Set callback for processing frames and generating movement commands.
         THIS BLOCKS THE RECEIVING FRAMES LOOP
@@ -140,31 +139,7 @@ class ComputerReceiver():
             return False
 
         return protocol.send_command(
-            self.command_client_socket, config.MSG_TYPE_CLOSE, [])
-
-    def send_movement(
-            self,
-            left_coef: float,
-            right_coef: float,
-            distance: float) -> bool:
-        """
-        Send movement commands to the Pi.
-
-        Args:
-            left_coef: Left motor coefficient (-1.0 to 1.0)
-            right_coef: Right motor coefficient (-1.0 to 1.0)
-            distance: Distance to move (in meters)
-
-        Returns:
-                True if successful
-        """
-        if not self.command_client_socket:
-            return False
-
-        return protocol.send_command(
-            self.command_client_socket,
-            config.MSG_TYPE_MOVEMENT,
-            [left_coef, right_coef, distance])
+            self.command_client_socket, message_types.CLOSE, [])
 
     def get_latest_frame(self) -> Optional[Tuple[np.ndarray, int]]:
         """Get the latest received frame. Thread-safe."""
@@ -221,12 +196,12 @@ class ComputerReceiver():
                     self.latest_frame_id = frame_id
 
                 # Process frame with callback and get movement command
-                # TODO: might want to change this to also affect gripper
-                if self.on_frame:
-                    movement = self.on_frame(frame, frame_id)
-                    if movement is not None:
-                        left_coef, right_coef, distance = movement
-                        self.send_movement(left_coef, right_coef, distance)
+                try:
+                    self.on_frame(frame, frame_id)
+                except Exception as e:
+                    print("Error in frame callback")
+                    print(e)
+                    traceback.print_exc()
 
                 # Calculate FPS
                 frame_count += 1
@@ -275,3 +250,71 @@ class ComputerReceiver():
         protocol.close_socket(self.command_client_socket)
         self.command_client_socket = None
         print("client connection stopped")
+
+    # SENDING COMMANDS
+    def send_xy(self, x, y):
+        """
+        take in x,y in mm and plan send out instructions
+        """
+        distance = math.sqrt(x * x + y * y)
+
+        # forward is y axis, so we want angle from y axis
+        # while atan calculates angle from x axis
+        theta = math.atan2(y, x) - math.pi / 2
+
+        rotate = list(nav.get_rotate(theta))
+        forward = list(nav.get_forward_mm(distance))
+
+        print(
+            f'sent movement x={x} y={y} theta={theta} distance={distance} rotate={rotate} forward={forward}')
+
+        self.override_movement(rotate + forward)
+
+    def add_movement(
+            self,
+            left_coef: float,
+            right_coef: float,
+            distance: float) -> bool:
+        """
+        Send movement commands to the Pi.
+
+        Args:
+            left_coef: Left motor coefficient (-1.0 to 1.0)
+            right_coef: Right motor coefficient (-1.0 to 1.0)
+            distance: Distance to move (in ticks)
+
+        Returns:
+                True if successful
+        """
+        if not self.command_client_socket:
+            return False
+
+        return protocol.send_command(
+            self.command_client_socket,
+            message_types.ADD_MOVEMENT,
+            [left_coef, right_coef, distance]
+        )
+
+    def override_movement(self, movements: list[float]):
+        """
+        Send list of movement commands to the Pi.
+
+        Args:
+            movements: list of movement commands in groups of 3
+                left_coef: Left motor coefficient (-1.0 to 1.0)
+                right_coef: Right motor coefficient (-1.0 to 1.0)
+                distance: Distance to move (in ticks)
+
+        Returns:
+                True if successful
+        """
+        if not self.command_client_socket:
+            return False
+
+        assert (len(movements) % 3 == 0)
+
+        return protocol.send_command(
+            self.command_client_socket,
+            message_types.OVERRIDE_MOVEMENTS,
+            movements
+        )
