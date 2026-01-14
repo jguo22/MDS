@@ -155,7 +155,7 @@ def send_command(
     """
     try:
         # Validate message type
-        if msg_type not in config.MessageType:
+        if msg_type not in [msgType.value for msgType in config.MessageType]:
             print(f"Unknown message type: {msg_type}")
             return False
 
@@ -185,10 +185,10 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
 
     try:
         # Unpack message type (1 byte)
-        msg_type = struct.unpack('!B', data[:1])[0]
+        msg_type: int = struct.unpack('!B', data[:1])[0]
 
         # Validate message type
-        if msg_type not in config.MessageType:
+        if msg_type not in [msgType.value for msgType in config.MessageType]:
             print(f"Unknown message type: {msg_type}")
             return None
 

@@ -33,7 +33,7 @@ class ClickProcessor(FrameProcessor):
 
             print(f'({x_scaled}, {y_scaled})')
 
-            computerReceiver.send_xy(x_scaled, y_scaled)
+            self.computerReceiver.send_xy(x_scaled, y_scaled)
 
     def process(self, frame: np.ndarray,
                 frame_id: int) -> Optional[Tuple[float, float, float]]:
