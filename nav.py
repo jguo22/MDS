@@ -147,10 +147,6 @@ class Nav:
                 self._startPath(self.moves[0])
                 self.moves.pop(0)
 
-            # Only update motors if we're actually moving
-            if not self.moving:
-                return
-
             # calculate target speed
             distance_left = self.total_distance - self.current_distance
             delta_speed = self.acceleration * dt
