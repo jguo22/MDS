@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from typing import Optional, Tuple
-from MovementCommander import send_xy
 from connection.ComputerReceiver import ComputerReceiver
 from .FrameProcessor import FrameProcessor
 from pixelTo3D import pixel_to_robot_horizontal
@@ -34,7 +33,7 @@ class ClickProcessor(FrameProcessor):
 
             print(f'({x_scaled}, {y_scaled})')
 
-            send_xy(self.computerReceiver, x_scaled, y_scaled)
+            computerReceiver.send_xy(x_scaled, y_scaled)
 
     def process(self, frame: np.ndarray,
                 frame_id: int) -> Optional[Tuple[float, float, float]]:

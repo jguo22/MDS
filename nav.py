@@ -4,11 +4,6 @@ import threading
 from typing import Tuple
 from raven import Raven
 
-import board
-import busio
-from adafruit_bno08x.i2c import BNO08X_I2C
-from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
-
 
 # Miguel's Navigation movement class
 LEFT_MOTOR = Raven.MotorChannel.CH2
@@ -61,6 +56,12 @@ class Nav:
         self._lock = threading.Lock()
 
         self.raven = Raven()
+
+        # I put it here so that it doesn't run on computer
+        import board
+        import busio
+        from adafruit_bno08x.i2c import BNO08X_I2C
+        from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
 
         # Let IMU Setup
         i2c = busio.I2C(board.SCL, board.SDA, frequency=800000)
