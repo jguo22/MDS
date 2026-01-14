@@ -3,36 +3,73 @@ import numpy as np
 
 IMAGE_WINDOW_NAME = "estimation"
 
-# TODO: Change to your appropriate image points
-PTS_IMAGE_PLANE = [
-    [113, 305],
-    [241, 274],
-    [487, 183],
-    [111, 166],
-    [411, 247],
-    [554, 303],
-    [296, 167],
-]
 
-# TODO: Change to your appropriate real-world points
-PTS_GROUND_PLANE = [
-    [1, 3],
-    [2, 1],
-    [6, -4],
-    [7, 4],
-    [3, -2],
-    [1, -4],
+def outputToArray(input: str) -> np.ndarray:
+    lines = input.splitlines()
+    points_2d = []
+    for line in lines:
+        commaIndex = line.find(',')
+        firstColon = line.find(':')
+        u = int(line[firstColon + 2:commaIndex])
+        v = int(line[commaIndex + 5:])
+        points_2d.append([u, v])
+    return np.array(points_2d)
+
+
+PTS_IMAGE_PLANE = outputToArray('''0 - u: 129, v: 280
+1 - u: 164, v: 283
+2 - u: 198, v: 285
+3 - u: 232, v: 287
+4 - u: 265, v: 290
+5 - u: 298, v: 292
+6 - u: 332, v: 295
+7 - u: 364, v: 297
+8 - u: 125, v: 286
+9 - u: 119, v: 291
+10 - u: 114, v: 299
+11 - u: 106, v: 307
+12 - u: 99, v: 315
+13 - u: 92, v: 323
+14 - u: 83, v: 333
+15 - u: 75, v: 343
+16 - u: 64, v: 355
+17 - u: 52, v: 368
+18 - u: 433, v: 396
+19 - u: 318, v: 360
+20 - u: 225, v: 331
+21 - u: 391, v: 334''')
+
+PTS_GROUND_PLANE = np.array([
+    [0, 10],
+    [1, 10],
+    [2, 10],
+    [3, 10],
+    [4, 10],
+    [5, 10],
+    [6, 10],
+    [7, 10],
+    [0, 9],
+    [0, 8],
+    [0, 7],
+    [0, 6],
+    [0, 5],
+    [0, 4],
+    [0, 3],
+    [0, 2],
+    [0, 1],
+    [0, 0],
     [7, 0],
-]
+    [5, 2],
+    [3, 3],
+    [7, 5],
+]) * 1.85 + np.array([[-1.85 * 3.5, 27.94]])
 
-# TODO: Change to your appropriate camera
-cap = cv2.VideoCapture(0)
 
-# Take a picture and show frame
-ret = False
-while not ret:
-    ret, frame = cap.read()
-    cap.release()
+print(PTS_IMAGE_PLANE)
+assert (len(PTS_IMAGE_PLANE) == len(PTS_GROUND_PLANE))
+
+image_path = "frame.jpg"
+frame = cv2.imread(image_path)
 cv2.imshow(IMAGE_WINDOW_NAME, frame)
 
 
@@ -48,6 +85,7 @@ def transform_uv_to_xy(h, u, v):
     the camera.
 
     Units are in whichever unit h was calculated in.
+    h is the homography matrix
     """
     homogeneous_point = np.array([[u], [v], [1]])
     xy = np.dot(h, homogeneous_point)
@@ -58,13 +96,13 @@ def transform_uv_to_xy(h, u, v):
     return x, y
 
 
-np_pts_ground = np.array(PTS_GROUND_PLANE)
-np_pts_ground = np.float32(np_pts_ground[:, np.newaxis, :])
+np_pts_ground = np.float32(PTS_GROUND_PLANE[:, np.newaxis, :])
 
-np_pts_image = np.array(PTS_IMAGE_PLANE)
-np_pts_image = np.float32(np_pts_image[:, np.newaxis, :])
+np_pts_image = np.float32(PTS_IMAGE_PLANE[:, np.newaxis, :])
 
 h, err = cv2.findHomography(np_pts_image, np_pts_ground)
+print(h)
+print(err)
 
 
 # Mouse click event listener
