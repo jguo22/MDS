@@ -20,6 +20,7 @@ import numpy as np
 import traceback
 import math
 import nav
+from yolo import segment
 
 from . import config, protocol, message_types
 
@@ -217,6 +218,7 @@ class ComputerReceiver():
 
                 # Display
                 if show_video:
+                    # segment.segmentImageInWindow(window_name, frame)
                     cv2.imshow(window_name, frame)
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q'):

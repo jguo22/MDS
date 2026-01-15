@@ -1,5 +1,3 @@
-from enum import Enum
-
 """
 Shared configuration for video streaming between Raspberry Pi and computer.
 """

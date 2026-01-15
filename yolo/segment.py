@@ -5,6 +5,8 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
 
+model = YOLO(str(SCRIPT_DIR / 'best.pt'))
+
 
 def segmentImage(image):
     results = model(image)
@@ -13,10 +15,13 @@ def segmentImage(image):
     cv.waitKey(10000)
 
 
+def segmentImageInWindow(window_name, image):
+    results = model(image)
+    annotated_frame = results[0].plot()
+    cv.imshow(window_name, annotated_frame)
+
+
 if __name__ == "__main__":
-    model = YOLO(str(SCRIPT_DIR / 'best.pt'))
-
     image_path = str(SCRIPT_DIR / "test.jpg")
-
     image = cv.imread(image_path)
     segmentImage(image)
