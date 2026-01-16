@@ -41,8 +41,9 @@ class Raven:
 		MOTOR_VOLTAGE_VALUE = 8 << 3  # Read-only
 		MOTOR_CURRENT_VALUE = 9 << 3  # Read-only
 		ODOMETRY = 10 << 3
-		ANGLE = 11 << 3# Write only
-		RESET = 12 << 3  # Write-only
+		ANGLE = 11 << 3
+		BASE = 12 << 3
+		RESET = 13 << 3  # Write-only
 
 	@unique
 	class __ReadWrite(Enum):
@@ -533,6 +534,28 @@ class Raven:
 		return self.__write_value(Raven.__MessageType.ANGLE, 
 							data = struct.pack("f", float(angle)),
 							retry=retry)
+
+	def get_angle(self, retry=0):
+		value = self.__read_value(
+							Raven.__MessageType.ANGLE, retry=retry
+						)
+		if value and len(value) == 4:
+			return struct.unpack("f", value)[0]
+		return None
+
+	def set_base(self, wheel_d, base_d, retry=0):
+		return self.__write_value(Raven.__MessageType.BASE, 
+								data=struct.pack("ff", [wheel_d, base_d]), 
+								retry=retry) 
+		
+	def get_base(self, retry=0):
+		value = self.__read_value(
+								Raven.__MessageType.BASE, retry=retry
+							)
+		if value and len(value) == 8:
+			wheel_d, base_d = struct.unpack("ff", value)
+			return wheel_d, base_d
+		return None
 
 
 	def reset(self, retry=0):
