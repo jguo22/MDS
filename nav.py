@@ -31,7 +31,11 @@ class NavMove:
         """
         Human Readable Print
         """
-        return f"Nav Move: \n l_c={self.left} \n r_c={self.right} \n distance={self.dist} \n smooth={self.smooth}"
+        return f"Nav Move: \n l_c={
+            self.left} \n r_c={
+            self.right} \n distance={
+            self.dist} \n smooth={
+                self.smooth}"
 
 
 class Nav:
@@ -75,9 +79,6 @@ class Nav:
         self.last_speed = 0
         self.current_distance = 0
 
-        self._updateAngle()
-        self.start_angle = self.angle
-
         self.raven = Raven()
         self.raven.set_base(WHEEL_D, BASE_D)
 
@@ -89,6 +90,9 @@ class Nav:
 
         self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
         self.raven.set_motor_pid(LEFT_MOTOR, p_gain=20, i_gain=5, d_gain=0.1)
+
+        self._updateAngle()
+        self.start_angle = self.angle
 
     def startLoop(self):
         # ONLY RUN ONE LOOP
@@ -138,6 +142,10 @@ class Nav:
     def _updateAngle(self):
         quat_i, quat_j, quat_k, quat_real = self.bno.quaternion
         current_angle = self.find_heading(quat_real, quat_i, quat_j, quat_k)
+
+        # IMPORTANT FOR ODOMETRY
+        self.raven.set_angle(current_angle)
+
         self.diff_angle = current_angle - self.last_angle
         if self.diff_angle > math.pi:
             self.diff_angle -= 2 * math.pi
