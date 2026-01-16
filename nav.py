@@ -79,6 +79,7 @@ class Nav:
         self.start_angle = self.angle
 
         self.raven = Raven()
+        self.raven.set_base(WHEEL_D, BASE_D)
 
         for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
             self.raven.set_motor_encoder(motor, 0)
@@ -99,6 +100,9 @@ class Nav:
                 time.sleep(FRAME_TIME - delta_time)
                 delta_time = FRAME_TIME
             start_time = time.time()
+
+            print(f'x, y is {self.raven.get_odometry()}')
+            print(f'angle is {self.raven.get_angle()}')
 
             self._updatePath(delta_time)
 

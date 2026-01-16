@@ -78,7 +78,7 @@ class PiStreamer():
 
         self._command_receiver_thread: Optional[threading.Thread] = None
 
-    def set_movement_callback(
+    def set_command_callback(
             self, callback: Callable[[int, list[float]], None]):
         """
         Set callback for when movement commands are received.

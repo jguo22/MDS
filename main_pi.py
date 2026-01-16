@@ -27,7 +27,7 @@ def main():
 
     nav = Nav()
 
-    def movement_callback(messageType: int, args: list[float]):
+    def command_callback(messageType: int, args: list[float]):
         if messageType == message_types.ADD_MOVEMENT:
             assert (len(args) == 3)
             print(
@@ -60,7 +60,7 @@ def main():
             )
 
             # Set up movement callback
-            streamer.set_movement_callback(movement_callback)
+            streamer.set_command_callback(command_callback)
 
             # Attempt connection and stream
             if streamer.connect():
