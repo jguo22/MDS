@@ -9,8 +9,9 @@ from raven import Raven
 LEFT_MOTOR = Raven.MotorChannel.CH2
 RIGHT_MOTOR = Raven.MotorChannel.CH3
 TICK_ROTATION = 64 * 50
-WHEEL_D = 95  # TODO: measure in mm
-BASE_D = 209
+# measurements in mm
+WHEEL_D = 101.6
+BASE_D = 237.236
 ANGLE_PROP = 5000
 ANGLE_D = 5000
 
