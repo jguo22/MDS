@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Tuple
 from connection.ComputerReceiver import ComputerReceiver
 from .FrameProcessor import FrameProcessor
-from pixelTo3D import pixel_to_robot_horizontal, transform_uv_to_xy
+from pixelTo3D import transform_uv_to_xy
 
 
 class ClickProcessor(FrameProcessor):
