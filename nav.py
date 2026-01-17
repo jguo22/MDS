@@ -33,7 +33,11 @@ class NavMove:
         """
         Human Readable Print
         """
-        return f"Nav Move: \n l_c={ self.left} \n r_c={ self.right} \n distance={ self.dist} \n smooth={ self.smooth}"
+        return f"Nav Move: \n l_c={
+            self.left} \n r_c={
+            self.right} \n distance={
+            self.dist} \n smooth={
+                self.smooth}"
 
 
 class Nav:
@@ -99,8 +103,8 @@ class Nav:
                     delta_time = FRAME_TIME
                 start_time = time.time()
 
-                print(f'x, y is {self.raven.get_odometry()}')
-                print(f'angle is {self.raven.get_angle()}')
+                # print(f'x, y is {self.raven.get_odometry()}')
+                # print(f'angle is {self.raven.get_angle()}')
 
                 self._updatePath(delta_time)
         except Exception:
@@ -142,10 +146,10 @@ class Nav:
         # set angle for odometry
         self.raven.set_angle(current_angle - self.imu_offset)
 
-        print("asdfasdfasdf")
-        print(current_angle)
-        print(self.last_angle)
-        print(self.angle)
+        # print("asdfasdfasdf")
+        # print(current_angle)
+        # print(self.last_angle)
+        # print(self.angle)
         self.diff_angle = current_angle - self.last_angle
         if self.diff_angle > math.pi:
             self.diff_angle -= 2 * math.pi
@@ -186,12 +190,14 @@ class Nav:
             self._updateAngle()
             angle_error = (self.angle - self.start_angle) - target_angle
 
+            print("a")
             for i in range(2):
                 # if we have to smooth into next
                 # smooth the coefficient of current move and next move
                 if remaining_distances[i] <= (
                         abs(self.last_speeds[i] - smoothing_target_speeds[i]) / self.acceleration + FRAME_TIME / 2) * (
                         self.last_speeds[i] + smoothing_target_speeds[i]) / 2:
+                    print("slow down")
                     # speed up or slow down to smooth into next move
                     if smoothing_target_speeds[i] <= self.last_speeds[i]:
                         target_speeds[i] = max(
@@ -210,13 +216,17 @@ class Nav:
                 self.current_distances[i] += (self.last_speeds[i] +
                                               target_speeds[i]) / 2 * dt
                 self.last_speeds[i] = target_speeds[i]
+                print("b")
 
                 # angle correction
-                self.start_positions[i] -= (angle_error * \
+                self.start_positions[i] -= (angle_error *
                                             ANGLE_PROP - self.diff_angle * ANGLE_D) * dt
 
+                print("d")
                 target_positions[i] = self.start_positions[i] + \
                     self.current_distance * self.coefs[i]
+                print("c")
+            print(self.last_speeds)
 
             self.raven.set_motor_target(LEFT_MOTOR, target_positions[0])
             self.raven.set_motor_target(RIGHT_MOTOR, target_positions[1])
@@ -236,6 +246,7 @@ class Nav:
                     self.start_angle += target_angle
                     self.start_positions[0] = target_positions[0]
                     self.start_positions[1] = target_positions[1]
+            print("end")
 
     def calculate_heading(self, dqw, dqx, dqy, dqz):
         # normalize quaternion
