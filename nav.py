@@ -51,7 +51,7 @@ class Nav:
         self.bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
 
         self.max_velocity = 3.0 * TICK_ROTATION  # ticks/s
-        self.acceleration = 5.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
+        self.acceleration = 10.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
 
         self.moves: list[NavMove] = []
         self._lock = threading.Lock()
