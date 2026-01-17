@@ -12,13 +12,14 @@ TICK_ROTATION = 64 * 50
 # measurements in mm
 WHEEL_D = 101.6
 BASE_D = 237.236
+# coefficients for IMU error correction, similar to p_gain and d_gain
 ANGLE_PROP = 5000
 ANGLE_D = 5000
 
 BASE_RATIO = WHEEL_D / BASE_D
 TURN_CONSTANT = BASE_RATIO * 2 * math.pi / TICK_ROTATION
 
-FRAME_TIME = 0.05  # 1/FPS
+FRAME_TIME = 0.03  # 1/FPS
 
 
 class NavMove:
@@ -48,9 +49,6 @@ class Nav:
         i2c = busio.I2C(board.SCL, board.SDA, frequency=800000)
         self.bno = BNO08X_I2C(i2c)
         self.bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
-        for i in range(5):
-            print(self.bno.quaternion)
-            time.sleep(0.02)
 
         self.max_velocity = 3.0 * TICK_ROTATION  # ticks/s
         self.acceleration = 5.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
@@ -60,22 +58,19 @@ class Nav:
         self.moving = False
 
         # for imu
-        self.last_angle = 0
-        self.angle = 0
-        self.diff_angle = 0
+        self.last_angle = 0.0
+        self.angle = 0.0
+        self.diff_angle = 0.0
         self.imu_offset = self.get_heading()
 
         # for path
-        self.start_angle = 0
-        self.start_left = 0
-        self.start_right = 0
-
-        self.total_distance = 0
-
-        self.left_coef = 0
-        self.right_coef = 0
-        self.last_speed = 0
-        self.current_distance = 0
+        self.start_angle = 0.0
+        # index 0 is left, index 1 is right
+        self.start_positions = [0.0, 0.0]
+        self.coefs = [0.0, 0.0]
+        self.last_speeds = [0.0, 0.0]
+        self.current_distances = [0.0, 0.0]
+        self.total_distances = [0.0, 0.0]
 
         self.raven = Raven()
         self.raven.set_base(WHEEL_D, BASE_D)
@@ -169,42 +164,65 @@ class Nav:
                 self.moves.pop(0)
 
             # calculate target speed
-            distance_left = self.total_distance - self.current_distance
-            delta_speed = self.acceleration * dt
-            target_speed = 0
-            # check whether we have to slow down or not
-            if (len(self.moves) == 0 or not self.moves[0].smooth) and (
-                    distance_left <= self.last_speed ** 2 / (2 * self.acceleration)):
-                target_speed = max(self.last_speed - delta_speed, 0)
+            remaining_distances = [
+                self.total_distances[0] - self.current_distances[0],
+                self.total_distances[1] - self.current_distances[1]]
+            delta_speeds = [(self.acceleration * dt * coef)
+                            for coef in self.coefs]
+            # TODO: check this logic
+            if len(self.moves) == 0:
+                smoothing_target_speeds = [0.0, 0.0]
             else:
-                target_speed = min(
-                    self.last_speed + delta_speed,
-                    self.max_velocity)
+                smoothing_target_speeds = [
+                    (self.last_speeds[0] + self.moves[0].left * self.max_velocity) / 2,
+                    (self.last_speeds[1] + self.moves[0].right * self.max_velocity) / 2]
+            target_speeds = [0.0, 0.0]
+            target_positions = [0.0, 0.0]
 
-            # average for more accuracy
-            self.current_distance += (self.last_speed + target_speed) / 2 * dt
-            self.last_speed = target_speed
-
-            # calculate angle error and correct it
-            target_angle = (self.right_coef + self.left_coef) / \
-                2.0 * TURN_CONSTANT * self.current_distance
+            # using IMU to calculate angle error
+            target_angle = (
+                self.current_distances[0] + self.current_distances[1]) / 2.0 * TURN_CONSTANT
 
             self._updateAngle()
             angle_error = (self.angle - self.start_angle) - target_angle
 
-            self.start_left -= angle_error * ANGLE_PROP * dt - self.diff_angle * ANGLE_D * dt
-            self.start_right -= angle_error * ANGLE_PROP * \
-                dt - self.diff_angle * ANGLE_D * dt
+            for i in range(2):
+                # if we have to smooth into next
+                # smooth the coefficient of current move and next move
+                if remaining_distances[i] <= (
+                        abs(self.last_speeds[i] - smoothing_target_speeds[i]) / self.acceleration + FRAME_TIME / 2) * (
+                        self.last_speeds[i] + smoothing_target_speeds[i]) / 2:
+                    # speed up or slow down to smooth into next move
+                    if smoothing_target_speeds[i] <= self.last_speeds[i]:
+                        target_speeds[i] = max(
+                            self.last_speeds[i] - delta_speeds[i],
+                            smoothing_target_speeds[i])
+                    else:
+                        target_speeds[i] = min(
+                            self.last_speeds[i] + delta_speeds[i],
+                            smoothing_target_speeds[i])
+                else:
+                    target_speeds[i] = min(
+                        self.last_speeds[i] + delta_speeds[i],
+                        self.max_velocity * self.coefs[i])
 
-            target_left = self.start_left + \
-                (self.current_distance * self.left_coef)
-            target_right = self.start_right + \
-                (self.current_distance * self.right_coef)
-            self.raven.set_motor_target(LEFT_MOTOR, target_left)
-            self.raven.set_motor_target(RIGHT_MOTOR, target_right)
+                # average for more accuracy
+                self.current_distances[i] += (self.last_speeds[i] +
+                                              target_speeds[i]) / 2 * dt
+                self.last_speeds[i] = target_speeds[i]
+
+                # angle correction
+                self.start_positions[i] -= (angle_error * \
+                                            ANGLE_PROP - self.diff_angle * ANGLE_D) * dt
+
+                target_positions[i] = self.start_positions[i] + \
+                    self.current_distance * self.coefs[i]
+
+            self.raven.set_motor_target(LEFT_MOTOR, target_positions[0])
+            self.raven.set_motor_target(RIGHT_MOTOR, target_positions[1])
 
             # move on to next thing if its done
-            if distance_left <= 0:
+            if remaining_distances[0] <= 0 and remaining_distances[1] <= 0:
                 if len(self.moves) == 0:
                     self.moving = False
                 else:
@@ -216,8 +234,8 @@ class Nav:
                     self.right_coef = nav_move.right
                     self._updateAngle()
                     self.start_angle += target_angle
-                    self.start_left = target_left
-                    self.start_right = target_right
+                    self.start_positions[0] = target_positions[0]
+                    self.start_positions[1] = target_positions[1]
 
     def calculate_heading(self, dqw, dqx, dqy, dqz):
         # normalize quaternion
