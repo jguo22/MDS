@@ -47,6 +47,11 @@ def main():
                 moves.append(
                     NavMove(args[3 * i], args[3 * i + 1], args[3 * i + 2], False))
             nav.overridePaths(moves)
+        elif messageType == message_types.SEND_WORLD_XY:
+            assert (len(args) == 2)
+            world_x, world_y = args[0], args[1]
+            print(f"SEND_WORLD_XY: x={world_x}, y={world_y}")
+            nav.override_paths_world_xy(world_x, world_y)
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     while True:

@@ -252,15 +252,47 @@ class ComputerReceiver():
         print("client connection stopped")
 
     # SENDING COMMANDS
+    def send_world_xy(self, world_x: float, world_y: float) -> bool:
+        """
+        Send world coordinate navigation command to the Pi.
+
+        The Pi will calculate the rotation and forward movement needed
+        to reach the world coordinate based on its current position and heading.
+
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+
+        Returns:
+            True if successful
+        """
+        if not self.command_client_socket:
+            return False
+
+        print(f'Sending world coordinates: x={world_x}, y={world_y}')
+
+        return protocol.send_command(
+            self.command_client_socket,
+            message_types.SEND_WORLD_XY,
+            [world_x, world_y]
+        )
+
     def send_xy(self, x, y):
         """
-        take in x,y in mm and plan send out instructions
+        Send relative movement in ROS coordinates (x=forward, y=left).
+
+        Args:
+            x: Forward distance in mm (positive = forward, negative = backward)
+            y: Lateral distance in mm (positive = left, negative = right)
         """
+        if not self.command_client_socket:
+            return False
+
         distance = math.sqrt(x * x + y * y)
 
-        # forward is y axis, so we want angle from y axis
-        # while atan calculates angle from x axis
-        theta = math.atan2(y, x) - math.pi / 2
+        # ROS coordinates: x is forward, y is left
+        # atan2(y, x) gives angle from forward axis (x) to target
+        theta = math.atan2(y, x)
 
         rotate = list(nav.get_rotate(theta))
         forward = list(nav.get_forward_mm(distance))
