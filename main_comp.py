@@ -32,7 +32,7 @@ def main():
     def process(frame: np.ndarray,
                 frame_id: int) -> None:
         # Update frame dimensions
-        save_image_processor.process(frame, frame_id)
+        # save_image_processor.process(frame, frame_id)
         click_processor.process(frame, frame_id)
 
     # Set the frame callback to use our processor

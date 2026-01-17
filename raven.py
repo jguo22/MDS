@@ -519,7 +519,7 @@ class Raven:
 
 	def set_odometry(self, x, y, retry=0):
 		return self.__write_value(Raven.__MessageType.ODOMETRY, 
-							data=struct.pack("ff", [x,y]), 
+							data=struct.pack("ff", x,y), 
 							retry=retry)
 
 	def get_odometry(self, retry=0):
@@ -545,7 +545,7 @@ class Raven:
 
 	def set_base(self, wheel_d, base_d, retry=0):
 		return self.__write_value(Raven.__MessageType.BASE, 
-								data=struct.pack("ff", [wheel_d, base_d]), 
+								data=struct.pack("ff", wheel_d, base_d), 
 								retry=retry) 
 		
 	def get_base(self, retry=0):

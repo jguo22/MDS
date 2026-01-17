@@ -536,17 +536,17 @@ static void encoder_write(uint8_t* data, uint8_t len) {
 static void odometry_write(uint8_t* data, uint8_t len){
     if (len != 9) return;
     memcpy(&odometry.x, data+1, 4);
-    memcpy(&odometry.y, data + 4, 4);
+    memcpy(&odometry.y, data + 5, 4);
 }
 static void angle_write(uint8_t* data, uint8_t len) {
     if (len != 5) return;
-    memcpy(&odometry.angle, data, 4);
+    memcpy(&odometry.angle, data+1, 4);
 }
 
 static void base_write(uint8_t* data, uint8_t len) {
     if (len != 9) return;
-    memcpy(&odometry.wheelDiameter, data, 4);
-    memcpy(&odometry.baseDiameter, data + 4, 4);
+    memcpy(&odometry.wheelDiameter, data+1, 4);
+    memcpy(&odometry.baseDiameter, data + 5, 4);
 
     Odometry_CalculateConstants(&odometry);
 }
