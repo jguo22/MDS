@@ -66,6 +66,7 @@ class Nav:
         self.last_angle = 0
         self.angle = 0
         self.diff_angle = 0
+        self.imu_offset = self.get_heading()
 
         # for path
         self.start_angle = 0
@@ -97,18 +98,22 @@ class Nav:
     def startLoop(self):
         # ONLY RUN ONE LOOP
         start_time = time.time()
-        while True:
-            # get delta_time and sleep
-            delta_time = time.time() - start_time
-            if (delta_time < FRAME_TIME):
-                time.sleep(FRAME_TIME - delta_time)
-                delta_time = FRAME_TIME
-            start_time = time.time()
+        try:
+            while True:
+                # get delta_time and sleep
+                delta_time = time.time() - start_time
+                if (delta_time < FRAME_TIME):
+                    time.sleep(FRAME_TIME - delta_time)
+                    delta_time = FRAME_TIME
+                start_time = time.time()
 
-            print(f'x, y is {self.raven.get_odometry()}')
-            print(f'angle is {self.raven.get_angle()}')
+                print(f'x, y is {self.raven.get_odometry()}')
+                print(f'angle is {self.raven.get_angle()}')
 
-            self._updatePath(delta_time)
+                self._updatePath(delta_time)
+        except Exception:
+            self.bno.hard_reset()
+            print("keyboard interrupt")
 
     def addPath(self, nav_move: NavMove):
         # append is thread safe, but use the lock so that you don't edit it
@@ -140,19 +145,23 @@ class Nav:
         self.start_right = self.raven.get_motor_encoder(RIGHT_MOTOR)
 
     def _updateAngle(self):
-        quat_i, quat_j, quat_k, quat_real = self.bno.quaternion
-        current_angle = self.find_heading(quat_real, quat_i, quat_j, quat_k)
+        current_angle = self.get_heading()  # -pi to pi
 
-        # IMPORTANT FOR ODOMETRY
-        self.raven.set_angle(current_angle)
+        # set angle for odometry
+        self.raven.set_angle(current_angle - self.imu_offset)
 
+        print("asdfasdfasdf")
+        print(current_angle)
+        print(self.last_angle)
+        print(self.angle)
         self.diff_angle = current_angle - self.last_angle
         if self.diff_angle > math.pi:
             self.diff_angle -= 2 * math.pi
         elif self.diff_angle < -math.pi:
             self.diff_angle += 2 * math.pi
-        self.angle += self.diff_angle
-        self.last_angle = current_angle
+        # diff angle is the change clamped to range of -pi to pi
+        self.angle += self.diff_angle  # accumulates
+        self.last_angle = current_angle  # range of -pi to pi
 
     def _updatePath(self, dt):
         with self._lock:
@@ -213,7 +222,7 @@ class Nav:
                     self.start_left = target_left
                     self.start_right = target_right
 
-    def find_heading(self, dqw, dqx, dqy, dqz):
+    def calculate_heading(self, dqw, dqx, dqy, dqz):
         # normalize quaternion
         norm = math.sqrt(dqw * dqw + dqx * dqx + dqy * dqy + dqz * dqz)
         if (norm == 0.0):
@@ -229,6 +238,10 @@ class Nav:
         t4 = +1.0 - 2.0 * (ysqr + dqz * dqz)
         yaw_raw = math.atan2(t3, t4)
         return yaw_raw
+
+    def get_heading(self):
+        quat_i, quat_j, quat_k, quat_real = self.bno.quaternion
+        return self.calculate_heading(quat_real, quat_i, quat_j, quat_k)
 
 
 def get_forward_mm(distance_mm: float) -> Tuple[float, float, float]:
