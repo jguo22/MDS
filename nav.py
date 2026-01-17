@@ -33,11 +33,7 @@ class NavMove:
         """
         Human Readable Print
         """
-        return f"Nav Move: \n l_c={
-            self.left} \n r_c={
-            self.right} \n distance={
-            self.dist} \n smooth={
-                self.smooth}"
+        return f"Nav Move: \n l_c = { self.left} \n r_c = { self.right} \n distance = { self.dist} \n smooth = { self.smooth}"
 
 
 class Nav:
@@ -132,7 +128,7 @@ class Nav:
 
     def _startPath(self, nav_move: NavMove):
         self.total_distance = nav_move.dist
-        self.current_distance = 0
+        self.current_distances = [0.0, 0.0]
         self.left_coef = -nav_move.left
         self.right_coef = nav_move.right
         self._updateAngle()
@@ -224,7 +220,7 @@ class Nav:
 
                 print("d")
                 target_positions[i] = self.start_positions[i] + \
-                    self.current_distance * self.coefs[i]
+                    self.current_distances[i]
                 print("c")
             print(self.last_speeds)
 
