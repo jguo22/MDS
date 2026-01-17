@@ -33,7 +33,11 @@ class NavMove:
         """
         Human Readable Print
         """
-        return f"Nav Move: \n l_c = { self.left} \n r_c = { self.right} \n distance = { self.dist} \n smooth = { self.smooth}"
+        return f"Nav Move: \n l_c = {
+            self.left} \n r_c = {
+            self.right} \n distance = {
+            self.dist} \n smooth = {
+                self.smooth}"
 
 
 class Nav:
@@ -186,7 +190,6 @@ class Nav:
             self._updateAngle()
             angle_error = (self.angle - self.start_angle) - target_angle
 
-            print("a")
             for i in range(2):
                 # if we have to smooth into next
                 # smooth the coefficient of current move and next move
@@ -212,16 +215,13 @@ class Nav:
                 self.current_distances[i] += (self.last_speeds[i] +
                                               target_speeds[i]) / 2 * dt
                 self.last_speeds[i] = target_speeds[i]
-                print("b")
 
                 # angle correction
-                self.start_positions[i] -= (angle_error *
+                self.start_positions[i] -= (angle_error * \
                                             ANGLE_PROP - self.diff_angle * ANGLE_D) * dt
 
-                print("d")
                 target_positions[i] = self.start_positions[i] + \
                     self.current_distances[i]
-                print("c")
             print(self.last_speeds)
 
             self.raven.set_motor_target(LEFT_MOTOR, target_positions[0])
@@ -242,7 +242,6 @@ class Nav:
                     self.start_angle += target_angle
                     self.start_positions[0] = target_positions[0]
                     self.start_positions[1] = target_positions[1]
-            print("end")
 
     def calculate_heading(self, dqw, dqx, dqy, dqz):
         # normalize quaternion
