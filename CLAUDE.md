@@ -6,7 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the MASLAB 2026 team repository for building an autonomous robot. The project combines:
 - **Raven motor controller**: Hardware interface for robot motor control
+- **Navigation system**: IMU-based odometry and path planning with smooth movement profiles
 - **YOLO object detection**: Vision system using YOLOv11n for real-time object detection
+- **Remote operation**: TCP-based video streaming with click-to-move interface
+- **Pixel-to-3D transformation**: Camera calibration and homography for ground plane mapping
 - **Python-based control**: Main control logic in Python 3.11
 
 ## Hardware Components
@@ -25,6 +28,93 @@ Example workflow in `main.py`:
 2. Set mode: `raven_board.set_motor_mode(channel, Raven.MotorMode.DIRECT)`
 3. Control: `raven_board.set_motor_speed_factor(channel, percentage, reverse=True/False)`
 
+## Navigation System
+
+### Nav Class (nav.py)
+The `Nav` class provides high-level navigation and odometry for the robot. It integrates the Raven motor controller with an IMU (BNO08x) for precise positioning and path following.
+
+**Key Features:**
+- **IMU Integration**: BNO08x sensor via I2C for heading tracking
+- **Odometry**: Position tracking using motor encoders and IMU fusion
+- **Path Planning**: Queue-based movement system with smooth transitions
+- **Position Control**: Uses Raven's POSITION mode with PID control
+- **Thread-Safe**: Movement queue can be safely updated from multiple threads
+
+**Motor Configuration:**
+- Left Motor: `Raven.MotorChannel.CH2`
+- Right Motor: `Raven.MotorChannel.CH3`
+- Wheel Diameter: 95mm
+- Base Width: 209mm
+- Encoder Ticks per Rotation: 64 × 50 = 3200
+
+**Basic Usage:**
+```python
+from nav import Nav, NavMove
+
+# Initialize navigation (must run on Raspberry Pi)
+nav = Nav()
+
+# Add single movement to queue
+nav.addPath(NavMove(left=1.0, right=1.0, dist=1000, smooth=True))
+
+# Override entire queue with new path
+movements = [
+    NavMove(left=1.0, right=1.0, dist=500, smooth=True),
+    NavMove(left=-1.0, right=1.0, dist=800, smooth=False)
+]
+nav.overridePaths(movements)
+
+# Start navigation loop (blocking)
+nav.startLoop()
+```
+
+**NavMove Parameters:**
+- `left`: Left motor coefficient (-1.0 to 1.0, negative = reverse)
+- `right`: Right motor coefficient (-1.0 to 1.0, positive = forward)
+- `dist`: Distance in encoder ticks
+- `smooth`: If True, maintain velocity when transitioning to next move
+
+**Helper Functions:**
+```python
+from nav import get_forward_mm, get_rotate
+
+# Get movement tuple for forward motion
+left_coef, right_coef, distance = get_forward_mm(200.0)  # 200mm forward
+
+# Get movement tuple for rotation
+left_coef, right_coef, distance = get_rotate(math.pi / 2)  # 90° CCW
+
+# Example: Move forward 300mm then turn 180°
+nav.overridePaths([
+    NavMove(*get_forward_mm(300.0), smooth=True),
+    NavMove(*get_rotate(math.pi), smooth=False)
+])
+```
+
+**Odometry and Position:**
+The Nav class automatically updates the Raven board's odometry system:
+```python
+# Get current position (x, y) in mm
+x, y = nav.raven.get_odometry()
+
+# Get current heading in radians
+angle = nav.raven.get_angle()
+```
+
+**Control Loop Details:**
+- Update Rate: 20 Hz (50ms frame time)
+- Acceleration: 5.0 rotations/s² (reach max speed in 1s)
+- Max Velocity: 3.0 rotations/s
+- PID Gains:
+  - Right Motor: P=25, I=5, D=0.13
+  - Left Motor: P=20, I=5, D=0.1
+
+**Important Notes:**
+- IMU must be initialized **before** Raven board
+- The `startLoop()` method is blocking and runs indefinitely
+- Path smoothing uses velocity profiling for acceleration/deceleration
+- Angle correction uses proportional and derivative control (ANGLE_PROP=5000, ANGLE_D=5000)
+
 ## Remote Communication System
 
 ### PiStreamer - TCP Video Streaming and Movement Control
@@ -36,16 +126,21 @@ The `connection/` module provides a bidirectional communication system between t
 - `connection/protocol.py`: Custom TCP-based messaging protocol
 - `connection/config.py`: Configuration (ports, timeouts, video settings)
 - `connection/CameraCapture.py`: Unified camera interface (USB, PiCamera)
+- `connection/message_types.py`: Message type constants and definitions
+- `connection/frame_processor/`: Frame processing pipeline for computer-side video handling
+  - `FrameProcessor.py`: Abstract base class for frame processors
+  - `ClickProcessor.py`: Handles mouse clicks on video to send navigation commands
+  - `SaveImageProcessor.py`: Saves frames to disk with cooldown
 
 **Protocol Details:**
 - **Transport**: TCP (`socket.SOCK_STREAM`) for reliable delivery
 - **Message Framing**: Custom framing with 8-byte length headers (`struct.pack('!Q', len(data))`)
 - **Video Frames**: 4-byte frame_id + JPEG-encoded data
-- **Command Messages**: Generic message protocol with 1-byte message type + fixed-length float arguments
-  - Message Type 0 (Close): No arguments - gracefully closes connection
-  - Message Type 1 (Movement): `[left_coef, right_coef, distance]` (3 floats)
-  - Format: `struct.pack('!B', msg_type) + struct.pack('!Nf', *args)` where N is defined per message type
-  - Argument counts are validated based on message type in `config.MESSAGE_ARG_COUNTS`
+- **Command Messages**: Generic message protocol with 1-byte message type + variable-length float arguments
+  - Message Type 0 (CLOSE): No arguments - gracefully closes connection
+  - Message Type 1 (ADD_MOVEMENT): `[left_coef, right_coef, distance]` (3 floats) - adds one movement to queue
+  - Message Type 2 (OVERRIDE_MOVEMENTS): `[l1, r1, d1, l2, r2, d2, ...]` (multiples of 3 floats) - replaces entire movement queue
+  - Format: `struct.pack('!B', msg_type) + struct.pack('!Nf', *args)` where N is the number of floats
   - Extensible design allows adding new message types (0-255) with different argument counts
 - **Why TCP not RTP**: Provides reliable, ordered delivery with automatic retransmission. RTP/UDP would offer lower latency but no delivery guarantees.
 
@@ -182,12 +277,118 @@ receiver = ComputerReceiver()
 receiver.start_servers()
 receiver.wait_for_connection()
 
-# Send movement command
-receiver.send_movement(left_coef=0.5, right_coef=0.5, distance=100.0)
+# Send single movement command (adds to queue)
+receiver.add_movement(left_coef=0.5, right_coef=0.5, distance=100.0)
+
+# Send X/Y coordinate (automatically plans path: rotate + forward)
+receiver.send_xy(x=200.0, y=150.0)  # x, y in mm
+
+# Override entire movement queue
+movements = [1.0, 1.0, 500.0, -1.0, 1.0, 800.0]  # [l1, r1, d1, l2, r2, d2]
+receiver.override_movement(movements)
 
 # Gracefully close Pi connection
 receiver.send_close()
 ```
+
+### Frame Processor Architecture
+
+The `connection/frame_processor/` module provides an extensible architecture for processing video frames on the computer side.
+
+**FrameProcessor Interface:**
+```python
+from connection.frame_processor.FrameProcessor import FrameProcessor
+import numpy as np
+from typing import Optional, Tuple
+
+class CustomProcessor(FrameProcessor):
+    def process(self, frame: np.ndarray, frame_id: int) -> Optional[Tuple[float, float, float]]:
+        # Process the frame
+        # Return movement command tuple (left_coef, right_coef, distance) or None
+        return None
+```
+
+**Built-in Processors:**
+
+1. **ClickProcessor**: Click-to-move interface
+   ```python
+   from connection.frame_processor.ClickProcessor import ClickProcessor
+   from connection.ComputerReceiver import ComputerReceiver
+
+   receiver = ComputerReceiver()
+   processor = ClickProcessor(receiver, window_name="Pi Camera")
+
+   # Now clicks on the video window will:
+   # 1. Convert pixel coordinates to 3D ground plane coordinates
+   # 2. Send X/Y navigation command via receiver.send_xy()
+   # 3. Robot automatically plans and executes: rotate → forward
+   ```
+
+2. **SaveImageProcessor**: Automatic frame capture
+   ```python
+   from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
+
+   processor = SaveImageProcessor(
+       cooldown_seconds=1.0,  # Minimum time between saves
+       output_dir="images"     # Output directory
+   )
+   # Frames saved as: frame_YYYYMMDD_HHMMSS_timestamp.jpg
+   ```
+
+**Integrating with ComputerReceiver:**
+Frame processors are integrated into `main_comp.py` to process incoming video frames and generate navigation commands.
+
+### Pixel-to-3D Transformation (pixelTo3D.py)
+
+The `pixelTo3D` module converts pixel coordinates from the camera to real-world coordinates on the ground plane.
+
+**Key Components:**
+- **Camera Calibration**: Intrinsic matrix and distortion coefficients from camera calibration
+- **Homography Matrix**: 3x3 transformation from image plane to ground plane (in mm)
+- **Coordinate Systems**:
+  - Pixel coordinates: Origin at top-left, u increases right, v increases down
+  - Robot coordinates: Origin at camera, x increases forward, y increases left
+
+**Main Function:**
+```python
+from pixelTo3D import transform_uv_to_xy
+
+# Convert pixel click to ground plane coordinates
+x_mm, y_mm = transform_uv_to_xy(u=320, v=240)  # Center of 640x480 frame
+
+# x: forward distance from camera (mm)
+# y: lateral distance from camera, positive = left (mm)
+```
+
+**Camera Calibration Data:**
+```python
+CAMERA_MATRIX = np.array([
+    [900.83, 0, 319.14],
+    [0, 905.18, 236.54],
+    [0, 0, 1]
+])
+
+DISTORTION = np.array([
+    [0.0963, 0.7159, 0.0037, 0.0118, -6.7639]
+])
+```
+
+**Homography Matrix:**
+The homography matrix `h` is precalculated from camera calibration and transforms image points to ground plane points:
+```python
+h = np.array([
+    [-6.09741811e-01, -2.09501156e-02, 1.57159029e+02],
+    [2.85708157e-02, 9.39073240e-03, -5.18950601e+02],
+    [6.09393965e-04, -7.78799171e-03, 1.00000000e+00]
+])
+```
+
+**Usage in Click-to-Move:**
+1. User clicks on video frame at pixel (u, v)
+2. `transform_uv_to_xy(u, v)` converts to ground plane (x, y) in mm
+3. `ComputerReceiver.send_xy(x, y)` calculates rotation angle and distance
+4. Movement commands sent: rotate to face target, then drive forward
+5. Robot executes smooth path to clicked location
 
 **Connection Features:**
 - Single-use connection instances (no race conditions)
@@ -207,43 +408,57 @@ receiver.send_close()
 - `SOCKET_TIMEOUT`: Network timeout in seconds (default 180.0)
 - `RECONNECT_DELAY`: Delay between reconnection attempts (default 5.0s)
 - `BUFFER_SIZE`: Socket buffer size
-- `MSG_TYPE_CLOSE`: Message type constant (0) for closing connection
-- `MSG_TYPE_MOVEMENT`: Message type constant (1) for movement commands
-- `MESSAGE_ARG_COUNTS`: Dict mapping message types to their expected argument counts
+
+**Message Types (connection/message_types.py):**
+- `CLOSE` (0): Close connection gracefully
+- `ADD_MOVEMENT` (1): Add single movement to queue (3 floats: left_coef, right_coef, distance)
+- `OVERRIDE_MOVEMENTS` (2): Replace entire movement queue (multiples of 3 floats)
 
 **Protocol API (connection/protocol.py):**
 ```python
+from connection import protocol, message_types
+
 # Send generic command message
 protocol.send_command(socket, msg_type: int, args: list[float]) -> bool
 
-# Receive generic command message (validates arg count based on message type)
+# Receive generic command message
 msg_type, args = protocol.recv_command(socket) -> tuple[int, list[float]] | None
 
 # Safely close socket with proper shutdown and error handling
 protocol.close_socket(socket: Optional[socket.socket]) -> None
 
-# Example: Send close command (type 0, no args)
-protocol.send_command(sock, config.MSG_TYPE_CLOSE, [])
+# Example: Send close command
+protocol.send_command(sock, message_types.CLOSE, [])
 
-# Example: Send movement command (type 1, 3 args)
-protocol.send_command(sock, config.MSG_TYPE_MOVEMENT, [0.5, 0.5, 100.0])
+# Example: Send single movement (add to queue)
+protocol.send_command(sock, message_types.ADD_MOVEMENT, [0.5, 0.5, 100.0])
+
+# Example: Override movement queue
+movements = [1.0, 1.0, 500.0, -1.0, 1.0, 800.0]  # Two movements
+protocol.send_command(sock, message_types.OVERRIDE_MOVEMENTS, movements)
 
 # Example: Receive and handle commands
 result = protocol.recv_command(sock)
 if result:
     msg_type, args = result
-    if msg_type == config.MSG_TYPE_CLOSE:
+    if msg_type == message_types.CLOSE:
         print("Connection closing...")
         protocol.close_socket(sock)
         break
-    elif msg_type == config.MSG_TYPE_MOVEMENT:
+    elif msg_type == message_types.ADD_MOVEMENT:
         left_coef, right_coef, distance = args
-        # Handle movement...
+        nav.addPath(NavMove(left_coef, right_coef, distance, smooth=True))
+    elif msg_type == message_types.OVERRIDE_MOVEMENTS:
+        # Parse movements in groups of 3
+        movements = []
+        for i in range(0, len(args), 3):
+            movements.append(NavMove(args[i], args[i+1], args[i+2], smooth=True))
+        nav.overridePaths(movements)
 
 # Adding new message types:
-# 1. Add to config.py: MSG_TYPE_CUSTOM = 2
-# 2. Add to MESSAGE_ARG_COUNTS: MSG_TYPE_CUSTOM: 4
-# 3. Handle in receiver code
+# 1. Add to message_types.py: NEW_TYPE = 3
+# 2. Add to messageTypes list
+# 3. Handle in receiver code (PiStreamer or ComputerReceiver)
 ```
 
 ## Vision System
@@ -325,6 +540,8 @@ Python 3.11 virtual environment in `venv/`. Key packages:
 - `torch==2.2.0`: PyTorch deep learning framework
 - `ncnn==1.0.20250916`: NCNN inference framework
 - `numpy==2.2.6`: Array operations
+- `scipy`: Scientific computing library (used for rotation transformations in pixelTo3D.py)
+- `adafruit-circuitpython-bno08x`: BNO08x IMU sensor library (I2C communication)
 - `raven`: Motor controller interface (custom package from maslab-lib)
 
 ### Setup
@@ -337,7 +554,7 @@ pip3 install -r requirements.txt
 Or install manually:
 ```bash
 source venv/bin/activate
-pip3 install ultralytics ncnn numpy
+pip3 install ultralytics ncnn numpy scipy adafruit-circuitpython-bno08x
 pip3 install git+https://github.com/MASLAB/maslab-lib.git
 ```
 
@@ -455,15 +672,23 @@ When integrating vision with motor control:
 See the **Development Workflow** section under "Remote Communication System" for detailed startup and reconnection procedures.
 
 **Integration with motor control:**
-1. **On Raspberry Pi**: `main_pi.py` runs PiStreamer to stream camera feed and receive movement commands
-2. **On Computer**: Run ComputerReceiver to display video and send movement commands
-3. **Movement callback**: PiStreamer callback translates commands to Raven motor control via `nav.startPath()`
+1. **On Raspberry Pi**: `main_pi.py` initializes Nav system and runs PiStreamer to stream camera feed
+2. **On Computer**: `main_comp.py` runs ComputerReceiver with ClickProcessor for interactive control
+3. **Movement Flow**:
+   - User clicks on video window at pixel (u, v)
+   - ClickProcessor converts to ground plane coordinates (x, y) via `transform_uv_to_xy()`
+   - `ComputerReceiver.send_xy(x, y)` calculates rotation and forward movement using `nav.get_rotate()` and `nav.get_forward_mm()`
+   - OVERRIDE_MOVEMENTS message sent with both commands (rotate + forward)
+   - PiStreamer receives commands and calls `nav.overridePaths()` to update movement queue
+   - Nav system executes smooth path: rotate to face target, then drive forward
 4. **Automatic reconnection**: Pi continuously attempts to reconnect, enabling rapid development iteration
 
 **Key characteristics:**
 - TCP protocol ensures reliable command delivery but adds ~10-50ms latency vs UDP/RTP
 - Pi-initiated reconnection allows restarting computer code without touching the robot
 - Persistent camera across reconnections avoids reinitialization delays
+- Click-to-move provides intuitive visual navigation interface
+- Movement queue allows complex multi-step paths
 
 ### Common Pitfalls and Solutions
 
@@ -497,22 +722,42 @@ See the **Development Workflow** section under "Remote Communication System" for
 - **Command latency**: TCP adds 10-50ms vs UDP; factor this into control loops for time-sensitive operations
 - **Socket timeout errors**: Increase `SOCKET_TIMEOUT` in config.py for unreliable networks (default is 180s)
 
+**Navigation and Movement:**
+- **Robot doesn't move**: Check that Nav instance is running `startLoop()` in a thread, verify motors are in POSITION mode, check encoder connections
+- **IMU initialization fails**: Ensure IMU is initialized **before** Raven board, check I2C connections and address, verify BNO08x library installation
+- **Inaccurate odometry**: Recalibrate wheel diameter and base width measurements, check for wheel slippage, verify encoder tick counts
+- **Click-to-move goes wrong direction**: Verify homography matrix is calibrated for current camera mounting, check coordinate system orientation (x forward, y left)
+- **Robot overshoots target**: Reduce `max_velocity` or `acceleration` in Nav class, tune PID gains, check for motor saturation
+- **Movement queue not updating**: Verify thread-safe access with `_lock`, check that movement commands are formatted correctly (multiples of 3 floats for OVERRIDE_MOVEMENTS)
+- **Rotation errors**: Recalibrate IMU, check `BASE_D` and `WHEEL_D` constants, verify `TURN_CONSTANT` calculation matches physical robot
+- **Homography transformation incorrect**: Recalibrate camera using checkerboard pattern, verify camera matrix and distortion coefficients, ensure camera mounting hasn't changed
+
 ## File Organization
 
 ```
 MDS/
 ├── main.py                    # Raven motor controller example
-├── main_pi.py                 # Raspberry Pi main script with PiStreamer integration
+├── main_pi.py                 # Raspberry Pi main script with Nav + PiStreamer
+├── main_comp.py               # Computer main script with ComputerReceiver + ClickProcessor
+├── nav.py                     # Navigation system with IMU, odometry, and path planning
+├── pixelTo3D.py              # Pixel-to-3D transformation (camera calibration + homography)
+├── robot.py                   # (New robot control script)
 ├── requirements.txt           # Python dependencies (ultralytics, ncnn, numpy, maslab-lib)
 ├── out.jpg                   # Example output image
 ├── runs/                     # Root-level runs directory (generated)
+├── images/                   # Saved frames from SaveImageProcessor (generated)
 ├── connection/               # Remote communication system (TCP-based)
 │   ├── __init__.py
 │   ├── PiStreamer.py         # Pi-side video streamer and movement receiver
 │   ├── ComputerReceiver.py   # Computer-side video receiver and movement sender
 │   ├── protocol.py           # Custom TCP messaging protocol
 │   ├── config.py             # Network and video configuration
-│   └── CameraCapture.py      # Unified camera interface (USB/PiCamera)
+│   ├── message_types.py      # Message type constants (CLOSE, ADD_MOVEMENT, OVERRIDE_MOVEMENTS)
+│   ├── CameraCapture.py      # Unified camera interface (USB/PiCamera)
+│   └── frame_processor/      # Frame processing architecture
+│       ├── FrameProcessor.py      # Abstract base class
+│       ├── ClickProcessor.py      # Click-to-move interface
+│       └── SaveImageProcessor.py  # Frame capture to disk
 └── yolo/
     ├── yolo11n.pt            # Pretrained YOLOv11n model (COCO dataset, 80 classes)
     ├── yolo_detect.py        # Main detection script for inference
