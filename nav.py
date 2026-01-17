@@ -126,11 +126,10 @@ class Nav:
                 self.moving = False
             self.moves = nav_moves
 
-    def _startPath(self, nav_move: NavMove):
-        self.total_distance = nav_move.dist
+    def _startPath(self, move: NavMove):
+        self.coefs = [-move.left, move.right]
+        self.total_distances = [move.dist * -move.left, move.dist * move.right]
         self.current_distances = [0.0, 0.0]
-        self.left_coef = -nav_move.left
-        self.right_coef = nav_move.right
         self._updateAngle()
         self.start_angle = self.angle
         self.start_left = self.raven.get_motor_encoder(LEFT_MOTOR)
@@ -215,7 +214,7 @@ class Nav:
                 print("b")
 
                 # angle correction
-                self.start_positions[i] -= (angle_error *
+                self.start_positions[i] -= (angle_error * \
                                             ANGLE_PROP - self.diff_angle * ANGLE_D) * dt
 
                 print("d")
