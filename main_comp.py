@@ -7,8 +7,11 @@ from connection.frame_processor.ClickProcessor import ClickProcessor
 from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
 import numpy as np
 
+from handleKeyboardMovements import handleKeyboardMovementsLoop
+
 
 def main():
+    # --- GET INPUTS ---
     parser = argparse.ArgumentParser(description="Computer Video Receiver")
     parser.add_argument("--host", default="0.0.0.0",
                         help="Host to bind to (default: 0.0.0.0)")
@@ -24,7 +27,8 @@ def main():
     args = parser.parse_args()
 
     window_name = "Pi Camera"
-    # Create receiver and click processor
+
+    # --- CREATE RECEIVER AND PROCESSORS ---
     receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
     click_processor = ClickProcessor(receiver, window_name)
     save_image_processor = SaveImageProcessor(2)
@@ -34,62 +38,15 @@ def main():
         # Update frame dimensions
         # save_image_processor.process(frame, frame_id)
         click_processor.process(frame, frame_id)
+        pass
 
     # Set the frame callback to use our processor
     receiver.set_frame_callback(process)
 
-    # Interactive input thread for manual movement commands
-    def input_thread():
-        print("\n--- Manual Movement Control ---")
-        print("Commands:")
-        print("  r x y    - Send relative coordinates (robot-relative)")
-        print("  w x y    - Send world coordinates (absolute position)")
-        print("  quit     - Exit\n")
-        while True:
-            try:
-                user_input = input("Enter command: ").strip()
-                if user_input.lower() == 'quit':
-                    break
-                if not user_input:
-                    continue
+    # Start keyboard input thread
+    threading.Thread(target=handleKeyboardMovementsLoop, daemon=True).start()
 
-                parts = user_input.split()
-
-                # Relative coordinates: r x y
-                if len(parts) == 3 and parts[0].lower() == 'r':
-                    x = float(parts[1])
-                    y = float(parts[2])
-                    receiver.send_xy(x, y)
-                    print(f"  → Sent relative movement: x={x}, y={y}")
-
-                # World coordinates: w x y
-                elif len(parts) == 3 and parts[0].lower() == 'w':
-                    x = float(parts[1])
-                    y = float(parts[2])
-                    receiver.send_world_xy(x, y)
-                    print(f"  → Sent world coordinates: x={x}, y={y}")
-
-                # Backward compatibility: plain x y defaults to relative
-                elif len(parts) == 2:
-                    x = float(parts[0])
-                    y = float(parts[1])
-                    receiver.send_xy(x, y)
-                    print(f"  → Sent relative movement: x={x}, y={y} (default mode)")
-
-                else:
-                    print("Invalid command. Use: r x y (relative) or w x y (world)")
-
-            except ValueError:
-                print("Invalid numbers. Try again.")
-            except EOFError:
-                break
-            except KeyboardInterrupt:
-                break
-
-    # Start input thread
-    threading.Thread(target=input_thread, daemon=True).start()
-
-    # Start servers
+    # --- START SERVERS ---
     if not receiver.start_servers():
         return
 
