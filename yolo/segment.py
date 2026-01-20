@@ -158,6 +158,123 @@ def getSmoothRegionFromMask(mask):
     return roi_mask
 
 
+def getBottomCenterPixel(mask):
+    """
+    Gets the bottom center pixel from a segmentation mask.
+
+    Args:
+        mask: Binary mask (H, W) with values 0 or 255
+
+    Returns:
+        tuple: (x, y) coordinates of bottom center pixel, or None if mask is empty
+    """
+    # Get smooth region from mask
+    roi_mask = getSmoothRegionFromMask(mask)
+
+    # Find all non-zero pixels
+    non_zero = np.argwhere(roi_mask > 0)
+
+    if len(non_zero) == 0:
+        return None
+
+    # non_zero is array of [y, x] coordinates
+    # Find maximum y value (bottom-most row)
+    max_y = np.max(non_zero[:, 0])
+
+    # Get all pixels in the bottom row
+    bottom_pixels = non_zero[non_zero[:, 0] == max_y]
+
+    # Find center x coordinate among bottom pixels
+    x_coords = bottom_pixels[:, 1]
+    center_x = int(np.mean(x_coords))
+
+    return (center_x, max_y)
+
+
+def getQuadCenter(quad):
+    """
+    Calculates the center point of a quadrilateral.
+
+    Args:
+        quad: Quadrilateral vertices as numpy array with shape (4, 1, 2)
+              Format: [[x1, y1]], [[x2, y2]], [[x3, y3]], [[x4, y4]]
+
+    Returns:
+        tuple: (center_x, center_y) as integers
+    """
+    # Reshape from (4, 1, 2) to (4, 2) for easier processing
+    points = quad.reshape(4, 2)
+
+    # Calculate mean of all x and y coordinates
+    center_x = int(np.mean(points[:, 0]))
+    center_y = int(np.mean(points[:, 1]))
+
+    return (center_x, center_y)
+
+
+def getClosestZonesByColor(quadrilaterals, class_names):
+    """
+    Finds the closest zone of each color from detected quadrilaterals.
+
+    Proximity is determined by y-coordinate: zones with higher y-values
+    (closer to bottom of image) are physically closer to the robot.
+
+    Args:
+        quadrilaterals: List of numpy arrays (N, 1, 2) representing quad corners
+        class_names: List of strings with class names (e.g., 'Green Zone', 'Red Zone', 'Golden Zone')
+
+    Returns:
+        tuple: (closest_quadrilaterals, closest_class_names)
+            - closest_quadrilaterals: List of numpy arrays (N, 1, 2) for closest zones
+            - closest_class_names: List of strings with class names for each closest zone
+            Returns one quad per color detected, in arbitrary order.
+
+    Raises:
+        ValueError: If quadrilaterals and class_names have different lengths
+    """
+    if len(quadrilaterals) != len(class_names):
+        raise ValueError(
+            "quadrilaterals and class_names must have the same length")
+
+    if len(quadrilaterals) == 0:
+        return [], []
+
+    # Group zones by color
+    zones_by_color = {}
+    for quad, class_name in zip(quadrilaterals, class_names):
+        # Extract color from class name (e.g., 'Green Zone' -> 'Green')
+        color = class_name.split()[0]
+
+        if color not in zones_by_color:
+            zones_by_color[color] = []
+
+        zones_by_color[color].append((quad, class_name))
+
+    # Find closest zone of each color
+    # Closer zones have higher y-coordinate (bottom of image = closer to robot)
+    closest_quadrilaterals = []
+    closest_class_names = []
+
+    for color, zones in zones_by_color.items():
+        closest_quad = None
+        closest_name = None
+        max_y = -1
+
+        for quad, class_name in zones:
+            center_x, center_y = getQuadCenter(quad)
+
+            # Zone with highest y-coordinate is closest to robot
+            if center_y > max_y:
+                max_y = center_y
+                closest_quad = quad
+                closest_name = class_name
+
+        closest_quadrilaterals.append(closest_quad)
+        closest_class_names.append(closest_name)
+
+    return closest_quadrilaterals, closest_class_names
+
+
 def annotate_poly(image, polygon, color=(0, 0, 255)):
     """
     Draws polygon on image
@@ -492,7 +609,53 @@ def segmentImage(image):
     return result
 
 
-if __name__ == "__main__":
+def getQuadrilateralsAndClasses(result, image):
+    """
+    Extracts quadrilaterals and class names from YOLO segmentation results.
+
+    Args:
+        result: YOLO result object from inference
+        image: Original BGR image (used for fixSegmentation)
+
+    Returns:
+        tuple: (quadrilaterals, class_names)
+            - quadrilaterals: List of numpy arrays (N, 1, 2) representing quad corners
+            - class_names: List of strings with class names for each quad
+    """
+    quadrilaterals = []
+    class_names = []
+
+    if result.masks is None:
+        return quadrilaterals, class_names
+
+    for i, mask_orig in enumerate(result.masks):
+        # Convert mask to grayscale image
+        mask_array = mask_orig.data[0].cpu().numpy()
+        mask_uint8 = (mask_array * 255).astype(np.uint8)
+
+        # Resize mask to match original image size
+        mask_resized = cv.resize(
+            mask_uint8, (image.shape[1], image.shape[0]))
+
+        # Apply fixSegmentation to improve mask quality
+        tape_mask = fixSegmentation(image, mask_resized)
+
+        # Calculate quadrilateral from fixed mask
+        quad = calculateQuadFromMask(tape_mask)
+
+        if quad is not None:
+            # Get class name for this detection
+            class_id = int(result.boxes.cls[i])
+            class_name = result.names[class_id]
+
+            if (class_name in ['Green Zone', 'Golden Zone', 'Red Zone']):
+                quadrilaterals.append(quad)
+                class_names.append(class_name)
+
+    return quadrilaterals, class_names
+
+
+def main():
     image_path = str(SCRIPT_DIR / "test.jpg")
     print(f"Loading image: {image_path}")
 
@@ -502,7 +665,23 @@ if __name__ == "__main__":
 
     print("Running segmentation...")
     result = segmentImage(image)
-    print(result.boxes)
+
+    # Example: Use getQuadrilateralsAndClasses to extract results
+    quads, classes = getQuadrilateralsAndClasses(result, image)
+    print(f"\nFound {len(quads)} objects:")
+    for i, (quad, class_name) in enumerate(zip(quads, classes)):
+        print(f"  {i}: {class_name} - {len(quad)} corners")
+
+    closest_quads, closest_classes = getClosestZonesByColor(quads, classes)
+    print(f"\nClosest zones by color:")
+    for quad, class_name in zip(closest_quads, closest_classes):
+        center = getQuadCenter(quad)
+        print(f"  {class_name} at center {center}")
+
+    centers = [getQuadCenter(center) for center in closest_quads]
+    print(centers)
+
+    return
 
     # Display original segmentation
     annotated_frame = result.plot(boxes=False)
@@ -590,3 +769,7 @@ if __name__ == "__main__":
             save_parameters()
 
     cv.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
