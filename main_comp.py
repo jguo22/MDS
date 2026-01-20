@@ -11,7 +11,7 @@ from handleKeyboardMovements import handleKeyboardMovementsLoop
 
 
 def main():
-    # --- GET INPUTS ---
+    # ----------------- GET INPUTS -----------------
     parser = argparse.ArgumentParser(description="Computer Video Receiver")
     parser.add_argument("--host", default="0.0.0.0",
                         help="Host to bind to (default: 0.0.0.0)")
@@ -28,13 +28,12 @@ def main():
 
     window_name = "Pi Camera"
 
-    # --- CREATE RECEIVER AND PROCESSORS ---
+    # ----------------- CREATE RECEIVER AND PROCESSORS -----------------
     receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
     click_processor = ClickProcessor(receiver, window_name)
     save_image_processor = SaveImageProcessor(2)
 
-    def process(frame: np.ndarray,
-                frame_id: int) -> None:
+    def process(frame: np.ndarray, frame_id: int) -> None:
         # Update frame dimensions
         # save_image_processor.process(frame, frame_id)
         click_processor.process(frame, frame_id)
@@ -46,7 +45,7 @@ def main():
     # Start keyboard input thread
     threading.Thread(target=handleKeyboardMovementsLoop, daemon=True).start()
 
-    # --- START SERVERS ---
+    # ----------------- START SERVERS -----------------
     if not receiver.start_servers():
         return
 

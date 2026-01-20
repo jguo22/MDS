@@ -482,10 +482,17 @@ def reset_trackbars(window_name):
     print("Parameters reset to defaults")
 
 
-if __name__ == "__main__":
-    print("Loading model...")
-    model = YOLO(str(SCRIPT_DIR / 'last.pt'))
+MODEL = YOLO(str(SCRIPT_DIR / 'last.pt'))
 
+
+def segmentImage(image):
+    # model returns array of results
+    # here, we only have one image so its an array of size 1
+    result = MODEL(image)[0]
+    return result
+
+
+if __name__ == "__main__":
     image_path = str(SCRIPT_DIR / "test.jpg")
     print(f"Loading image: {image_path}")
 
@@ -493,9 +500,9 @@ if __name__ == "__main__":
     if image is None:
         raise Exception("no image")
 
-    # Run segmentation once (expensive, cache results)
     print("Running segmentation...")
-    result = model(image)[0]
+    result = segmentImage(image)
+    print(result.boxes)
 
     # Display original segmentation
     annotated_frame = result.plot(boxes=False)
