@@ -3,6 +3,7 @@ import time
 import threading
 from typing import Tuple
 from raven import Raven
+from coordinates.relativeCoordinates import world_to_relative
 
 
 # Miguel's Navigation movement class
@@ -218,24 +219,12 @@ class Nav:
                 x_rel: Forward distance (positive = ahead)
                 y_rel: Lateral distance (positive = left)
         """
-        # Get robot's current world position
-        # NOTE: odometry uses ROS coordinates
-        # and get_heading uses theta=0 as forward
+        # Get robot's current world position and orientation
         robot_x, robot_y = self.raven.get_odometry()
+        robot_theta = self.angle
 
-        # Translate: vector from robot to target in world frame
-        dx_world = world_x - robot_x
-        dy_world = world_y - robot_y
-
-        # Rotate: transform to robot's local frame
-        # Rotation by -angle (inverse rotation)
-        cos_angle = math.cos(self.angle)
-        sin_angle = math.sin(self.angle)
-
-        x_rel = dx_world * cos_angle + dy_world * sin_angle
-        y_rel = -dx_world * sin_angle + dy_world * cos_angle
-
-        return x_rel, y_rel
+        # Use the centralized coordinate transformation function
+        return world_to_relative(world_x, world_y, robot_x, robot_y, robot_theta)
 
     def override_paths_world_xy(self, world_x, world_y):
         """

@@ -15,18 +15,60 @@ This is the MASLAB 2026 team repository for building an autonomous robot. The pr
 ## Hardware Components
 
 ### Raven Board
-The Raven board is a motor controller accessed through the `raven` Python package. Key features:
-- Motor control via `Raven.MotorChannel.CH1`, `CH2`, etc.
-- Two control modes:
-  - **DIRECT mode**: Set torque and speed factors directly
-  - **Speed-controlled**: Use `set_motor_torque_factor()` to limit torque, `set_motor_speed_factor()` to set target speed
-  - **Torque-controlled**: Set high speed factor, limit with torque factor
-- Encoder access via `get_motor_encoder()` and `set_motor_encoder()`
+The Raven board is a motor controller accessed through the local `raven.py` module. This is a custom serial communication interface that implements the Raven protocol over USB at 460800 baud.
 
-Example workflow in `main.py`:
-1. Initialize: `raven_board = Raven()`
-2. Set mode: `raven_board.set_motor_mode(channel, Raven.MotorMode.DIRECT)`
-3. Control: `raven_board.set_motor_speed_factor(channel, percentage, reverse=True/False)`
+**Key Features:**
+- **Motor Channels**: 5 channels (CH1-CH5) via `Raven.MotorChannel`
+- **Servo Channels**: 4 channels (CH1-CH4) via `Raven.ServoChannel`
+- **Control Modes**:
+  - **DISABLE**: Motors disabled
+  - **DIRECT**: Set torque and speed factors directly
+  - **POSITION**: PID position control using encoder counts
+  - **VELOCITY**: PID velocity control using encoder counts/sec
+- **PID Control**: Configurable P, I, D gains with effort limiting
+- **Encoder Access**: Read/write encoder counts via `get_motor_encoder()` and `set_motor_encoder()`
+- **Odometry Support**: Built-in odometry tracking with `get_odometry()` and `set_odometry()`
+- **Angle Tracking**: IMU angle integration with `get_angle()` and `set_angle()`
+- **Base Configuration**: Configurable wheel diameter and base width via `set_base()`
+
+**Communication Protocol:**
+- Serial interface with custom framing (0xAA start byte)
+- CRC8 checksums for reliable communication
+- Automatic retry mechanism for failed commands
+- Message types for motors, servos, encoders, odometry, and configuration
+
+**Example Workflow:**
+```python
+from raven import Raven
+
+# Initialize (auto-detects serial port or specify manually)
+raven = Raven()  # or Raven(port="/dev/ttyUSB0")
+
+# DIRECT mode - manual speed control
+raven.set_motor_mode(Raven.MotorChannel.CH1, Raven.MotorMode.DIRECT)
+raven.set_motor_speed_factor(Raven.MotorChannel.CH1, 50, reverse=False)  # 50% speed
+
+# POSITION mode - move to encoder position
+raven.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.POSITION)
+raven.set_motor_pid(Raven.MotorChannel.CH2, p_gain=30, i_gain=10, d_gain=2, percent=50)
+raven.set_motor_target(Raven.MotorChannel.CH2, 640.0)  # Target encoder count
+
+# VELOCITY mode - maintain speed
+raven.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.VELOCITY)
+raven.set_motor_pid(Raven.MotorChannel.CH3, p_gain=0, i_gain=5, d_gain=1, percent=25)
+raven.set_motor_target(Raven.MotorChannel.CH3, 2300.0)  # Target encoder counts/sec
+
+# Read encoder and velocity
+encoder = raven.get_motor_encoder(Raven.MotorChannel.CH1)
+velocity = raven.get_motor_velocity(Raven.MotorChannel.CH1)
+
+# Configure base for odometry
+raven.set_base(wheel_d=95.0, base_d=209.0)  # wheel diameter, base width in mm
+
+# Read odometry
+x, y = raven.get_odometry()  # Position in mm
+angle = raven.get_angle()     # Heading in radians
+```
 
 ## Navigation System
 
@@ -534,33 +576,36 @@ The `yolo_detect.py` script performs the following:
 ## Python Environment
 
 ### Dependencies
-Python 3.11 virtual environment in `venv/`. Key packages:
-- `ultralytics==8.3.248`: YOLO training and inference
-- `opencv-python==4.12.0.88`: Image processing and camera interface
-- `torch==2.2.0`: PyTorch deep learning framework
-- `ncnn==1.0.20250916`: NCNN inference framework
-- `numpy==2.2.6`: Array operations
-- `scipy`: Scientific computing library (used for rotation transformations in pixelTo3D.py)
+Python 3.11 project using `pyproject.toml` for dependency management. Key packages:
+- `ultralytics`: YOLO training and inference
+- `ncnn`: NCNN inference framework for embedded deployment
+- `numpy`: Array operations and numerical computing
+- `opencv-python`: Computer vision and image processing
+- `spatialmath-python`: Spatial mathematics library (rotation matrices, transformations used in pixelTo3D.py)
 - `adafruit-circuitpython-bno08x`: BNO08x IMU sensor library (I2C communication)
-- `raven`: Motor controller interface (custom package from maslab-lib)
+- `pyserial`: Serial port communication (required by `raven.py`)
+
+**Local Modules:**
+- `raven.py`: Motor controller interface implementing Raven serial protocol
+- `nav.py`: Navigation system with IMU integration and path planning
+- `connection/`: Remote communication system (TCP video streaming)
+- `yolo/`: YOLO detection pipeline
 
 ### Setup
-Activate the virtual environment and install dependencies:
+Install the project and dependencies:
 ```bash
-source venv/bin/activate
-pip3 install -r requirements.txt
+# Install project in development mode
+pip install -e .
+
+# Or install from requirements.txt (legacy)
+pip install -r requirements.txt
 ```
 
-Or install manually:
-```bash
-source venv/bin/activate
-pip3 install ultralytics ncnn numpy scipy adafruit-circuitpython-bno08x
-pip3 install git+https://github.com/MASLAB/maslab-lib.git
-```
-
-The `raven` package is installed via maslab-lib and provides motor controller access.
-
-**Important:** Always activate the venv before running scripts: `source venv/bin/activate`
+**Important Notes:**
+- The `raven` module is implemented locally in `raven.py` (not an external package)
+- The project uses `pyproject.toml` for modern Python packaging
+- Always activate your virtual environment before running scripts
+- On Raspberry Pi, ensure I2C is enabled for IMU communication (`sudo raspi-config`)
 
 ## Custom Model Training
 
@@ -739,10 +784,12 @@ MDS/
 ├── main.py                    # Raven motor controller example
 ├── main_pi.py                 # Raspberry Pi main script with Nav + PiStreamer
 ├── main_comp.py               # Computer main script with ComputerReceiver + ClickProcessor
+├── raven.py                   # Raven motor controller serial interface (local implementation)
 ├── nav.py                     # Navigation system with IMU, odometry, and path planning
 ├── pixelTo3D.py              # Pixel-to-3D transformation (camera calibration + homography)
-├── robot.py                   # (New robot control script)
-├── requirements.txt           # Python dependencies (ultralytics, ncnn, numpy, maslab-lib)
+├── robot.py                   # Robot control script
+├── requirements.txt           # Python dependencies (legacy, use pyproject.toml)
+├── pyproject.toml             # Modern Python project configuration and dependencies
 ├── out.jpg                   # Example output image
 ├── runs/                     # Root-level runs directory (generated)
 ├── images/                   # Saved frames from SaveImageProcessor (generated)

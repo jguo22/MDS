@@ -4,6 +4,7 @@ Mask processing utilities for segmentation refinement.
 import cv2 as cv
 import numpy as np
 from pathlib import Path
+from ultralytics.engine.results import Masks
 
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
@@ -267,3 +268,18 @@ def fixSegmentation(image, mask):
 
     # Return convex hull
     return maskToConvexRegion(tape_mask)
+
+
+def yoloMaskToBinary(mask_orig: Masks, image: np.ndarray):
+    # Convert mask to grayscale image
+    mask_array = mask_orig.data[0].cpu().numpy()
+    mask_uint8 = (mask_array * 255).astype(np.uint8)
+
+    # Resize mask to match original image size
+    mask_resized = cv.resize(
+        mask_uint8, (image.shape[1], image.shape[0]))
+
+    _, binary_mask = cv.threshold(
+        mask_resized, 127, 255, cv.THRESH_BINARY)
+
+    return binary_mask

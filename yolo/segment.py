@@ -1,13 +1,16 @@
 import cv2 as cv
-from ultralytics import YOLO
 from pathlib import Path
 import numpy as np
+from ultralytics.models.yolo import YOLO
 
-from .mask_utils import calculateQuadFromMask, fixSegmentation
-from .zone_utils import annotate_poly
+from mask_utils import calculateQuadFromMask, fixSegmentation, yoloMaskToBinary
+from zone_utils import annotate_poly
 
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
+
+MODEL = YOLO(str(SCRIPT_DIR / 'last.pt'))
+print(MODEL.names)
 
 
 def wait_for_quit():
@@ -66,13 +69,10 @@ def overlay_mask(image, mask, color=(0, 255, 0), alpha=0.5):
     return result
 
 
-MODEL = YOLO(str(SCRIPT_DIR / 'last.pt'))
-
-
 def segmentImage(image):
     # model returns array of results
     # here, we only have one image so its an array of size 1
-    result = MODEL(image)[0]
+    result = MODEL(image, conf=0.1)[0]
     return result
 
 
@@ -109,18 +109,12 @@ def main():
     # Process all masks with current parameters
     if result.masks is not None:
         for i, mask_orig in enumerate(result.masks):
-            # Convert mask to grayscale image
-            mask_array = mask_orig.data[0].cpu().numpy()
-            mask_uint8 = (mask_array * 255).astype(np.uint8)
-
-            # Resize mask to match original image size
-            mask_resized = cv.resize(
-                mask_uint8, (image.shape[1], image.shape[0]))
+            binary_mask = yoloMaskToBinary(mask_orig, image)
 
             # Apply fixSegmentation with current params
-            tape_mask = fixSegmentation(image, mask_resized)
+            tape_mask = fixSegmentation(image, binary_mask)
 
-            quad = calculateQuadFromMask(mask_resized)
+            quad = calculateQuadFromMask(binary_mask)
             quad2 = calculateQuadFromMask(tape_mask)
 
             if quad is None or quad2 is None:
@@ -135,10 +129,11 @@ def main():
             all_quads_image3 = overlay_mask(
                 all_quads_image3, tape_mask, color=color, alpha=0.4)
 
-        # Display all windows
-        cv.imshow("All Quadrilaterals", all_quads_image)
-        cv.imshow("All Quadrilaterals 2", all_quads_image2)
-        cv.imshow("All Segmentations", all_quads_image3)
+    # Display all windows
+    cv.imshow("All Quadrilaterals", all_quads_image)
+    cv.imshow("All Quadrilaterals 2", all_quads_image2)
+    cv.imshow("All Segmentations", all_quads_image3)
+    wait_for_quit()
     cv.destroyAllWindows()
 
 

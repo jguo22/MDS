@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maslab-robot"
+version = "0.1.0"
+description = "MASLAB 2026 Team 2"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ultralytics",
+    "ncnn",
+    "numpy",
+    "opencv-python",
+    "adafruit-circuitpython-bno08x",
+    "pyserial",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+]
+
+[tool.setuptools]
+packages = ["connection", "yolo"]
+

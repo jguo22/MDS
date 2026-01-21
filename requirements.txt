@@ -1,4 +1,0 @@
-ultralytics
-ncnn
-numpy
-adafruit-circuitpython-bno08x

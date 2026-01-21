@@ -1,6 +1,6 @@
 import numpy as np
 import cv2 as cv
-from scipy.spatial.transform import Rotation as R
+from spatialmath import SO3
 
 
 CAMERA_MATRIX = np.array([[900.83135648, 0, 319.13723878],
@@ -8,14 +8,13 @@ CAMERA_MATRIX = np.array([[900.83135648, 0, 319.13723878],
                           [0, 0, 1]])
 DISTORTION = np.array([[9.62758290e-02, 7.15871128e-01,
                         3.69387355e-03, 1.18130977e-02, -6.76390055e+00]])
-# HEIGHT_MM = 99.06
-# ANGLE_MATRIX = R.from_euler('x', -1).as_matrix()
+ANGLE_MATRIX = SO3.Rx(-1).R  # Rotation around x-axis by -1 radian
 
 
 def undistort_pixel(pixel_x, pixel_y):
     pixel = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
     undistorted = cv.undistortPoints(
-        pixel, camera_matrix, distortion, None, camera_matrix)
+        pixel, CAMERA_MATRIX, DISTORTION, None, CAMERA_MATRIX)
     pixel_undist = undistorted[0, 0]
     return pixel_undist
 

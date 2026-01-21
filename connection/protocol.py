@@ -104,20 +104,26 @@ def _recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
 def send_frame(
         sock: socket.socket,
         frame_data: bytes,
-        frame_id: int = 0) -> bool:
+        frame_id: int = 0,
+        x: float = 0.0,
+        y: float = 0.0,
+        theta: float = 0.0) -> bool:
     """
-    Send a video frame with metadata.
+    Send a video frame with metadata and robot pose.
 
     Args:
         sock: Socket to send on
         frame_data: JPEG-encoded frame bytes
         frame_id: Frame sequence number
+        x: Robot x position in mm (world coordinates)
+        y: Robot y position in mm (world coordinates)
+        theta: Robot orientation in radians
 
     Returns:
         True if successful
     """
-    # Create frame packet: 4-byte frame_id + frame data
-    packet = struct.pack('!I', frame_id) + frame_data
+    # Create frame packet: 4-byte frame_id + 3 floats (x, y, theta) + frame data
+    packet = struct.pack('!I', frame_id) + struct.pack('!fff', x, y, theta) + frame_data
     return send_message(sock, packet)
 
 
