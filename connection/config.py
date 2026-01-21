@@ -6,11 +6,11 @@ Shared configuration for video streaming between Raspberry Pi and computer.
 
 # Network settings
 PI_IP = "192.168.1.100"  # Change to your Pi's IP address
-COMPUTER_IP = "10.42.0.179"  # Change to your computer's IP address
+COMPUTER_IP = "10.42.0.210"  # Change to your computer's IP address
 
 # Ports
-VIDEO_PORT = 5000  # Port for video streaming
-COMMAND_PORT = 5001  # Port for command data
+VIDEO_PORT = 9000  # Port for video streaming
+COMMAND_PORT = 9001  # Port for command data
 
 # Video settings
 FRAME_WIDTH = 640

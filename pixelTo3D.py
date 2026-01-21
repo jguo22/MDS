@@ -28,7 +28,6 @@ def pixel_to_camera_coords(
     """
     Convert a pixel coordinate to 3D camera coordinates.
     NOTE: USING 640x480
-
     Args:
         pixel_x: X coordinate of the pixel (column, horizontal position)
         pixel_y: Y coordinate of the pixel (row, vertical position)
@@ -36,7 +35,6 @@ def pixel_to_camera_coords(
         dist_coeffs: Distortion coefficients
         depth: Optional depth value. If None, returns normalized ray direction.
                    If provided, returns 3D position at that depth.
-
     Returns:
         tuple: (ray_direction, point_3d_camera)
             - ray_direction: 3D unit direction vector from camera center through pixel
@@ -81,12 +79,10 @@ def transform_uv_to_xy(u, v):
     u and v are pixel coordinates.
     The top left pixel is the origin, u axis increases to right, and v axis
     increases down.
-
     Returns a normal non-np 1x2 matrix of xy displacement vector from the
     camera to the point on the ground plane.
     Camera points along positive x axis and y axis increases to the left of
     the camera.
-
     Units are in whichever unit h was calculated in.
     h is the homography matrix
     """

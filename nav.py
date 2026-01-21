@@ -5,12 +5,12 @@ from typing import Tuple
 from raven import Raven
 
 
-# Miguel's Navigation movement class
+# Miguel and ours Navigation movement class
 LEFT_MOTOR = Raven.MotorChannel.CH2
 RIGHT_MOTOR = Raven.MotorChannel.CH3
 TICK_ROTATION = 64 * 50
-WHEEL_D = 95  # TODO: measure in mm
-BASE_D = 209
+WHEEL_D = 101.6
+BASE_D = 237.236
 ANGLE_PROP = 5000
 ANGLE_D = 5000
 
@@ -21,11 +21,12 @@ FRAME_TIME = 0.05  # 1/FPS
 
 
 class NavMove:
-    def __init__(self, left: float, right: float, dist: float, smooth: bool):
+    def __init__(self, left: float, right: float, dist: float, smooth: bool, correct_angle: bool):
         self.left = left
         self.right = right
         self.dist = dist
         self.smooth = smooth
+        self.correct_angle = correct_angle
 
     def __repr__(self):
         """
@@ -51,12 +52,13 @@ class Nav:
             print(self.bno.quaternion)
             time.sleep(0.02)
 
-        self.max_velocity = 3.0 * TICK_ROTATION  # ticks/s
-        self.acceleration = 5.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
+        self.max_velocity = 2.8 * TICK_ROTATION  # ticks/s
+        self.acceleration = 3.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
 
         self.moves: list[NavMove] = []
         self._lock = threading.Lock()
         self.moving = False
+        self.correct_angle = True
 
         # for imu
         self.last_angle = 0
@@ -88,6 +90,8 @@ class Nav:
 
         self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
         self.raven.set_motor_pid(LEFT_MOTOR, p_gain=20, i_gain=5, d_gain=0.1)
+        # self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=5, i_gain=0, d_gain=0.5)
+        # self.raven.set_motor_pid(LEFT_MOTOR, p_gain=5, i_gain=0, d_gain=0.5)
 
     def startLoop(self):
         # ONLY RUN ONE LOOP
@@ -147,6 +151,7 @@ class Nav:
             # if we're not moving, start next move
             if not self.moving and len(self.moves) > 0:
                 self.moving = True
+                self.correct_angle = self.moves[0].correct_angle
                 self._startPath(self.moves[0])
                 self.moves.pop(0)
 
@@ -172,11 +177,17 @@ class Nav:
                 2.0 * TURN_CONSTANT * self.current_distance
 
             self._updateAngle()
-            angle_error = (self.angle - self.start_angle) - target_angle
 
-            self.start_left -= angle_error * ANGLE_PROP * dt - self.diff_angle * ANGLE_D * dt
-            self.start_right -= angle_error * ANGLE_PROP * \
-                dt - self.diff_angle * ANGLE_D * dt
+            # print(self.correct_angle)
+
+            if self.correct_angle:
+                angle_error = (self.angle - self.start_angle) - target_angle
+                # if (self.moving):
+                #     print(f'angle error: {angle_error}')
+
+                self.start_left -= angle_error * ANGLE_PROP * dt - self.diff_angle * ANGLE_D * dt
+                self.start_right -= angle_error * ANGLE_PROP * \
+                    dt - self.diff_angle * ANGLE_D * dt
 
             target_left = self.start_left + \
                 (self.current_distance * self.left_coef)
@@ -218,22 +229,73 @@ class Nav:
         yaw_raw = math.atan2(t3, t4)
         return yaw_raw
 
+    def get_relative_position(self, world_x: float,
+                              world_y: float) -> tuple[float, float]:
+        """
+        Convert world coordinates to robot-relative coordinates.
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+        Returns:
+            (x_rel, y_rel): Position relative to robot
+                x_rel: Forward distance (positive = ahead)
+                y_rel: Lateral distance (positive = left)
+        """
+        # Get robot's current world position
+        # NOTE: odometry uses ROS coordinates
+        # and get_heading uses theta=0 as forward
+        robot_x, robot_y = self.raven.get_odometry()
+
+        # Translate: vector from robot to target in world frame
+        dx_world = world_x - robot_x
+        dy_world = world_y - robot_y
+
+        # Rotate: transform to robot's local frame
+        # Rotation by -angle (inverse rotation)
+        cos_angle = math.cos(self.angle)
+        sin_angle = math.sin(self.angle)
+
+        x_rel = dx_world * cos_angle + dy_world * sin_angle
+        y_rel = -dx_world * sin_angle + dy_world * cos_angle
+
+        return x_rel, y_rel
+
+    def override_paths_world_xy(self, world_x, world_y):
+        """
+        Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+        """
+        x, y = self.get_relative_position(world_x, world_y)
+
+        # Calculate angle to rotate to face the target
+        # atan2(y, x) gives the angle from robot's forward axis to the target
+        target_angle = math.atan2(y, x)
+
+        # Calculate distance to target
+        target_distance = math.sqrt(x**2 + y**2)
+
+        # Create movement path: rotate, then forward
+        movements = []
+
+        # Only add rotation if angle is significant (> 0.01 radians ≈ 0.57
+        # degrees)
+        if abs(target_angle) > 0.01:
+            movements.append(NavMove(*get_rotate(target_angle), smooth=True))
+
+        # Only add forward movement if distance is significant (> 1 mm)
+        if target_distance > 1.0:
+            movements.append(
+                NavMove(*get_forward_mm(target_distance), smooth=False))
+
+        # Override current path with new movements
+        self.overridePaths(movements)
 
 def get_forward_mm(distance_mm: float) -> Tuple[float, float, float]:
     distance = distance_mm / (WHEEL_D * math.pi) * TICK_ROTATION
     return (1, 1, distance)
 
 
-def get_rotate(theta: float) -> Tuple[float, float, float]:
-    # make into range -pi to pi
-    theta = theta % (2 * math.pi)
-    if theta > math.pi:
-        theta -= 2 * math.pi
-    if theta < -math.pi:
-        theta += 2 * math.pi
-
-    # CCW is positive angle
-    if theta >= 0:
-        return (-1, 1, TICK_ROTATION / BASE_RATIO * theta / (2 * math.pi))
-    else:
-        return (1, -1, TICK_ROTATION / BASE_RATIO * -theta / (2 * math.pi))
+def get_rotate():
+    return TICK_ROTATION / BASE_RATIO
