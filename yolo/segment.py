@@ -72,7 +72,7 @@ def overlay_mask(image, mask, color=(0, 255, 0), alpha=0.5):
 def segmentImage(image):
     # model returns array of results
     # here, we only have one image so its an array of size 1
-    result = MODEL(image, conf=0.1)[0]
+    result = MODEL(image, conf=0.25)[0]
     return result
 
 

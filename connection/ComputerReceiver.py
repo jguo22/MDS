@@ -59,23 +59,25 @@ class ComputerReceiver():
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
 
-        self.on_frame: Callable[[np.ndarray, int], None] = (lambda x, y: None)
+        self.on_frame: Callable[[np.ndarray, int, float, float, float], None] = (
+            lambda frame, frame_id, x, y, theta: None)
         self.latest_frame: Optional[np.ndarray] = None
         self.latest_frame_id: int = 0
+        self.latest_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)  # (x, y, theta)
         self._lock = threading.Lock()
 
-    def set_frame_callback(self, callback: Callable[[np.ndarray, int], None]):
+    def set_frame_callback(self, callback: Callable[[np.ndarray, int, float, float, float], None]):
         """
         Set callback for processing frames and generating movement commands.
         THIS BLOCKS THE RECEIVING FRAMES LOOP
 
         Args:
-            callback: Function(frame, frame_id) -> (left_coef, right_coef, distance) or None
-                Return movement command as a tuple of (left_coef, right_coef, distance),
-                or None to skip sending movement command.
-                - left_coef: Left motor coefficient (-1.0 to 1.0)
-                - right_coef: Right motor coefficient (-1.0 to 1.0)
-                - distance: Distance to move (in ticks)
+            callback: Function(frame, frame_id, x, y, theta) -> None
+                - frame: Video frame as numpy array
+                - frame_id: Frame sequence number
+                - x: Robot x position in mm (world coordinates)
+                - y: Robot y position in mm (world coordinates)
+                - theta: Robot orientation in radians
         """
         self.on_frame = callback
 
@@ -181,7 +183,7 @@ class ComputerReceiver():
                 else:
                     failed_frames = 0
 
-                frame_id, frame_data = result
+                frame_id, frame_data, x, y, theta = result
 
                 # Decode JPEG
                 np_arr = np.frombuffer(frame_data, dtype=np.uint8)
@@ -190,14 +192,15 @@ class ComputerReceiver():
                 if frame is None:
                     continue
 
-                # Store latest frame
+                # Store latest frame and pose
                 with self._lock:
                     self.latest_frame = frame.copy()
                     self.latest_frame_id = frame_id
+                    self.latest_pose = (x, y, theta)
 
                 # Process frame with callback and get movement command
                 try:
-                    self.on_frame(frame, frame_id)
+                    self.on_frame(frame, frame_id, x, y, theta)
                 except Exception as e:
                     print("Error in frame callback")
                     print(e)

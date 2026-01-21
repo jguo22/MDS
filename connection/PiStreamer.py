@@ -49,6 +49,8 @@ class PiStreamer():
     """
 
     def __init__(self, camera: CameraCapture,
+                 raven,
+                 imu_wrapper,
                  host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
                  command_port: int = config.COMMAND_PORT):
@@ -57,12 +59,16 @@ class PiStreamer():
 
         Args:
             camera: CameraCapture instance (managed externally)
+            raven: Raven motor controller instance (for odometry)
+            imu_wrapper: IMUWrapper instance (for heading)
             host: Computer IP address to connect to
             video_port: Port for video streaming
             command_port: Port for receiving commands
         """
 
         self.camera = camera
+        self.raven = raven
+        self.imu_wrapper = imu_wrapper
         self.host = host
         self.video_port = video_port
         self.command_port = command_port
@@ -209,11 +215,16 @@ class PiStreamer():
                     print("Failed to encode frame")
                     continue
 
-                # Send frame
+                # Get current robot pose
+                x, y = self.raven.get_odometry()
+                theta = self.imu_wrapper.get_heading()
+
+                # Send frame with pose data
                 if not protocol.send_frame(
                         self.video_client_socket,
                         encoded.tobytes(),
-                        self.frame_id):
+                        self.frame_id,
+                        x, y, theta):
                     print("Failed to send frame. Continuing...")
                     continue
 

@@ -127,23 +127,29 @@ def send_frame(
     return send_message(sock, packet)
 
 
-def recv_frame(sock: socket.socket) -> Optional[Tuple[int, bytes]]:
+def recv_frame(sock: socket.socket) -> Optional[Tuple[int, bytes, float, float, float]]:
     """
-    Receive a video frame with metadata.
+    Receive a video frame with metadata and robot pose.
 
     Args:
         sock: Socket to receive from
 
     Returns:
-        Tuple of (frame_id, frame_data) or None if failed
+        Tuple of (frame_id, frame_data, x, y, theta) or None if failed
+            frame_id: Frame sequence number
+            frame_data: JPEG-encoded frame bytes
+            x: Robot x position in mm (world coordinates)
+            y: Robot y position in mm (world coordinates)
+            theta: Robot orientation in radians
     """
     data = recv_message(sock)
-    if data is None or len(data) < 4:
+    if data is None or len(data) < 16:  # 4 bytes frame_id + 12 bytes (3 floats) + frame data
         return None
 
     frame_id = struct.unpack('!I', data[:4])[0]
-    frame_data = data[4:]
-    return frame_id, frame_data
+    x, y, theta = struct.unpack('!fff', data[4:16])
+    frame_data = data[16:]
+    return frame_id, frame_data, x, y, theta
 
 
 def send_command(

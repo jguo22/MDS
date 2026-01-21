@@ -1,3 +1,4 @@
+# measurements are in mm
 CENTER_BORDER_X = 2133.6
 BACK_BORDER_X = -304.8
 LEFT_BORDER_Y = 1219.2
