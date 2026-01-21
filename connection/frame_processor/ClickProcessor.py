@@ -33,9 +33,10 @@ class ClickProcessor(FrameProcessor):
             #
             # print(f'({x_scaled}, {y_scaled})')
 
-            x_scaled, y_scaled = transform_uv_to_xy(x, y)
-
-            self.computerReceiver.send_xy(x_scaled, y_scaled)
+            xy = transform_uv_to_xy(x, y)
+            if xy is not None:
+                x_scaled, y_scaled = xy
+                self.computerReceiver.send_xy(x_scaled, y_scaled)
 
     def process(self, frame: np.ndarray,
                 frame_id: int) -> Optional[Tuple[float, float, float]]:

@@ -41,3 +41,4 @@ class RobotHandler():
             print("ERROR: INVALID STATE")
 
     def getOurZones(self):
+        pass

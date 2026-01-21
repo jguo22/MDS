@@ -1,35 +1,27 @@
-from raven import Raven
-from nav import *
+from yolo.segment import segmentImage
+from yolo.zone_utils import getZones
+import numpy as np
+import cv2 as cv
 
-raven = Raven()
 
-raven = Raven()
-raven.set_base(WHEEL_D, BASE_D)
+image_path = str("yolo/test.jpg")
+print(f"Loading image: {image_path}")
 
-for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
-    raven.set_motor_encoder(motor, 0)
-    raven.set_motor_max_current(motor, 5)
-    raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
-    raven.set_motor_target(motor, 0)
+image = cv.imread(image_path)
+if image is None:
+    raise Exception("no image")
 
-raven.set_motor_pid(RIGHT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
-raven.set_motor_pid(LEFT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
+print("Running segmentation...")
 
-while True:
-    print(raven.get_odometry())
-    print(raven.get_angle())
-    print(raven.get_motor_encoder(motor_channel=Raven.MotorChannel.CH2))
-    print(raven.get_motor_encoder(motor_channel=Raven.MotorChannel.CH3))
-    raven.set_motor_target(LEFT_MOTOR, -1000)
-    raven.set_motor_target(RIGHT_MOTOR, 1000)
+result = segmentImage(image)
 
-    time.sleep(0.5)
+# Get quadrilaterals in xy coordinates, sorted by distance
+quads_xy, class_names = getZones(result, image)
 
-    print(raven.get_odometry())
-    print(raven.get_angle())
-    print(raven.get_motor_encoder(motor_channel=Raven.MotorChannel.CH2))
-    print(raven.get_motor_encoder(motor_channel=Raven.MotorChannel.CH3))
-    raven.set_motor_target(LEFT_MOTOR, 1000)
-    raven.set_motor_target(RIGHT_MOTOR, -1000)
-    time.sleep(0.5)
-#
+
+print("\nZones sorted by distance:")
+for i, (quad, class_name) in enumerate(zip(quads_xy, class_names)):
+    center_x = np.mean(quad[:, 0])
+    center_y = np.mean(quad[:, 1])
+    distance = np.sqrt(center_x**2 + center_y**2)
+    print(f"{i}: {class_name:15s} - center=({center_x:7.1f}, {center_y:7.1f}) mm, distance={distance:7.1f} mm")

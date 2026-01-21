@@ -1,3 +1,0 @@
-CLASS_NAMES = [
-
-]

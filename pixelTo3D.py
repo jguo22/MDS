@@ -96,4 +96,8 @@ def transform_uv_to_xy(u, v):
     homogeneous_xy = xy * scaling_factor
     x = homogeneous_xy[0, 0]
     y = homogeneous_xy[1, 0]
+
+    if y < 0:
+        return None
+
     return x, y
