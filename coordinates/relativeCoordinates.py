@@ -40,7 +40,7 @@ conversions that properly handle both translation and rotation.
 
 import numpy as np
 from spatialmath import SE2
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union, Sequence
 import math
 
 
@@ -77,40 +77,6 @@ def world_to_relative(
     world_point: Union[Tuple[float, float], np.ndarray, SE2],
     robot_pose: SE2
 ) -> Tuple[float, float]:
-    """
-    Convert world coordinates to robot-relative coordinates using SE(2).
-
-    Transforms a point from the world coordinate frame to the robot's local
-    coordinate frame. The robot frame has its origin at the robot's position
-    and is oriented along the robot's heading direction.
-
-    Mathematical operation: rel_point = robot_pose.inv() * world_point
-
-    Args:
-        world_point: Target point in world frame. Can be:
-            - Tuple (x, y) in mm
-            - numpy array [x, y] in mm
-            - SE2 pose (uses translation component)
-        robot_pose: Robot pose in world frame as SE2 object
-            - Translation: (x, y) position in world frame (mm)
-            - Rotation: orientation in world frame (radians)
-
-    Returns:
-        Tuple of (rel_x, rel_y) in robot-relative frame (mm)
-        - rel_x: distance forward from robot (positive = ahead)
-        - rel_y: distance left from robot (positive = left)
-
-    Example:
-        >>> robot = SE2(0, 0, 0)  # Robot at origin facing +x
-        >>> x, y = world_to_relative((1000, 500), robot)
-        >>> x, y
-        (1000.0, 500.0)
-
-        >>> robot = SE2(1000, 0, 0)  # Robot at (1000, 0) facing +x
-        >>> x, y = world_to_relative((0, 0), robot)
-        >>> x, y
-        (-1000.0, 0.0)
-    """
     # Convert point to numpy array for transformation
     world_point = _point_to_array(world_point)
 
@@ -124,39 +90,6 @@ def relative_to_world(
     rel_point: Union[Tuple[float, float], np.ndarray],
     robot_pose: SE2
 ) -> Tuple[float, float]:
-    """
-    Convert robot-relative coordinates to world coordinates using SE(2).
-
-    Transforms a point from the robot's local coordinate frame to the world
-    coordinate frame. This is the inverse operation of world_to_relative().
-
-    Mathematical operation: world_point = robot_pose * rel_point
-
-    Args:
-        rel_point: Point in robot-relative frame. Can be:
-            - Tuple (x, y) in mm
-            - numpy array [x, y] in mm
-            Where x is forward from robot, y is left from robot
-        robot_pose: Robot pose in world frame as SE2 object
-            - Translation: (x, y) position in world frame (mm)
-            - Rotation: orientation in world frame (radians)
-
-    Returns:
-        Tuple of (world_x, world_y) in world frame (mm)
-        - world_x: x position in world frame (forward direction)
-        - world_y: y position in world frame (left direction)
-
-    Example:
-        >>> robot = SE2(0, 0, 0)  # Robot at origin facing +x
-        >>> x, y = relative_to_world((1000, 0), robot)
-        >>> x, y
-        (1000.0, 0.0)
-
-        >>> robot = SE2(1000, 0, 0)  # Robot at (1000, 0) facing +x
-        >>> x, y = relative_to_world((0, 500), robot)
-        >>> x, y
-        (1000.0, 500.0)
-    """
     # Convert point to numpy array for transformation
     rel_point = _point_to_array(rel_point)
 
@@ -170,42 +103,6 @@ def transform_pose_world_to_relative(
     world_pose: SE2,
     robot_pose: SE2
 ) -> SE2:
-    """
-    Convert a pose (position + orientation) from world frame to robot-relative frame.
-
-    Transforms both the position and orientation of a target pose from the world
-    coordinate frame to the robot's local coordinate frame. This is useful when
-    you need to know not just where a target is relative to the robot, but also
-    what direction it is facing relative to the robot's heading.
-
-    Mathematical operation: robot_T_target = world_T_robot.inv() * world_T_target
-
-    Args:
-        world_pose: Target pose in world frame as SE2 object
-            - Translation: (x, y) position in world frame (mm)
-            - Rotation: orientation in world frame (radians)
-        robot_pose: Robot pose in world frame as SE2 object
-            - Translation: (x, y) position in world frame (mm)
-            - Rotation: orientation in world frame (radians)
-
-    Returns:
-        SE2: Pose in robot-relative frame
-        - Translation: (rel_x, rel_y) relative to robot (mm)
-        - Rotation: orientation relative to robot's heading (radians)
-
-    Example:
-        >>> robot = SE2(0, 0, 0)  # Robot at origin facing +x
-        >>> target = SE2(1000, 0, 0)  # Target at (1000, 0) facing +x
-        >>> rel_pose = transform_pose_world_to_relative(target, robot)
-        >>> rel_pose.t, rel_pose.theta()
-        (array([1000.,    0.]), 0.0)
-
-        >>> robot = SE2(500, 0, 0)  # Robot at (500, 0) facing +x
-        >>> target = SE2(1000, 0, 0)  # Target at (1000, 0) facing +x
-        >>> rel_pose = transform_pose_world_to_relative(target, robot)
-        >>> rel_pose.t, rel_pose.theta()
-        (array([500.,   0.]), 0.0)
-    """
     # Compute relative transformation: robot_T_target = world_T_robot.inv() *
     # world_T_target
     robot_T_target: SE2 = robot_pose.inv() * world_pose
@@ -217,41 +114,6 @@ def transform_pose_relative_to_world(
     rel_pose: SE2,
     robot_pose: SE2
 ) -> SE2:
-    """
-    Convert a pose (position + orientation) from robot-relative frame to world frame.
-
-    Transforms both the position and orientation of a target pose from the robot's
-    local coordinate frame to the world coordinate frame. This is the inverse
-    operation of transform_pose_world_to_relative().
-
-    Mathematical operation: world_T_target = world_T_robot * robot_T_target
-
-    Args:
-        rel_pose: Pose in robot-relative frame as SE2 object
-            - Translation: (rel_x, rel_y) relative to robot (mm)
-            - Rotation: orientation relative to robot's heading (radians)
-        robot_pose: Robot pose in world frame as SE2 object
-            - Translation: (x, y) position in world frame (mm)
-            - Rotation: orientation in world frame (radians)
-
-    Returns:
-        SE2: Pose in world frame
-        - Translation: (x, y) position in world frame (mm)
-        - Rotation: orientation in world frame (radians)
-
-    Example:
-        >>> robot = SE2(0, 0, 0)  # Robot at origin facing +x
-        >>> rel_pose = SE2(1000, 0, 0)  # Point 1000mm in front of robot
-        >>> world_pose = transform_pose_relative_to_world(rel_pose, robot)
-        >>> world_pose.t, world_pose.theta()
-        (array([1000.,    0.]), 0.0)
-
-        >>> robot = SE2(500, 0, 0)  # Robot at (500, 0) facing +x
-        >>> rel_pose = SE2(0, 0, 0)  # Robot's own position
-        >>> world_pose = transform_pose_relative_to_world(rel_pose, robot)
-        >>> world_pose.t, world_pose.theta()
-        (array([500.,   0.]), 0.0)
-    """
     # Compute world transformation: world_T_target = world_T_robot *
     # robot_T_target
     world_T_target: SE2 = robot_pose * rel_pose
@@ -259,57 +121,10 @@ def transform_pose_relative_to_world(
     return world_T_target
 
 
-def angle_between_points(
+def angle_of_segment(
     point1: Union[Tuple[float, float], np.ndarray, SE2],
     point2: Union[Tuple[float, float], np.ndarray, SE2],
 ) -> float:
-    """
-    Calculate the angle of the line from point1 to point2 relative to the x-axis.
-
-    Computes the angle of the vector pointing from point1 to point2, measured
-    from the positive x-axis. Uses atan2(dy, dx) for robust angle calculation
-    that handles all quadrants correctly.
-
-    The angle is measured from the positive x-axis with counter-clockwise being
-    positive, following the standard mathematical convention.
-
-    Args:
-        point1: First point (origin of the vector). Can be:
-            - Tuple (x, y) in mm
-            - numpy array [x, y] in mm
-            - SE2 pose (uses translation component, ignores orientation)
-        point2: Second point (destination of the vector). Can be:
-            - Tuple (x, y) in mm
-            - numpy array [x, y] in mm
-            - SE2 pose (uses translation component, ignores orientation)
-
-    Returns:
-        float: Angle in radians in range [-π, π]
-        - Positive values: counter-clockwise rotation from x-axis
-        - Negative values: clockwise rotation from x-axis
-        - 0: pointing along positive x-axis
-        - π/2: pointing along positive y-axis
-        - -π/2: pointing along negative y-axis
-
-    Examples:
-        # Angle from (0,0) to (1,1) is π/4 radians (45 degrees)
-        >>> angle_between_points((0, 0), (1, 1))
-        0.7853981633974483  # π/4
-
-        # Angle from (1,1) to (0,0) is -3π/4 radians (opposite direction)
-        >>> angle_between_points((1, 1), (0, 0))
-        -2.356194490192345  # -3π/4
-
-        # Angle from (0,0) to (0,1) is π/2 radians (90 degrees, straight up)
-        >>> angle_between_points((0, 0), (0, 1))
-        1.5707963267948966  # π/2
-
-        # Using SE2 poses
-        >>> p1 = SE2(0, 0, 0)
-        >>> p2 = SE2(1, 1, 0)
-        >>> angle_between_points(p1, p2)
-        0.7853981633974483  # π/4
-    """
     point1_arr = _point_to_array(point1)
     point2_arr = _point_to_array(point2)
 
@@ -320,31 +135,10 @@ def angle_between_points(
     return angle
 
 
-def plan_path_poses(
+def get_movement_plan(
     points: List[Union[Tuple[float, float], np.ndarray]],
     start_pose: SE2
-) -> List[SE2]:
-    """
-    Generate relative movement poses to navigate through world points sequentially.
-
-    Converts world points into robot-relative movement commands (SE2 poses).
-    Each pose represents the relative distance and angle to move from the current
-    position to the next point.
-
-    Args:
-        points: World points to visit [(x, y), ...] in mm
-        start_pose: Starting pose as SE2 (world position and orientation)
-
-    Returns:
-        List[SE2]: Relative poses for each movement step
-
-    Example:
-        start = SE2(0, 0, 0)
-        points = [(1000, 0), (1000, 1000)]
-        path = plan_path_poses(points, start)
-        # Returns relative movements to reach each point
-    """
-
+) -> List[Tuple[float, float]]:
     if not points:
         return []
 
@@ -358,9 +152,10 @@ def plan_path_poses(
     prev_pose = start_pose
     for curr_point in point_array:
         # get the relative pose for movement
-        rel_x, rel_y = world_to_relative(curr_point, prev_pose)
-        theta = math.atan2(rel_y, rel_x)
-        path.append(SE2(rel_x, rel_y, theta))
+        relX, relY = world_to_relative(curr_point, prev_pose)
+        dist = math.sqrt(relX * relX + relY * relY)
+        theta = math.atan2(relY, relX)
+        path.append((dist, theta))
 
         # update prev_pose in world coordinates
         x, y = curr_point

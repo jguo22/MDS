@@ -2,14 +2,15 @@ import time
 import math
 import numpy as np
 from enum import Enum
-from typing import List, Tuple
+from typing import Tuple, List
 from spatialmath import SE2
 from connection.ComputerReceiver import ComputerReceiver
+from nav import get_forward_mm, get_rotate
 from yolo.segment import segmentImage
 from yolo.zone_utils import getZones
 from yolo.can_utils import getCans
-from config import CENTER_BORDER_X, CAN_DIAMETER, BASE_D, SCOOPER_LENGTH
-from coordinates.relativeCoordinates import plan_path_poses, world_to_relative
+from config import CENTER_BORDER_X, CAN_DIAMETER, BASE_D, FT_TO_MM, SCOOPER_LENGTH
+from coordinates.relativeCoordinates import get_movement_plan, world_to_relative
 
 
 class RobotState(Enum):
@@ -27,7 +28,7 @@ GOLDEN_ZONE_OPP = 5
 
 
 class RobotHandler():
-    def __init__(self, computer_receiver):
+    def __init__(self, computer_receiver: ComputerReceiver):
         self.startFrame: int = -1
         self.startTime = time.time()
         self.state = RobotState.StartScan
@@ -37,7 +38,7 @@ class RobotHandler():
         self.zones = [None, None, None, None, None, None]
 
         # Store planned path to cans
-        self.planned_path = []
+        self.planned_path: List[Tuple[float, float]] = []
         self.lastTimeSentPath = 0
 
         self.computer_receiver = computer_receiver
@@ -78,13 +79,23 @@ class RobotHandler():
 
                 # Store the planned path
                 self.planned_path = sorted_cans
+                # add green zone
+                self.planned_path.append((0, 4 * FT_TO_MM))
 
         elif self.state == RobotState.StartGather:
             # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
             if self.lastTimeSentPath == 0:
-                self.lastTimeSentPath == time.time()
+                self.lastTimeSentPath = time.time()
 
-                plan = plan_path_poses(self.planned_path, SE2(x, y, theta))
+                plan = get_movement_plan(self.planned_path, SE2(x, y, theta))
+
+                movement_args = []
+                for move in plan:
+                    dist, theta = move
+                    movement_args.extend(get_rotate(theta))
+                    movement_args.extend(get_forward_mm(dist))
+
+                self.computer_receiver.override_movement(movement_args)
 
         elif self.state == RobotState.MoveToZone:
             pass

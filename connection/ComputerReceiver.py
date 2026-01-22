@@ -316,7 +316,7 @@ class ComputerReceiver():
             [left_coef, right_coef, distance]
         )
 
-    def override_movement(self, movements: list[float]):
+    def override_movement(self, movement_args: list[float]):
         """
         Send list of movement commands to the Pi.
 
@@ -332,10 +332,10 @@ class ComputerReceiver():
         if not self.command_client_socket:
             return False
 
-        assert (len(movements) % 3 == 0)
+        assert (len(movement_args) % 3 == 0)
 
         return protocol.send_command(
             self.command_client_socket,
             message_types.OVERRIDE_MOVEMENTS,
-            movements
+            movement_args
         )

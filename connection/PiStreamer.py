@@ -32,6 +32,8 @@ import cv2
 from typing import Callable, Optional
 import traceback
 
+from IMUWrapper import IMUWrapper
+from RavenWrapper import RavenWrapper
 from connection import message_types
 
 from . import config
@@ -49,8 +51,8 @@ class PiStreamer():
     """
 
     def __init__(self, camera: CameraCapture,
-                 raven,
-                 imu_wrapper,
+                 ravenWrapper: RavenWrapper,
+                 imuWrapper: IMUWrapper,
                  host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
                  command_port: int = config.COMMAND_PORT):
@@ -67,8 +69,8 @@ class PiStreamer():
         """
 
         self.camera = camera
-        self.raven = raven
-        self.imu_wrapper = imu_wrapper
+        self.ravenWrapper = ravenWrapper
+        self.imu_wrapper = imuWrapper
         self.host = host
         self.video_port = video_port
         self.command_port = command_port
@@ -217,7 +219,7 @@ class PiStreamer():
                     continue
 
                 # Get current robot pose
-                x, y = self.raven.get_odometry()
+                x, y = self.ravenWrapper.get_odometry()
                 theta = self.imu_wrapper.get_heading()
 
                 # Send frame with pose data
