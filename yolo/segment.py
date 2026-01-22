@@ -3,6 +3,8 @@ from ultralytics import YOLO
 from pathlib import Path
 import numpy as np
 import json
+import torch
+from ultralytics.nn.tasks import SegmentationModel
 
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
@@ -599,7 +601,10 @@ def reset_trackbars(window_name):
     print("Parameters reset to defaults")
 
 
-MODEL = YOLO(str(SCRIPT_DIR / 'last.pt'))
+MODEL = YOLO(str(SCRIPT_DIR / 'last1.pt'))
+labels = MODEL.names
+
+print(MODEL)
 
 
 def segmentImage(image):
@@ -607,6 +612,10 @@ def segmentImage(image):
     # here, we only have one image so its an array of size 1
     result = MODEL(image)[0]
     return result
+
+def getClassName(classidx: int):
+    classname = labels[classidx]
+    return classname
 
 
 def getQuadrilateralsAndClasses(result, image):

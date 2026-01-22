@@ -27,6 +27,7 @@ class NavMove:
         self.dist = dist
         self.smooth = smooth
         self.correct_angle = correct_angle
+        self.lookingDown = False
 
     def __repr__(self):
         """

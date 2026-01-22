@@ -7,7 +7,7 @@ from connection import config, message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
 from raven import Raven
-from yolo.segment import getQuadrilateralsAndClasses, segmentImage
+from yolo.segment import getQuadrilateralsAndClasses, segmentImage, getClassName
 from pixelTo3D import transform_uv_to_xy
 import numpy as np
 from thetaStar import ThetaStarPlanner
@@ -29,6 +29,39 @@ green_zone_x, green_zone_y = 0, 0
 yellow_zone_x, yellow_zone_y = 0, 0
 
 def main():
+
+    def getCanColor():
+        rotateCameraDown()
+        print("a")
+        time.sleep(0.1)
+        print("b")
+        image = camera.cap.read()[1]
+        result = segmentImage(image)
+        detections = result.boxes
+        lowest_y = 10000
+        class_name = "None"
+        for detection in detections:
+            print(detection.conf.item())
+            if (detection.conf.item() < 0.6):
+                continue
+            xyxy_tensor = detection.xyxy.cpu()
+            xyxy = xyxy_tensor.numpy().squeeze()
+            xmin, ymin, xmax, ymax = xyxy.astype(int)
+            if ymax < lowest_y:
+                lowest_y = ymax
+                classidx = int(detection.cls.item())
+                class_name = getClassName(classidx)
+
+        print(class_name)
+
+
+    # Set down to be looking directly down at held can
+    def rotateCameraDown():
+        nav.raven.set_servo_position(Raven.ServoChannel.CH4, -90)
+    def rotateCameraUp():
+        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 30)
+
+
     parser = argparse.ArgumentParser(description="Raspberry Pi Video Streamer")
     parser.add_argument(
         "--camera",
@@ -125,28 +158,27 @@ def main():
     # TODO: Set zone locations
 
 
-    # nav.raven.set_servo_position(Raven.ServoChannel.CH1, 90)
-    # time.sleep(1.15)
-    # nav.raven.set_servo_position(Raven.ServoChannel.CH1, 0)
+    rotateCameraDown()
+    getCanColor()
 # Smooth = False
-    nav.addPath(NavMove(1.005, .995, get_forward_mm(2100)[2], False, True))
-    nav.addPath(NavMove(1.3, 0.7, get_rotate() / 2 - 200, False, True))
-    nav.addPath(NavMove(1.12, .88, get_forward_mm(700)[2], False, True))
-    nav.addPath(NavMove(1.5, 0.5, get_rotate() / 2 - 300, False, True))
-    nav.addPath(NavMove(1, 1, 5000, False, True))
-    # x, y = closest_centers[0]
-    # nav.override_paths_world_xy(x, y)
+    # nav.addPath(NavMove(1.005, .995, get_forward_mm(2100)[2], False, True))
+    # nav.addPath(NavMove(1.3, 0.7, get_rotate() / 2 - 200, False, True))
+    # nav.addPath(NavMove(1.12, .88, get_forward_mm(700)[2], False, True))
+    # nav.addPath(NavMove(1.5, 0.5, get_rotate() / 2 - 300, False, True))
+    # nav.addPath(NavMove(1, 1, 5000, False, True))
+    # # x, y = closest_centers[0]
+    # # nav.override_paths_world_xy(x, y)
 
 
-    nav.addPath(NavMove(-1, -1, 4000, False, True))
-    nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2 - 100, False, True))
+    # nav.addPath(NavMove(-1, -1, 4000, False, True))
+    # nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2 - 100, False, True))
 
-    nav.addPath(NavMove(-1, -1, 7000, False, True))
-    nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2- 200, False, True))
-    nav.addPath(NavMove(0.7, 1.3, get_rotate() / 2, False, True))
-    nav.addPath(NavMove(.88, 1.12, get_forward_mm(700)[2], False, True))
-    nav.addPath(NavMove(0.5, 1.5, get_rotate() / 2 - 300, False, True))
-    nav.addPath(NavMove(1, 1, 5000, False, True))
+    # nav.addPath(NavMove(-1, -1, 7000, False, True))
+    # nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2- 200, False, True))
+    # nav.addPath(NavMove(0.7, 1.3, get_rotate() / 2, False, True))
+    # nav.addPath(NavMove(.88, 1.12, get_forward_mm(700)[2], False, True))
+    # nav.addPath(NavMove(0.5, 1.5, get_rotate() / 2 - 300, False, True))
+    # nav.addPath(NavMove(1, 1, 5000, False, True))
 # Smooth = True
     # nav.addPath(NavMove(1.05, 0.95, 10000, True, True))
     # nav.addPath(NavMove(1.3, 0.7, get_rotate() / 2, True, True))
@@ -251,13 +283,8 @@ def main():
     camera.close()
     print("Camera closed")
 
-
 if __name__ == "__main__":
     main()
-
-
-def rotateCamera(nav: Nav, angle: int):
-    nav.raven.set_servo_position(Raven.ServoChannel.CH1, angle)
 
 def gripClaw(nav: Nav):
     nav.raven.set_servo_position(Raven.ServoChannel.CH1, 90)
