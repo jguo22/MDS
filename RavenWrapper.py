@@ -84,7 +84,7 @@ class RavenWrapper():
             max_us=2000,
             retry=0,
     ):
-        """Set servo position (500-2500 microseconds)."""
+        """Set servo position."""
         with self._lock:
             return self.raven.set_servo_position(
                 servo_channel, degree, min_us, max_us, retry)
