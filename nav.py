@@ -2,15 +2,11 @@ import math
 import time
 import threading
 from typing import Tuple
-from raven import Raven
 from coordinates.relativeCoordinates import world_to_relative
-
+from RavenWrapper import ravenWrapper, LEFT_MOTOR, RIGHT_MOTOR
 from config import WHEEL_D, BASE_D
 
-
 # Miguel's Navigation movement class
-LEFT_MOTOR = Raven.MotorChannel.CH2
-RIGHT_MOTOR = Raven.MotorChannel.CH3
 TICK_ROTATION = 64 * 50
 # measurements in mm
 ANGLE_PROP = 5000
@@ -71,17 +67,7 @@ class Nav:
         self.last_speed = 0
         self.current_distance = 0
 
-        self.raven = Raven()
-        self.raven.set_base(WHEEL_D, BASE_D)
-
-        for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
-            self.raven.set_motor_encoder(motor, 0)
-            self.raven.set_motor_max_current(motor, 5)
-            self.raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
-            self.raven.set_motor_target(motor, 0)
-
-        self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
-        self.raven.set_motor_pid(LEFT_MOTOR, p_gain=20, i_gain=5, d_gain=0.1)
+        self.ravenWrapper = ravenWrapper
 
         self._updateAngle()
         self.start_angle = self.angle
@@ -132,14 +118,14 @@ class Nav:
         self.right_coef = nav_move.right
         self._updateAngle()
         self.start_angle = self.angle
-        self.start_left = self.raven.get_motor_encoder(LEFT_MOTOR)
-        self.start_right = self.raven.get_motor_encoder(RIGHT_MOTOR)
+        self.start_left = self.ravenWrapper.get_motor_encoder(LEFT_MOTOR)
+        self.start_right = self.ravenWrapper.get_motor_encoder(RIGHT_MOTOR)
 
     def _updateAngle(self):
         current_angle = self.imu_wrapper.get_heading()  # -pi to pi
 
         # set angle for odometry
-        self.raven.set_angle(current_angle)
+        self.ravenWrapper.set_angle(current_angle)
 
         self.diff_angle = current_angle - self.last_angle
         if self.diff_angle > math.pi:
@@ -190,8 +176,8 @@ class Nav:
                 (self.current_distance * self.left_coef)
             target_right = self.start_right + \
                 (self.current_distance * self.right_coef)
-            self.raven.set_motor_target(LEFT_MOTOR, target_left)
-            self.raven.set_motor_target(RIGHT_MOTOR, target_right)
+            self.ravenWrapper.set_motor_target(LEFT_MOTOR, target_left)
+            self.ravenWrapper.set_motor_target(RIGHT_MOTOR, target_right)
 
             # move on to next thing if its done
             if distance_left <= 0:
@@ -224,9 +210,7 @@ class Nav:
                 y_rel: Lateral distance (positive = left)
         """
         # Get robot's current world position and orientation
-        od = self.raven.get_odometry()
-        print(od)
-        robot_x, robot_y = od
+        robot_x, robot_y = self.ravenWrapper.get_odometry()
         robot_theta = self.angle
 
         # Use the centralized coordinate transformation function

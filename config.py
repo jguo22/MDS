@@ -20,3 +20,7 @@ CLASS_NAMES = [
 WHEEL_D = 101.6
 BASE_D = 237.236
 SCOOPER_LENGTH = 254
+
+
+LEFT_MOTOR = Raven.MotorChannel.CH2
+RIGHT_MOTOR = Raven.MotorChannel.CH3
