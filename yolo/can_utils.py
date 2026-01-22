@@ -79,7 +79,7 @@ def getCans(result, image):
 
         # Transform to ground plane coordinates
         xy = transform_uv_to_xy(u, v)
-        print(f"Can at pixel ({u}, {v}) -> xy: {xy}")
+        # print(f"Can at pixel ({u}, {v}) -> xy: {xy}")
 
         if xy is None:
             continue

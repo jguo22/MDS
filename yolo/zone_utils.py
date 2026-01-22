@@ -131,7 +131,6 @@ def getZones(result, image):
         for vertex in vertices:
             u, v = vertex[0], vertex[1]  # pixel coordinates
             xy = transform_uv_to_xy(u, v)  # ground plane coordinates (mm)
-            print(xy)
             if xy is None:
                 isValidQuad = False
                 break

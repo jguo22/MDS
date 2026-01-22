@@ -76,6 +76,7 @@ class RobotHandler():
 
                 # Sort cans by y-coordinate (positive to negative)
                 sorted_cans = sorted(filtered_cans, key=lambda p: -p[1])
+                print(sorted_cans)
 
                 # Store the planned path
                 self.planned_path = sorted_cans

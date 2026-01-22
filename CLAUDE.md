@@ -1,1320 +1,340 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Project guidance for Claude Code working with the MASLAB 2026 autonomous robot codebase.
 
 ## Project Overview
 
-This is the MASLAB 2026 team repository for building an autonomous robot. The project combines:
-- **Raven motor controller**: Hardware interface for robot motor control
-- **Navigation system**: IMU-based odometry and path planning with smooth movement profiles
-- **YOLO object detection**: Vision system using YOLOv11n for real-time object detection
-- **Remote operation**: TCP-based video streaming with click-to-move interface
-- **Pixel-to-3D transformation**: Camera calibration and homography for ground plane mapping
-- **Python-based control**: Main control logic in Python 3.11
+Autonomous robot combining:
+- **Raven motor controller**: Custom serial interface (460800 baud) for motor/servo control
+- **Navigation**: IMU-based (BNO08x) odometry with queue-based path planning
+- **Vision**: Custom YOLOv11 segmentation for game objects (zones, cans, robots)
+- **Remote operation**: TCP video streaming (640x480) with click-to-move
+- **Pixel-to-3D**: Camera calibration for ground plane mapping
+- **Python 3.11**: Main control logic
 
 ## Hardware Components
 
-### Raven Board
-The Raven board is a motor controller accessed through the local `raven.py` module. This is a custom serial communication interface that implements the Raven protocol over USB at 460800 baud.
+### Raven Board (`raven.py`)
+Custom serial motor controller (460800 baud, 0xAA framing, CRC8 checksums).
 
-**Key Features:**
-- **Motor Channels**: 5 channels (CH1-CH5) via `Raven.MotorChannel`
-- **Servo Channels**: 4 channels (CH1-CH4) via `Raven.ServoChannel`
-- **Control Modes**:
-  - **DISABLE**: Motors disabled
-  - **DIRECT**: Set torque and speed factors directly
-  - **POSITION**: PID position control using encoder counts
-  - **VELOCITY**: PID velocity control using encoder counts/sec
-- **PID Control**: Configurable P, I, D gains with effort limiting
-- **Encoder Access**: Read/write encoder counts via `get_motor_encoder()` and `set_motor_encoder()`
-- **Odometry Support**: Built-in odometry tracking with `get_odometry()` and `set_odometry()`
-- **Angle Tracking**: IMU angle integration with `get_angle()` and `set_angle()`
-- **Base Configuration**: Configurable wheel diameter and base width via `set_base()`
+**Features:**
+- 5 motor channels, 4 servo channels
+- Control modes: DISABLE, DIRECT (speed), POSITION (PID encoder), VELOCITY (PID speed)
+- Built-in odometry: `get_odometry()` → (x, y) in mm, `get_angle()` → heading in radians
+- Base config: `set_base(wheel_d=95.0, base_d=209.0)`
 
-**Communication Protocol:**
-- Serial interface with custom framing (0xAA start byte)
-- CRC8 checksums for reliable communication
-- Automatic retry mechanism for failed commands
-- Message types for motors, servos, encoders, odometry, and configuration
-
-**Example Workflow:**
+**Quick Example:**
 ```python
 from raven import Raven
-
-# Initialize (auto-detects serial port or specify manually)
-raven = Raven()  # or Raven(port="/dev/ttyUSB0")
-
-# DIRECT mode - manual speed control
-raven.set_motor_mode(Raven.MotorChannel.CH1, Raven.MotorMode.DIRECT)
-raven.set_motor_speed_factor(Raven.MotorChannel.CH1, 50, reverse=False)  # 50% speed
-
-# POSITION mode - move to encoder position
+raven = Raven()  # Auto-detect serial port
 raven.set_motor_mode(Raven.MotorChannel.CH2, Raven.MotorMode.POSITION)
 raven.set_motor_pid(Raven.MotorChannel.CH2, p_gain=30, i_gain=10, d_gain=2, percent=50)
-raven.set_motor_target(Raven.MotorChannel.CH2, 640.0)  # Target encoder count
-
-# VELOCITY mode - maintain speed
-raven.set_motor_mode(Raven.MotorChannel.CH3, Raven.MotorMode.VELOCITY)
-raven.set_motor_pid(Raven.MotorChannel.CH3, p_gain=0, i_gain=5, d_gain=1, percent=25)
-raven.set_motor_target(Raven.MotorChannel.CH3, 2300.0)  # Target encoder counts/sec
-
-# Read encoder and velocity
-encoder = raven.get_motor_encoder(Raven.MotorChannel.CH1)
-velocity = raven.get_motor_velocity(Raven.MotorChannel.CH1)
-
-# Configure base for odometry
-raven.set_base(wheel_d=95.0, base_d=209.0)  # wheel diameter, base width in mm
-
-# Read odometry
-x, y = raven.get_odometry()  # Position in mm
-angle = raven.get_angle()     # Heading in radians
+raven.set_motor_target(Raven.MotorChannel.CH2, 640.0)
+x, y = raven.get_odometry()
+angle = raven.get_angle()
 ```
 
 ## Navigation System
 
-### IMUWrapper Class (IMUWrapper.py)
+### IMUWrapper (`IMUWrapper.py`)
+BNO08x IMU wrapper with automatic offset calibration (I2C 800kHz).
+- **CRITICAL**: Initialize IMU **before** Raven board
+- Heading relative to startup (not magnetic north)
+- `imu.get_heading()` → angle in radians
 
-Wrapper for the BNO08x IMU sensor providing simplified heading access.
+### Nav Class (`nav.py`)
+High-level navigation integrating Raven + IMU with queue-based path planning.
 
-**Key Features:**
-- **Automatic offset calibration**: Records initial heading as zero on startup
-- **Quaternion-to-yaw conversion**: Converts IMU quaternion to heading angle
-- **Fast initialization**: Sends 5 requests to speed up IMU startup
+**Configuration:**
+- Motors: CH2 (left), CH3 (right) | Wheel: 95mm | Base: 209mm | Ticks: 3200/rotation
+- Control: 20 Hz, 5.0 rot/s² accel, 3.0 rot/s max velocity
+- PID: Right (P=25, I=5, D=0.13), Left (P=20, I=5, D=0.1)
 
 **Usage:**
 ```python
-from IMUWrapper import IMUWrapper
+from nav import Nav, NavMove, get_forward_mm, get_rotate
 
-imu = IMUWrapper()  # Initializes I2C at 800kHz, calibrates offset
-
-# Get current heading relative to startup position
-heading = imu.get_heading()  # Returns angle in radians
-
-# Hard reset IMU (if needed)
-imu.hard_reset()
-```
-
-**Implementation Details:**
-- I2C frequency: 800 kHz
-- Report type: `BNO_REPORT_ROTATION_VECTOR` (quaternion output)
-- Heading calculation: Converts quaternion (w, x, y, z) to yaw using atan2
-- Offset: Stores initial heading and subtracts from all subsequent readings
-
-**Important Notes:**
-- IMU must be initialized **before** Raven board (as noted in Nav class)
-- Heading is relative to startup orientation (not absolute/magnetic north)
-- Uses adafruit-circuitpython-bno08x library
-
-### Nav Class (nav.py)
-The `Nav` class provides high-level navigation and odometry for the robot. It integrates the Raven motor controller with an IMU (BNO08x via IMUWrapper) for precise positioning and path following.
-
-**Key Features:**
-- **IMU Integration**: BNO08x sensor via I2C for heading tracking
-- **Odometry**: Position tracking using motor encoders and IMU fusion
-- **Path Planning**: Queue-based movement system with smooth transitions
-- **Position Control**: Uses Raven's POSITION mode with PID control
-- **Thread-Safe**: Movement queue can be safely updated from multiple threads
-
-**Motor Configuration:**
-- Left Motor: `Raven.MotorChannel.CH2`
-- Right Motor: `Raven.MotorChannel.CH3`
-- Wheel Diameter: 95mm
-- Base Width: 209mm
-- Encoder Ticks per Rotation: 64 × 50 = 3200
-
-**Basic Usage:**
-```python
-from nav import Nav, NavMove
-
-# Initialize navigation (must run on Raspberry Pi)
 nav = Nav()
-
-# Add single movement to queue
-nav.addPath(NavMove(left=1.0, right=1.0, dist=1000, smooth=True))
-
-# Override entire queue with new path
-movements = [
-    NavMove(left=1.0, right=1.0, dist=500, smooth=True),
-    NavMove(left=-1.0, right=1.0, dist=800, smooth=False)
-]
-nav.overridePaths(movements)
-
-# Start navigation loop (blocking)
-nav.startLoop()
-```
-
-**NavMove Parameters:**
-- `left`: Left motor coefficient (-1.0 to 1.0, negative = reverse)
-- `right`: Right motor coefficient (-1.0 to 1.0, positive = forward)
-- `dist`: Distance in encoder ticks
-- `smooth`: If True, maintain velocity when transitioning to next move
-
-**Helper Functions:**
-```python
-from nav import get_forward_mm, get_rotate
-
-# Get movement tuple for forward motion
-left_coef, right_coef, distance = get_forward_mm(200.0)  # 200mm forward
-
-# Get movement tuple for rotation
-left_coef, right_coef, distance = get_rotate(math.pi / 2)  # 90° CCW
-
-# Example: Move forward 300mm then turn 180°
 nav.overridePaths([
-    NavMove(*get_forward_mm(300.0), smooth=True),
-    NavMove(*get_rotate(math.pi), smooth=False)
+    NavMove(*get_forward_mm(300.0), smooth=True),  # Forward 300mm
+    NavMove(*get_rotate(math.pi), smooth=False)    # Turn 180°
 ])
+nav.startLoop()  # Blocking
+
+# NavMove(left_coef, right_coef, dist_ticks, smooth)
+# left/right: -1.0 to 1.0, dist: encoder ticks, smooth: maintain velocity
 ```
-
-**Odometry and Position:**
-The Nav class automatically updates the Raven board's odometry system:
-```python
-# Get current position (x, y) in mm
-x, y = nav.raven.get_odometry()
-
-# Get current heading in radians
-angle = nav.raven.get_angle()
-```
-
-**Control Loop Details:**
-- Update Rate: 20 Hz (50ms frame time)
-- Acceleration: 5.0 rotations/s² (reach max speed in 1s)
-- Max Velocity: 3.0 rotations/s
-- PID Gains:
-  - Right Motor: P=25, I=5, D=0.13
-  - Left Motor: P=20, I=5, D=0.1
-
-**Important Notes:**
-- IMU must be initialized **before** Raven board
-- The `startLoop()` method is blocking and runs indefinitely
-- Path smoothing uses velocity profiling for acceleration/deceleration
-- Angle correction uses proportional and derivative control (ANGLE_PROP=5000, ANGLE_D=5000)
 
 ## Remote Communication System
 
-### PiStreamer - TCP Video Streaming and Movement Control
-The `connection/` module provides a bidirectional communication system between the Raspberry Pi and a computer. **Important:** This system uses **TCP sockets with a custom protocol**, not RTP/UDP.
+TCP-based bidirectional communication between Pi (client) and computer (server).
 
 **Architecture:**
-- `connection/PiStreamer.py`: Raspberry Pi client that streams video and receives movement commands
-- `connection/ComputerReceiver.py`: Computer server that receives video and sends movement commands
-- `connection/protocol.py`: Custom TCP-based messaging protocol
-- `connection/config.py`: Configuration (ports, timeouts, video settings)
-- `connection/CameraCapture.py`: Unified camera interface (USB, PiCamera)
-- `connection/message_types.py`: Message type constants and definitions
-- `connection/frame_processor/`: Frame processing pipeline for computer-side video handling
-  - `FrameProcessor.py`: Abstract base class for frame processors
-  - `ClickProcessor.py`: Handles mouse clicks on video to send navigation commands
-  - `SaveImageProcessor.py`: Saves frames to disk with cooldown
+- `PiStreamer.py`: Pi video streamer + movement receiver
+- `ComputerReceiver.py`: Computer video receiver + movement sender
+- `protocol.py`: TCP messaging (8-byte headers, JPEG frames)
+- `message_types.py`: CLOSE (0), ADD_MOVEMENT (1), OVERRIDE_MOVEMENTS (2)
+- `frame_processor/`: ClickProcessor (click-to-move), SaveImageProcessor
 
-**Protocol Details:**
-- **Transport**: TCP (`socket.SOCK_STREAM`) for reliable delivery
-- **Message Framing**: Custom framing with 8-byte length headers (`struct.pack('!Q', len(data))`)
-- **Video Frames**: 4-byte frame_id + JPEG-encoded data
-- **Command Messages**: Generic message protocol with 1-byte message type + variable-length float arguments
-  - Message Type 0 (CLOSE): No arguments - gracefully closes connection
-  - Message Type 1 (ADD_MOVEMENT): `[left_coef, right_coef, distance]` (3 floats) - adds one movement to queue
-  - Message Type 2 (OVERRIDE_MOVEMENTS): `[l1, r1, d1, l2, r2, d2, ...]` (multiples of 3 floats) - replaces entire movement queue
-  - Format: `struct.pack('!B', msg_type) + struct.pack('!Nf', *args)` where N is the number of floats
-  - Extensible design allows adding new message types (0-255) with different argument counts
-- **Why TCP not RTP**: Provides reliable, ordered delivery with automatic retransmission. RTP/UDP would offer lower latency but no delivery guarantees.
+**Protocol:** TCP SOCK_STREAM, custom framing, 1-byte msg type + N floats
+- ADD_MOVEMENT: [left, right, dist] (3 floats)
+- OVERRIDE_MOVEMENTS: [l1, r1, d1, l2, r2, d2, ...] (multiples of 3)
+- TCP chosen for reliability vs UDP/RTP (10-50ms latency trade-off)
 
-**Running on Raspberry Pi:**
+**Quick Start:**
 ```bash
-# Run main_pi.py to send video and receive commands
+# Pi (starts first, auto-reconnects every 5s)
 python3 main_pi.py --camera usb0
 
-# Options:
-#   --camera: usb0, usb1, picamera0, etc. (default: usb0)
-#
-# All other settings (host, ports, FPS, reconnect delay) are configured in connection/config.py
-```
-
-**Running on Computer:**
-```bash
-# Run main_comp.py for full control interface with interactive input
+# Computer (server, click video or type "0.5 0.5" for movement)
 python3 main_comp.py
-
-# Or run basic ComputerReceiver module
-python3 -m connection.computer_receiver
-
-# The computer acts as a server listening for Pi connections
 ```
 
-**main_comp.py features:**
-- Interactive terminal input for manual movement commands
-- Click-to-move on video window
-- Movement command queueing and timing
-- Automatic reconnection handling
+**Config:** `connection/config.py` - VIDEO_PORT (5000), COMMAND_PORT (5001), 640x480, JPEG_QUALITY (80), 30 FPS, 180s timeout
 
-### Development Workflow
+**Development Workflow:**
+1. Start Pi first: `python3 main_pi.py --camera usb0` (retries every 5s)
+2. Start computer: `python3 main_comp.py` (auto-connects)
+3. Modify computer code → Ctrl+C → restart → Pi auto-reconnects (no Pi restart needed)
+4. Modify Pi code → restart Pi → auto-reconnects
+5. Type commands: `0.5 0.5` or click video for movement
 
-**Typical startup sequence:**
-
-1. **Start the Raspberry Pi first:**
-   ```bash
-   # On Raspberry Pi
-   python3 main_pi.py --camera usb0
-   ```
-   The Pi will continuously attempt to connect to the computer (configured in `connection/config.py`).
-   It will retry every 5 seconds (default `RECONNECT_DELAY`) until successful.
-
-2. **Start the computer receiver:**
-   ```bash
-   # On Computer
-   python3 main_comp.py
-   ```
-   The Pi will automatically connect within a few seconds and begin streaming video.
-   You can now send movement commands by typing in the terminal or clicking on the video window.
-
-3. **Making changes to computer code:**
-   - Press `Ctrl+C` on the computer to stop the receiver
-   - Make your code changes
-   - Restart: `python3 main_comp.py`
-   - **The Pi will automatically reconnect** (no need to restart it)
-
-4. **Making changes to Pi code:**
-   - Press `Ctrl+C` on the Raspberry Pi
-   - Make your code changes
-   - Restart: `python3 main_pi.py --camera usb0`
-   - The Pi will reconnect to the computer
-
-**Key benefits:**
-- **Pi-initiated reconnection**: The Pi actively tries to connect, so you can restart the computer at any time
-- **No manual reconnection**: After stopping either side, just restart and they'll automatically reconnect
-- **Rapid iteration**: Modify computer vision code on the computer, restart receiver, and the Pi immediately reconnects
-- **Persistent camera**: The Pi keeps the camera open across reconnections, avoiding reinitialization delays
-
-**Interactive manual control:**
-
-When running `main_comp.py`, you can manually send movement commands by typing in the terminal:
-```bash
-# Type two numbers (left_coef right_coef) and press Enter
-Enter movement (left right): 0.5 0.5    # Move forward
-Enter movement (left right): -0.5 0.5   # Turn left
-Enter movement (left right): 0.5 -0.5   # Turn right
-Enter movement (left right): 0 0        # Stop
-
-# Optional: specify distance as third parameter
-Enter movement (left right): 0.5 0.5 200.0
-```
-
-This allows you to test movement commands interactively without modifying code or clicking on the video window.
-
-**Common scenarios:**
-
-| Scenario | Action |
-|----------|--------|
-| Testing movement commands interactively | Run `main_comp.py`, type coefficients in terminal (e.g., `0.5 0.5`) |
-| Testing movement via clicking | Run `main_comp.py`, click on video window to send robot to that position |
-| Modifying movement logic | Modify computer code → Ctrl+C → Restart → Pi auto-reconnects |
-| Adjusting camera settings | Modify Pi code → Ctrl+C on Pi → Restart Pi |
-| Network disconnection | Both sides handle gracefully → Auto-reconnect when network restored |
-| Changing config (IP, ports, FPS) | Edit `connection/config.py` → Restart both sides |
-
-**PiStreamer API (Single-Use Pattern):**
+**Key APIs:**
 ```python
-from connection.PiStreamer import PiStreamer
-from connection.CameraCapture import CameraCapture
-import time
-
-# Create camera once (reused across reconnections)
+# PiStreamer (single-use, recreate per connection)
 camera = CameraCapture("usb0", 640, 480)
-camera.open()
+streamer = PiStreamer(camera=camera, host="192.168.1.101")
+streamer.set_movement_callback(lambda l, r, d: nav.addPath(NavMove(l, r, d, True)))
+streamer.connect() and streamer.stream()
 
-# Movement callback
-def handle_movement(left_coef, right_coef, distance):
-    print(f"Move: L={left_coef}, R={right_coef}, D={distance}")
-    # Control motors here
-
-# Reconnection loop - create new PiStreamer for each connection
-while True:
-    # Create new streamer instance for this connection
-    streamer = PiStreamer(camera=camera, host="192.168.1.101")
-    streamer.set_movement_callback(handle_movement)
-
-    # Connect and stream (blocks until disconnected)
-    if streamer.connect():
-        streamer.stream()  # Uses DEFAULT_MAX_FPS from config
-
-    # Brief pause before reconnecting
-    time.sleep(2.0)
-```
-
-**IMPORTANT:** PiStreamer is designed for single-use. Each instance handles one connection lifecycle.
-For reconnection, create a new PiStreamer instance while reusing the same camera.
-
-**ComputerReceiver API:**
-```python
-from connection import ComputerReceiver
-
+# ComputerReceiver
 receiver = ComputerReceiver()
-receiver.start_servers()
-receiver.wait_for_connection()
+receiver.add_movement(0.5, 0.5, 100.0)  # Add to queue
+receiver.send_xy(200.0, 150.0)          # Auto-plan: rotate + forward
+receiver.override_movement([1.0, 1.0, 500.0, -1.0, 1.0, 800.0])
 
-# Send single movement command (adds to queue)
-receiver.add_movement(left_coef=0.5, right_coef=0.5, distance=100.0)
-
-# Send X/Y coordinate (automatically plans path: rotate + forward)
-receiver.send_xy(x=200.0, y=150.0)  # x, y in mm
-
-# Override entire movement queue
-movements = [1.0, 1.0, 500.0, -1.0, 1.0, 800.0]  # [l1, r1, d1, l2, r2, d2]
-receiver.override_movement(movements)
-
-# Gracefully close Pi connection
-receiver.send_close()
+# Frame Processors (extend FrameProcessor base class)
+# - ClickProcessor: Pixel → ground plane → send_xy()
+# - SaveImageProcessor: Auto-save frames with cooldown
 ```
 
-### Frame Processor Architecture
+### Pixel-to-3D Transformation (`yolo/pixelTo3D.py`)
 
-The `connection/frame_processor/` module provides an extensible architecture for processing video frames on the computer side.
+Converts pixel coordinates to ground plane (mm) using camera calibration.
 
-**FrameProcessor Interface:**
-```python
-from connection.frame_processor.FrameProcessor import FrameProcessor
-import numpy as np
-from typing import Optional, Tuple
+**Key Function:** `transform_uv_to_xy(pixel_x, pixel_y)` → `(x, y)` in mm or `None`
+- Undistorts → normalizes → applies camera rotation (SO3.Rx(-1)) → projects to z=0 plane
+- **640x480 resolution required** (match camera/inference resolution)
+- Coordinates: x forward, y left (positive=left, negative=right)
 
-class CustomProcessor(FrameProcessor):
-    def process(self, frame: np.ndarray, frame_id: int) -> Optional[Tuple[float, float, float]]:
-        # Process the frame
-        # Return movement command tuple (left_coef, right_coef, distance) or None
-        return None
-```
+**Calibration Data:** CAMERA_MATRIX (fx, fy, cx, cy), DISTORTION (5 coeffs), ANGLE_MATRIX (tilt)
 
-**Built-in Processors:**
+**Usage:** Click-to-move: pixel → `transform_uv_to_xy()` → `send_xy()` → rotate + drive
 
-1. **ClickProcessor**: Click-to-move interface
-   ```python
-   from connection.frame_processor.ClickProcessor import ClickProcessor
-   from connection.ComputerReceiver import ComputerReceiver
+### Coordinate Transformations (`coordinates/relativeCoordinates.py`)
 
-   receiver = ComputerReceiver()
-   processor = ClickProcessor(receiver, window_name="Pi Camera")
+**CRITICAL**: Always use this module. DO NOT manually implement rotation math.
 
-   # Now clicks on the video window will:
-   # 1. Convert pixel coordinates to 3D ground plane coordinates
-   # 2. Send X/Y navigation command via receiver.send_xy()
-   # 3. Robot automatically plans and executes: rotate → forward
-   ```
+SE(2) transformations using `spatialmath` library:
+- `world_to_relative(world_point, robot_pose)` → (local_x, local_y)
+- `relative_to_world(rel_point, robot_pose)` → (world_x, world_y)
+- `angle_between_points(p1, p2)` → angle in radians
 
-2. **SaveImageProcessor**: Automatic frame capture
-   ```python
-   from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
-
-   processor = SaveImageProcessor(
-       cooldown_seconds=1.0,  # Minimum time between saves
-       output_dir="images"     # Output directory
-   )
-   # Frames saved as: frame_YYYYMMDD_HHMMSS_timestamp.jpg
-   ```
-
-**Integrating with ComputerReceiver:**
-Frame processors are integrated into `main_comp.py` to process incoming video frames and generate navigation commands.
-
-**Using with RobotHandler:**
-```python
-from connection.frame_processor.FrameProcessor import FrameProcessor
-from RobotHandler import RobotHandler
-
-class GameProcessor(FrameProcessor):
-    def __init__(self, robot_handler):
-        self.robot_handler = robot_handler
-
-    def process(self, frame, frame_id):
-        # Process frame through state machine
-        self.robot_handler.handleFrame(frame, frame_id)
-        return None  # RobotHandler manages movement internally
-
-# Usage in main_comp.py:
-receiver = ComputerReceiver()
-handler = RobotHandler(receiver)
-processor = GameProcessor(handler)
-# Add processor to receiver's frame processing pipeline
-```
-
-### Pixel-to-3D Transformation (yolo/pixelTo3D.py)
-
-The `pixelTo3D` module converts pixel coordinates from the camera to real-world coordinates on the ground plane using camera calibration and perspective transformation.
-
-**Key Components:**
-- **Camera Calibration**: Intrinsic matrix and distortion coefficients from camera calibration
-- **Camera Rotation**: `ANGLE_MATRIX = SO3.Rx(-1).R` - rotation around x-axis by -1 radian (camera tilt)
-- **Coordinate Systems**:
-  - Pixel coordinates: Origin at top-left, u increases right, v increases down
-  - Camera coordinates: 3D coordinates in camera reference frame
-  - Robot/Ground coordinates: Origin at camera, x increases forward, y increases left
-
-**Main Functions:**
-
-1. **`transform_uv_to_xy(pixel_x, pixel_y)`**: Pixel to ground plane
-   - Undistorts pixel coordinates using camera matrix and distortion coefficients
-   - Converts to normalized camera coordinates
-   - Applies camera rotation (tilt correction)
-   - Projects ray onto ground plane (z=0)
-   - Returns: `(x, y)` in mm, or `None` if point is behind camera or invalid
-
-2. **`undistort_pixel(pixel_x, pixel_y)`**: Removes lens distortion
-   - Uses OpenCV's `undistortPoints()` with camera calibration
-   - Returns corrected pixel coordinates
-
-3. **`pixel_to_camera_coords(pixel_x, pixel_y)`**: Pixel to 3D camera frame
-   - Undistorts pixel
-   - Computes ray direction from camera center through pixel
-   - Used internally by `transform_uv_to_xy()`
-
-**Camera Calibration Data:**
-```python
-CAMERA_MATRIX = np.array([
-    [900.83135648, 0, 319.13723878],
-    [0, 905.17695622, 236.54418761],
-    [0, 0, 1]
-])
-
-DISTORTION = np.array([
-    [9.62758290e-02, 7.15871128e-01, 3.69387355e-03,
-     1.18130977e-02, -6.76390055e+00]
-])
-
-ANGLE_MATRIX = SO3.Rx(-1).R  # Camera pitch angle
-```
-
-**Important Notes:**
-- Uses **640x480 resolution** - ensure camera and inference use matching resolution
-- Returns `None` for points behind camera or outside valid projection range
-- The transformation accounts for camera tilt via `ANGLE_MATRIX`
-- Y-coordinate in ground plane: positive = left, negative = right
-
-**Usage in Zone and Can Detection:**
-```python
-from yolo.pixelTo3D import transform_uv_to_xy
-
-# Transform zone vertices
-for vertex in zone_vertices:
-    u, v = vertex  # pixel coordinates
-    xy = transform_uv_to_xy(u, v)
-    if xy is not None:
-        x, y = xy  # ground plane coordinates in mm
-        # Use for navigation or zone assignment
-```
-
-**Usage in Click-to-Move:**
-1. User clicks on video frame at pixel (u, v)
-2. `transform_uv_to_xy(u, v)` converts to ground plane (x, y) in mm
-3. `ComputerReceiver.send_xy(x, y)` calculates rotation angle and distance
-4. Movement commands sent: rotate to face target, then drive forward
-5. Robot executes smooth path to clicked location
-
-### Coordinate Transformations (coordinates/relativeCoordinates.py)
-
-**IMPORTANT**: Always use the `relativeCoordinates` module for coordinate transformations between world and robot-relative frames. DO NOT manually implement rotation/translation math.
-
-The `coordinates/relativeCoordinates.py` module provides robust SE(2) transformations using the `spatialmath` library for converting between world coordinates and robot-relative coordinates.
-
-**Coordinate Systems:**
-- **World frame**: Fixed reference (x forward, y left, origin at starting position)
-- **Robot-relative frame**: Origin at robot position, x forward from robot, y left of robot
-
-**Key Functions:**
-
-1. **`world_to_relative(world_point, robot_pose)`**: Convert world point to robot-relative
-   ```python
-   from spatialmath import SE2
-   from coordinates.relativeCoordinates import world_to_relative
-
-   # Robot at (1000, 500) facing 45 degrees
-   robot_pose = SE2(1000, 500, math.pi/4)
-   world_point = (2000, 1500)
-
-   # Get point in robot's local frame
-   local_x, local_y = world_to_relative(world_point, robot_pose)
-   # local_x: forward from robot, local_y: left of robot
-   ```
-
-2. **`relative_to_world(rel_point, robot_pose)`**: Convert robot-relative to world
-   ```python
-   # Point 500mm in front of robot, 200mm to the left
-   rel_point = (500, 200)
-   world_x, world_y = relative_to_world(rel_point, robot_pose)
-   ```
-
-3. **`angle_between_points(point1, point2)`**: Calculate angle from point1 to point2
-   ```python
-   angle = angle_between_points((0, 0), (1000, 1000))  # Returns π/4 radians
-   ```
-
-4. **`transform_pose_world_to_relative(world_pose, robot_pose)`**: Transform full pose (position + orientation)
-
-5. **`plan_path_poses(points, start_pose)`**: Generate pose sequence for path planning
-
-**When to Use:**
-- ✅ Checking if a point is in front of the robot
-- ✅ Converting sensor data to world coordinates
-- ✅ Planning paths in robot-relative frame
-- ✅ Any coordinate transformation between frames
-- ❌ DO NOT manually implement `cos(theta) * dx - sin(theta) * dy` transformations
-- ❌ DO NOT write custom rotation matrices for 2D transformations
-
-**Example - Check if Point is in Rectangle in Front of Robot:**
 ```python
 from spatialmath import SE2
 from coordinates.relativeCoordinates import world_to_relative
 
-# Get robot state
-robot_x, robot_y = nav.raven.get_odometry()
-robot_heading = nav.raven.get_angle()
-
-# Create robot pose
 robot_pose = SE2(robot_x, robot_y, robot_heading)
-
-# Transform target point to robot frame
-target_point = (1500, 800)  # World coordinates
 local_x, local_y = world_to_relative(target_point, robot_pose)
-
-# Check if in rectangle in front (example: 500mm forward, 300mm wide)
 if 0 <= local_x <= 500 and -150 <= local_y <= 150:
-    print("Point is in front of robot!")
+    # Point is in front of robot
 ```
 
-**Benefits:**
-- Mathematically robust using SE(2) group theory
-- Consistent with spatialmath library conventions
-- Handles edge cases correctly (all quadrants, zero distances)
-- More maintainable than manual math
-- Well-tested and documented
+### Camera Calibration (`calibration/`)
 
-### Camera Calibration (calibration/)
+- `distortion_calibration.py`: Checkerboard → CAMERA_MATRIX + DISTORTION
+- `manual_calibration.py`: Ground plane homography → ANGLE_MATRIX
+- Recalibrate when: camera changes, mount changes, coordinates drift
 
-The `calibration/` directory contains scripts for camera calibration used by the pixel-to-3D transformation.
-
-**Calibration Scripts:**
-
-1. **`distortion_calibration.py`**: Intrinsic camera calibration
-   - Uses checkerboard pattern to compute camera matrix and distortion coefficients
-   - Generates `CAMERA_MATRIX` and `DISTORTION` arrays used in `pixelTo3D.py`
-   - Required when changing cameras or camera mounting
-
-2. **`manual_calibration.py`**: Ground plane homography calibration
-   - Manual marking of known ground plane points
-   - Computes transformation from pixel coordinates to ground plane
-   - Used to determine camera rotation (`ANGLE_MATRIX`)
-
-3. **`manual_marking.py`**: Interactive point marking utility
-   - Helper for manual calibration workflows
-   - Click to mark corresponding points in image and real world
-
-**When to Recalibrate:**
-- Camera hardware change (different camera or lens)
-- Camera mounting position or angle changes
-- Pixel-to-ground transformation becomes inaccurate
-- Zone or can coordinates are consistently off
-
-**Connection Features:**
-- Single-use connection instances (no race conditions)
-- Clean connection lifecycle (create → connect → stream → done)
-- Camera management external to streamer (reuse across connections)
-- Configurable socket timeouts and buffer sizes
-- Frame rate limiting
-- Thread-safe command message reception
-- Extensible message protocol for future command types
-
-**Configuration (connection/config.py):**
-- `VIDEO_PORT`: Default 5000
-- `COMMAND_PORT`: Default 5001
-- `FRAME_WIDTH`, `FRAME_HEIGHT`: Video resolution (default 640x480)
-- `JPEG_QUALITY`: Compression quality (default 80)
-- `DEFAULT_MAX_FPS`: Default maximum FPS for streaming (default 30.0)
-- `SOCKET_TIMEOUT`: Network timeout in seconds (default 180.0)
-- `RECONNECT_DELAY`: Delay between reconnection attempts (default 5.0s)
-- `BUFFER_SIZE`: Socket buffer size
-
-**Message Types (connection/message_types.py):**
-- `CLOSE` (0): Close connection gracefully
-- `ADD_MOVEMENT` (1): Add single movement to queue (3 floats: left_coef, right_coef, distance)
-- `OVERRIDE_MOVEMENTS` (2): Replace entire movement queue (multiples of 3 floats)
-
-**Protocol API (connection/protocol.py):**
+### Protocol API (`connection/protocol.py`)
 ```python
 from connection import protocol, message_types
 
-# Send generic command message
-protocol.send_command(socket, msg_type: int, args: list[float]) -> bool
-
-# Receive generic command message
-msg_type, args = protocol.recv_command(socket) -> tuple[int, list[float]] | None
-
-# Safely close socket with proper shutdown and error handling
-protocol.close_socket(socket: Optional[socket.socket]) -> None
-
-# Example: Send close command
-protocol.send_command(sock, message_types.CLOSE, [])
-
-# Example: Send single movement (add to queue)
 protocol.send_command(sock, message_types.ADD_MOVEMENT, [0.5, 0.5, 100.0])
-
-# Example: Override movement queue
-movements = [1.0, 1.0, 500.0, -1.0, 1.0, 800.0]  # Two movements
-protocol.send_command(sock, message_types.OVERRIDE_MOVEMENTS, movements)
-
-# Example: Receive and handle commands
-result = protocol.recv_command(sock)
-if result:
-    msg_type, args = result
-    if msg_type == message_types.CLOSE:
-        print("Connection closing...")
-        protocol.close_socket(sock)
-        break
-    elif msg_type == message_types.ADD_MOVEMENT:
-        left_coef, right_coef, distance = args
-        nav.addPath(NavMove(left_coef, right_coef, distance, smooth=True))
-    elif msg_type == message_types.OVERRIDE_MOVEMENTS:
-        # Parse movements in groups of 3
-        movements = []
-        for i in range(0, len(args), 3):
-            movements.append(NavMove(args[i], args[i+1], args[i+2], smooth=True))
-        nav.overridePaths(movements)
-
-# Adding new message types:
-# 1. Add to message_types.py: NEW_TYPE = 3
-# 2. Add to messageTypes list
-# 3. Handle in receiver code (PiStreamer or ComputerReceiver)
+protocol.send_command(sock, message_types.OVERRIDE_MOVEMENTS, [l1, r1, d1, ...])
+msg_type, args = protocol.recv_command(sock)
+protocol.close_socket(sock)
 ```
 
 ## Vision System
 
-### YOLO Segmentation Pipeline (Custom Model)
+### YOLO Segmentation (Custom Model)
 
-The project uses a **custom-trained YOLOv11 segmentation model** for MASLAB 2026 competition. The segmentation model detects and segments game objects with pixel-level masks.
+**Primary model:** `yolo/last.pt` (YOLOv11n, 8.1MB) - 8 classes for MASLAB 2026
 
-**Key Files:**
-- `yolo/last.pt`: **Primary segmentation model** (8.1MB) - trained on MASLAB game objects
-- `yolo/best.pt`: Best checkpoint from training (6.4MB)
-- `yolo/segment.py`: Main segmentation script - loads model and runs inference
-- `yolo/mask_utils.py`: Mask refinement pipeline (colored tape detection, quadrilateral fitting)
-- `yolo/zone_utils.py`: Zone detection utilities (quadrilateral extraction, coordinate transformation)
-- `yolo/can_utils.py`: Can detection utilities (bottom-center extraction for navigation)
+**Classes:** Boundary, Golden Can/Zone, Green Can/Zone, Red Can/Zone, Robot
 
-**Detected Classes (config.py):**
-The model is trained to detect 8 game-specific classes:
-```python
-CLASS_NAMES = [
-    'Boundary',      # Field boundaries
-    'Golden Can',    # High-value scoring objects
-    'Golden Zone',   # High-value scoring zones
-    'Green Can',     # Team-colored cans
-    'Green Zone',    # Team scoring zones
-    'Red Can',       # Opponent team cans
-    'Red Zone',      # Opponent scoring zones
-    'Robot'          # Other robots
-]
-```
-
-**Running Segmentation:**
+**Pipeline:**
 ```python
 from yolo.segment import segmentImage
-import cv2 as cv
-
-image = cv.imread("frame.jpg")
-result = segmentImage(image)  # Returns YOLO result with masks
-
-# Result contains:
-# - result.boxes: Bounding boxes with class IDs and confidence
-# - result.masks: Segmentation masks for each detected object
-# - result.names: Dictionary mapping class IDs to class names
+result = segmentImage(image)  # thresh=0.25
+# result.boxes, result.masks, result.names
 ```
 
-**Mask Refinement Pipeline:**
+**Mask Refinement** (`mask_utils.py`):
+1. YOLO segmentation → rough masks
+2. `fixSegmentation()`: HSV-based colored tape detection (dom_sat_min=70, hue_tolerance=15)
+3. `calculateQuadFromMask()`: Douglas-Peucker quad fitting with area preservation
 
-The segmentation results are refined using color-based filtering to improve zone boundary detection:
-
-1. **Initial Segmentation** (`segmentImage()`): YOLO produces rough masks
-2. **Colored Tape Detection** (`fixSegmentation()`): HSV-based filtering to detect colored boundary tape
-   - Uses relative saturation/brightness (robust to lighting changes)
-   - Dominant hue extraction from mask region
-   - Convex hull computation for smooth boundaries
-3. **Quadrilateral Fitting** (`calculateQuadFromMask()`): Douglas-Peucker algorithm with area preservation
-   - Tries multiple epsilon values to find best 4-vertex approximation
-   - Penalizes sharp angles (<30°) and area loss
-   - Falls back to minimum area rectangle if no good quad found
-
-**Key Parameters** (in `mask_utils.py`):
-```python
-params = {
-    'dom_sat_min': 70,      # Minimum saturation for dominant hue
-    'dom_val_min': 140,     # Minimum brightness for dominant hue
-    'hue_tolerance': 15,    # Hue matching tolerance (±15 degrees)
-    'blur_size': 21,        # Kernel size for local averaging
-    'erode_size': 15,       # Erosion to remove black borders
-}
-```
-
-### YOLO Detection Pipeline (Pretrained Model)
-For general object detection (non-segmentation), the following models are available:
-- `yolo11n.pt`: YOLOv11n PyTorch model trained on COCO dataset (80 classes)
-- `yolo11n_ncnn_model/`: NCNN-optimized model for embedded deployment
-  - `model.ncnn.bin`: Binary model weights
-  - `model.ncnn.param`: Model architecture parameters
-  - `model_ncnn.py`: NCNN inference test script
-  - `metadata.yaml`: Model configuration (80 COCO classes, 640x640 input)
-- `yolo_detect.py`: Main detection script with full inference pipeline
-- `runs/detect/`: Output directory for detection results
-
-### Running YOLO Detection
-
-The `yolo_detect.py` script supports multiple input sources:
-
+**Detection:** `yolo_detect.py` supports images/folders/video/usb0/picamera0
 ```bash
-# Image file
-python3 yolo/yolo_detect.py --model yolo/yolo11n.pt --source image.jpg --thresh 0.5
-
-# Image folder
-python3 yolo/yolo_detect.py --model yolo/yolo11n.pt --source test_images/ --thresh 0.5
-
-# Video file
-python3 yolo/yolo_detect.py --model yolo/yolo11n.pt --source video.mp4 --thresh 0.5
-
-# USB camera (index 0)
-python3 yolo/yolo_detect.py --model yolo/yolo11n.pt --source usb0 --thresh 0.5
-
-# PiCamera (index 0) - Raspberry Pi only
-python3 yolo/yolo_detect.py --model yolo/yolo11n.pt --source picamera0 --thresh 0.5 --resolution 640x480
-
-# Record video output
-python3 yolo/yolo_detect.py --model yolo/yolo11n.pt --source usb0 --resolution 640x480 --record
+python3 yolo/yolo_detect.py --model yolo/last.pt --source usb0 --thresh 0.25 --resolution 640x480
+# Controls: q (quit), s (pause), p (save frame)
 ```
 
-**Key arguments:**
-- `--model`: Path to YOLO model (.pt file)
-- `--source`: Input source (image file, folder, video, usb0, picamera0)
-- `--thresh`: Confidence threshold (default: 0.5)
-- `--resolution`: Display resolution in WxH format (e.g., "640x480")
-- `--record`: Record output video as "demo1.avi" (requires --resolution)
-
-**Interactive controls during inference:**
-- `q`: Quit
-- `s`: Pause/resume
-- `p`: Save current frame as "capture.png"
-
-### YOLO Detection Pipeline Details
-
-The `yolo_detect.py` script performs the following:
-1. Loads YOLO model using Ultralytics (`model = YOLO(model_path, task='detect')`)
-2. Reads frames from specified source
-3. Runs inference: `results = model(frame, verbose=False)`
-4. Extracts detections: `detections = results[0].boxes`
-5. For each detection:
-   - Extracts bounding box coordinates (xyxy format)
-   - Gets class ID and name from `model.names`
-   - Gets confidence score
-   - Draws boxes and labels if confidence > threshold
-6. Displays FPS for video/camera sources
-7. Shows object count and visualization
-
-**Model Format Notes:**
-- PyTorch model (`yolo11n.pt`): Used with Ultralytics library for standard inference
-- NCNN model (`yolo11n_ncnn_model/`): Optimized for embedded/mobile deployment with NCNN framework
-  - NCNN provides faster inference on ARM/embedded devices
-  - Test with: `python3 yolo/yolo11n_ncnn_model/model_ncnn.py`
+**Models:**
+- `last.pt`/`best.pt`: Custom segmentation (8 classes)
+- `yolo11n.pt`: Pretrained detection (COCO, 80 classes)
+- `yolo11n_ncnn_model/`: NCNN for embedded (faster ARM inference)
 
 ## Python Environment
 
-### Dependencies
-Python 3.11 project using `pyproject.toml` for dependency management. Key packages:
-- `ultralytics`: YOLO training and inference
-- `ncnn`: NCNN inference framework for embedded deployment
-- `numpy`: Array operations and numerical computing
-- `opencv-python`: Computer vision and image processing
-- `spatialmath-python`: Spatial mathematics library (rotation matrices, transformations used in pixelTo3D.py)
-- `adafruit-circuitpython-bno08x`: BNO08x IMU sensor library (I2C communication)
-- `pyserial`: Serial port communication (required by `raven.py`)
+**Python 3.11** with `pyproject.toml` dependencies:
+- ultralytics, ncnn, numpy, opencv-python, spatialmath-python, adafruit-circuitpython-bno08x, pyserial
 
-**Local Modules:**
-- `raven.py`: Motor controller interface implementing Raven serial protocol
-- `nav.py`: Navigation system with IMU integration and path planning
-- `connection/`: Remote communication system (TCP video streaming)
-- `yolo/`: YOLO detection pipeline
-
-### Setup
-Install the project and dependencies:
-```bash
-# Install project in development mode
-pip install -e .
-
-# Or install from requirements.txt (legacy)
-pip install -r requirements.txt
-```
-
-**Important Notes:**
-- The `raven` module is implemented locally in `raven.py` (not an external package)
-- The project uses `pyproject.toml` for modern Python packaging
-- Always activate your virtual environment before running scripts
-- On Raspberry Pi, ensure I2C is enabled for IMU communication (`sudo raspi-config`)
+**Setup:** `pip install -e .` (or `pip install -r requirements.txt`)
+**Pi setup:** Enable I2C via `sudo raspi-config`
 
 ## Custom Model Training
 
-### Training Pipeline
-The `yolo/train/` directory contains the complete training infrastructure:
+**Train:** `cd yolo/train && python3 train.py`
+- Auto-increments `runs/train/exp{N}` directories
+- Base: `yolo11n.pt`, freeze: 10 layers, device: 'mps' (Apple Silicon)
+- 300 epochs (patience: 50), batch: 16, img: 640x640, LR: 0.01→0.0001
+- Outputs: `runs/train/exp{N}/weights/{best,last}.pt`
 
-**Training a Model:**
-```bash
-cd yolo/train
-python3 train.py
-```
+**Validate:** `python3 validate.py`
+**Check layers:** `python3 check_frozen_layers.py`
 
-The training script (`train.py`) automatically:
-- Manages experiment numbering via `runs/train/exp{N}` directories
-- Tracks run numbers in `runs/train/run_counter.txt`
-- Saves best and last models to `runs/train/exp{N}/weights/`
-- Uses transfer learning with `freeze: 10` (freezes first 10 layers)
-- Configured for Apple Silicon with `device: 'mps'`
+**Dataset Structure:** `datasets/{name}/` with `data.yaml`, `train/valid/test/{images,labels}`
+- YOLO format: `class_id center_x center_y width height` (normalized [0,1])
+- Include 10-20% background images with empty `.txt` files
 
-**Key Training Parameters in `train.py`:**
-- Dataset: `datasets/combined1/data.yaml` (customizable)
-- Base model: `yolo11n.pt` (pretrained YOLOv11n)
-- Epochs: 300 with early stopping (`patience: 50`)
-- Batch size: 16
-- Image size: 640x640
-- Learning rate: 0.01 → 0.0001 (linear decay)
-- Data augmentation: flip, HSV, rotation, translation, scale, mosaic
-
-**Validating a Model:**
-```bash
-cd yolo/train
-python3 validate.py
-```
-Edit `validate.py` to change the model path (currently points to `exp2/weights/best.pt`).
-
-**Checking Frozen Layers:**
-```bash
-cd yolo/train
-python3 check_frozen_layers.py
-```
-This script shows which layers are trainable vs frozen in the base model.
-
-### Dataset Structure
-Datasets are organized in `yolo/train/datasets/` following YOLO format:
-```
-datasets/
-├── combined1/          # Combined dataset
-├── Pringles1/          # Individual Pringles dataset
-└── Cheetos/            # Individual Cheetos dataset
-
-Each dataset contains:
-dataset_name/
-├── data.yaml           # Dataset config (paths, class names, nc)
-├── train/
-│   ├── images/        # Training images
-│   └── labels/        # Training labels (.txt, YOLO format)
-├── valid/
-│   ├── images/
-│   └── labels/
-└── test/
-    ├── images/
-    └── labels/
-```
-
-**YOLO Label Format:**
-Each `.txt` file contains one line per object:
-```
-class_id center_x center_y width height
-```
-All coordinates are normalized to [0, 1]. Empty `.txt` files indicate background images with no objects.
-
-**Important:** To prevent false positives on backgrounds, include background-only images with empty label files (10-20% of dataset).
-
-### Testing Custom Models
-Test trained models on various sources:
-
-```bash
-# Test on dataset test images
-python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source yolo/train/datasets/combined1/test/images --thresh 0.2
-
-# Test on live camera
-python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source usb0 --thresh 0.2
-
-# Capture frame for debugging (press 'p' during inference)
-python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source usb0 --thresh 0.2
-# Then test saved frame
-python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt --source capture.png --thresh 0.2
-```
-
-**Threshold Tuning:** Custom models often need lower thresholds (0.2-0.4) compared to pretrained models (0.5+).
+**Test:** `python3 yolo/yolo_detect.py --model runs/train/exp2/weights/best.pt --source usb0 --thresh 0.2`
+- Custom models use lower thresholds (0.2-0.4) vs pretrained (0.5+)
 
 ## Game-Specific Detection
 
-### Zone Detection (zone_utils.py)
+### Zone Detection (`zone_utils.py`)
+`getZones(result, image)` → `(quads_xy, class_names)` - 6 zones (3 ours, 3 opponent)
+- Extracts quads from masks → `fixSegmentation()` → `calculateQuadFromMask()`
+- Transforms pixels to ground plane (mm) via `transform_uv_to_xy()`
+- Filters: Green/Golden/Red zones only
 
-Detects and extracts the 6 scoring zones (3 ours, 3 opponent) from segmentation results.
-
-**Key Functions:**
-
-1. **`getZones(result, image)`**: Main zone detection pipeline
-   - Extracts quadrilaterals from YOLO segmentation masks
-   - Transforms pixel coordinates to ground plane (mm) using `transform_uv_to_xy()`
-   - Filters invalid zones (e.g., vertices behind camera where y < 0)
-   - Returns: `(quads_xy, class_names)` where quads_xy are (4, 2) arrays in mm
-
-2. **`getQuadrilateralsAndClasses(result, image)`**: Extracts quads from masks
-   - Applies `fixSegmentation()` to refine masks using colored tape detection
-   - Computes quadrilaterals using `calculateQuadFromMask()`
-   - Filters to only zone classes: 'Green Zone', 'Golden Zone', 'Red Zone'
-
-3. **`annotate_poly(image, polygon, color)`**: Visualization helper
-   - Draws polygon contours and corner points on image
-
-**Field Configuration (config.py):**
+**Field Config** (`config.py`):
 ```python
-# Field boundaries in mm (ground plane coordinates)
-CENTER_BORDER_X = 2133.6   # Center divider (our side: x < CENTER_BORDER_X)
-BACK_BORDER_X = -304.8     # Back wall
-LEFT_BORDER_Y = 1219.2     # Left boundary
-RIGHT_BORDER_Y = -1219.2   # Right boundary
-CAN_DIAMETER = 76.2        # Can diameter for filtering
+CENTER_BORDER_X = 2133.6  # Our side: x < CENTER_BORDER_X
+BACK_BORDER_X = -304.8 | LEFT_BORDER_Y = 1219.2 | RIGHT_BORDER_Y = -1219.2
+CAN_DIAMETER = 76.2
 ```
 
-### Can Detection (can_utils.py)
+### Can Detection (`can_utils.py`)
+`getCans(result, image)` → `(can_locations_xy, class_names)` in mm
+- `getBottomCenterPixel(mask)`: Mean u-coord (horizontal center) + max v-coord (bottom)
+- Bottom-center ensures accurate ground plane mapping for navigation
 
-Detects cans and extracts their ground plane locations for navigation.
+### RobotHandler State Machine (`RobotHandler.py`)
 
-**Key Functions:**
-
-1. **`getCans(result, image)`**: Main can detection pipeline
-   - Processes all 'Green Can', 'Golden Can', 'Red Can' detections
-   - Extracts bottom-center pixel of each can using `getBottomCenterPixel()`
-   - Transforms to ground plane coordinates (mm)
-   - Returns: `(can_locations_xy, class_names)` where locations are [x, y] in mm
-
-2. **`getBottomCenterPixel(mask)`**: Can location extraction
-   - Computes smooth region from mask using `getSmoothRegionFromMask()`
-   - Finds mean u-coordinate across entire mask (horizontal center)
-   - Finds bottom-most v-coordinate (base of can for accurate ground plane mapping)
-   - Returns: `(center_x, max_y)` in pixel coordinates
-
-**Why Bottom-Center?**
-- The bottom of the can is on the ground plane, giving accurate x,y coordinates
-- Using the mean u-coordinate across the entire mask ensures robust horizontal centering
-- This is more reliable than using bounding box center for navigation
-
-### RobotHandler State Machine (RobotHandler.py)
-
-High-level autonomous control using state-based logic.
-
-**States (RobotState enum):**
-```python
-StartScan = 1      # Initial scanning phase
-StartGather = 2    # Gather detected cans
-MoveToZone = 3     # Move to scoring zone
-```
-
-**Zone Indexing:**
-```python
-GREEN_ZONE = 0        # Our green scoring zone
-RED_ZONE = 1          # Our red scoring zone
-GOLDEN_ZONE = 2       # Our golden scoring zone
-GREEN_ZONE_OPP = 3    # Opponent green zone
-RED_ZONE_OPP = 4      # Opponent red zone
-GOLDEN_ZONE_OPP = 5   # Opponent golden zone
-```
+**States:** StartScan (1) → StartGather (2) → MoveToZone (3)
+**Zones:** GREEN_ZONE (0), RED_ZONE (1), GOLDEN_ZONE (2), *_OPP (3-5)
 
 **Key Methods:**
+- `handleFrame(frame, frame_id)`: Runs `segmentImage()` → `getZones()` → state logic
+- `getOurZones()`: Assigns 6 zones using `center_x < CENTER_BORDER_X`
 
-1. **`handleFrame(frame, frame_id)`**: Main frame processing loop
-   - Runs segmentation via `segmentImage()`
-   - Calls `getZones()` to detect scoring zones
-   - State-specific logic:
-     - **StartScan**: Records start frame, transitions to gather
-     - **StartGather**: Detects cans, filters by field side, plans path
-     - **MoveToZone**: Executes scoring behavior
+**Can Planning:** Filter our side (`x < CENTER_BORDER_X + CAN_DIAMETER`), sort by y-coord (sweep pattern)
 
-2. **`getOurZones(result, image)`**: Zone assignment logic
-   - Detects all 6 zones and assigns to appropriate indices
-   - Uses `center_x < CENTER_BORDER_X` to determine our side vs opponent
-   - Only updates zones that haven't been detected yet (are None)
-   - Returns: `True` when all 6 zones detected
-
-**Can Path Planning:**
-The gather state filters and sorts cans for efficient collection:
 ```python
-# Filter cans on our side (accounting for can diameter)
-filtered_cans = [
-    (x, y) for x, y in can_locations_xy
-    if x < (CENTER_BORDER_X + CAN_DIAMETER)
-]
-
-# Sort by y-coordinate (positive to negative) for sweep pattern
-sorted_cans = sorted(filtered_cans, key=lambda p: -p[1])
-```
-
-**Integration with Navigation:**
-```python
-from RobotHandler import RobotHandler
-
 handler = RobotHandler(computer_receiver)
-handler.start()
-
-# In frame processing loop:
 handler.handleFrame(frame, frame_id)
-
-# Access planned path for execution
 for x, y in handler.planned_path:
     computer_receiver.send_xy(x, y)
 ```
 
 ## Development Workflow
 
-### Game Operation Workflow
+**Test Segmentation:** `cd yolo && python3 segment.py` (loads last.pt, shows masks/quads on test.jpg)
 
-**Testing Segmentation Pipeline:**
+**Game Integration:**
 ```bash
-# Test segmentation on a single image
-cd yolo
-python3 segment.py
+# Pi
+python3 main_pi.py --camera usb0
 
-# This will:
-# 1. Load last.pt model
-# 2. Run segmentation on yolo/test.jpg
-# 3. Display original segmentation, quadrilaterals, and refined masks
-# 4. Press 'q' to quit
+# Computer (main_comp.py)
+handler = RobotHandler(receiver)
+handler.handleFrame(frame, frame_id)  # StartScan → StartGather → MoveToZone
 ```
 
-**Full Game Integration:**
-1. **Start Raspberry Pi with segmentation**:
-   ```bash
-   python3 main_pi.py --camera usb0
-   ```
+**Click-to-Move Flow:** Click (u,v) → `transform_uv_to_xy()` → `send_xy()` → rotate + forward commands → `nav.overridePaths()`
 
-2. **Start computer with RobotHandler**:
-   ```python
-   # In main_comp.py:
-   from RobotHandler import RobotHandler
+**Best Practices:**
+- **ALWAYS** use `coordinates/relativeCoordinates.py` (SE2) - NEVER manual rotation math
+- Game logic in `RobotHandler.py`, field params in `config.py`
+- Test with `segment.py`, tune thresholds (0.25 segmentation, 0.2-0.4 custom models)
+- Debug: Check console coords, `handler.planned_path`, tune `mask_utils.params`
 
-   receiver = ComputerReceiver()
-   handler = RobotHandler(receiver)
+### Common Pitfalls
 
-   # In frame processing loop:
-   handler.handleFrame(frame, frame_id)
-   ```
-
-3. **State transitions**:
-   - Robot starts in `StartScan` state
-   - Detects zones and assigns to appropriate indices
-   - Transitions to `StartGather` when ready
-   - Plans path to cans (filtered by field side, sorted by y-coordinate)
-   - Executes movement via `computer_receiver.send_xy()`
-
-**Debugging Tips:**
-- Use `segment.py` to visually verify segmentation quality on test images
-- Check console output for zone/can coordinate transformations
-- Monitor `handler.planned_path` to verify path planning logic
-- Tune mask refinement parameters in `mask_utils.params` if colored tape detection fails
-
-### Working with YOLO Models
-1. **Training custom models**: Edit `yolo/train/train.py` to configure dataset and parameters, then run
-2. **Model export**: Models can be exported to NCNN format for embedded deployment
-3. **Testing segmentation**: Use `segment.py` for interactive visualization of masks and quadrilaterals
-4. **Testing detection**: Run detection on test images/videos before deploying to robot
-5. **Tuning**: Adjust confidence threshold in `segment.py` (default: 0.25) or `--thresh` for detection
-6. **Debugging**: Use profiler (`yolo/profiler.py`) to measure inference performance
-
-### Motor Control Integration
-When integrating vision with motor control:
-1. Use YOLO to detect objects and get their positions
-2. Calculate control signals based on detection results (e.g., bounding box centers)
-3. Send commands to Raven board to actuate motors
-4. Main control loop should handle both vision processing and motor updates
-
-### Best Practices
-
-**Coordinate Transformations:**
-- **ALWAYS** use `coordinates/relativeCoordinates.py` for world ↔ robot-relative transformations
-- **NEVER** manually implement rotation/translation math (e.g., `cos(theta) * dx - sin(theta) * dy`)
-- Use `SE2` from `spatialmath` library to represent poses (position + orientation)
-- Example: `from coordinates.relativeCoordinates import world_to_relative, relative_to_world`
-
-**Code Organization:**
-- Keep game-specific logic in `RobotHandler.py` state machine
-- Use `config.py` for field dimensions and game parameters
-- Coordinate transformations should use the standardized utilities, not custom implementations
-
-### Remote Operation Workflow
-See the **Development Workflow** section under "Remote Communication System" for detailed startup and reconnection procedures.
-
-**Integration with motor control:**
-1. **On Raspberry Pi**: `main_pi.py` initializes Nav system and runs PiStreamer to stream camera feed
-2. **On Computer**: `main_comp.py` runs ComputerReceiver with ClickProcessor for interactive control
-3. **Movement Flow**:
-   - User clicks on video window at pixel (u, v)
-   - ClickProcessor converts to ground plane coordinates (x, y) via `transform_uv_to_xy()`
-   - `ComputerReceiver.send_xy(x, y)` calculates rotation and forward movement using `nav.get_rotate()` and `nav.get_forward_mm()`
-   - OVERRIDE_MOVEMENTS message sent with both commands (rotate + forward)
-   - PiStreamer receives commands and calls `nav.overridePaths()` to update movement queue
-   - Nav system executes smooth path: rotate to face target, then drive forward
-4. **Automatic reconnection**: Pi continuously attempts to reconnect, enabling rapid development iteration
-
-**Key characteristics:**
-- TCP protocol ensures reliable command delivery but adds ~10-50ms latency vs UDP/RTP
-- Pi-initiated reconnection allows restarting computer code without touching the robot
-- Persistent camera across reconnections avoids reinitialization delays
-- Click-to-move provides intuitive visual navigation interface
-- Movement queue allows complex multi-step paths
-
-### Common Pitfalls and Solutions
-
-**Detection and Segmentation Issues:**
-- **False positives on backgrounds**: Add 10-20% background-only images with empty label files to training dataset
-- **Low confidence scores**: Custom segmentation model uses 0.25 threshold (vs 0.5 for detection models)
-- **Model not detecting objects**: Check if input resolution matches training size (640x640), verify model path
-- **Segmentation masks missing colored tape**: Tune parameters in `mask_utils.params` (hue_tolerance, blur_size, saturation thresholds)
-- **Quadrilateral fitting fails**: Check `calculateQuadFromMask()` - may need to adjust epsilon range or angle penalty
-- **Zone vertices behind camera**: `transform_uv_to_xy()` returns None for invalid points; ensure zones are in camera view
-
-**Camera and Display:**
-- **Camera resolution**: For PiCamera, always specify `--resolution` to avoid configuration issues
-- **Resolution mismatch**: Match inference resolution to training resolution for best results (640x480 or 1280x720)
-- **Interactive controls**: Use 'p' to capture frames, 's' to pause/resume, 'q' to quit
+**Vision:**
+- False positives → Add 10-20% background images (empty labels)
+- Low confidence → Custom models use 0.25 (not 0.5)
+- No detections → Match resolution (640x640), verify model path
+- Missing colored tape → Tune `mask_utils.params` (hue_tolerance, blur_size)
+- Invalid zones → `transform_uv_to_xy()` returns None if behind camera
 
 **Training:**
-- **Model paths**: Use absolute paths or paths relative to project root
-- **Dataset paths in data.yaml**: Use relative paths (`../train/images`) from dataset directory
-- **Empty training runs**: Verify dataset has matching image/label file pairs with correct naming
-- **Overfitting**: Increase data augmentation, add more training data, reduce `freeze` parameter
+- Match image/label pairs, use relative paths in data.yaml
+- Overfitting → More augmentation, reduce freeze parameter
 
-**Performance:**
-- **Frame rate**: YOLO inference takes ~30-100ms per frame on typical hardware; factor this into control loops
-- **Coordinate systems**: YOLO returns pixel coordinates in xyxy format; convert to robot coordinates for navigation
-- **MPS acceleration**: Training uses Apple Silicon GPU (`device: 'mps'`); inference auto-detects available hardware
+**Connection:**
+- Pi won't connect → Check network, firewall, `COMPUTER_IP` in config.py
+- Auto-reconnect every 5s → Just restart computer, Pi reconnects
+- Video lag → Lower JPEG_QUALITY, resolution, or FPS
+- TCP latency ~10-50ms vs UDP
 
-**Connection and Networking:**
-- **Pi won't connect**: Verify Pi and computer are on same network, check firewall settings, verify `COMPUTER_IP` in config.py matches your computer's IP
-- **Automatic reconnection**: Connection failures are expected and handled automatically - Pi retries every 5 seconds (configurable via `RECONNECT_DELAY`)
-- **Restarting computer code**: Just Ctrl+C and restart - Pi will automatically reconnect within seconds (no need to restart Pi)
-- **Video lag**: Reduce `JPEG_QUALITY` in config.py, lower resolution, or reduce `DEFAULT_MAX_FPS`
-- **Dropped frames**: TCP guarantees delivery but can cause frame buildup under poor network conditions; monitor frame_id gaps
-- **Command latency**: TCP adds 10-50ms vs UDP; factor this into control loops for time-sensitive operations
-- **Socket timeout errors**: Increase `SOCKET_TIMEOUT` in config.py for unreliable networks (default is 180s)
-
-**Navigation and Movement:**
-- **Robot doesn't move**: Check that Nav instance is running `startLoop()` in a thread, verify motors are in POSITION mode, check encoder connections
-- **IMU initialization fails**: Ensure IMU is initialized **before** Raven board, check I2C connections and address, verify BNO08x library installation
-- **Inaccurate odometry**: Recalibrate wheel diameter and base width measurements, check for wheel slippage, verify encoder tick counts
-- **Click-to-move goes wrong direction**: Verify homography matrix is calibrated for current camera mounting, check coordinate system orientation (x forward, y left)
-- **Robot overshoots target**: Reduce `max_velocity` or `acceleration` in Nav class, tune PID gains, check for motor saturation
-- **Movement queue not updating**: Verify thread-safe access with `_lock`, check that movement commands are formatted correctly (multiples of 3 floats for OVERRIDE_MOVEMENTS)
-- **Rotation errors**: Recalibrate IMU, check `BASE_D` and `WHEEL_D` constants, verify `TURN_CONSTANT` calculation matches physical robot
-- **Homography transformation incorrect**: Recalibrate camera using checkerboard pattern, verify camera matrix and distortion coefficients, ensure camera mounting hasn't changed
+**Navigation:**
+- No movement → `startLoop()` in thread, motors in POSITION mode
+- **IMU before Raven** (critical initialization order)
+- Inaccurate → Recalibrate wheel/base, check slippage
+- Wrong direction → Recalibrate camera (checkerboard)
+- Overshoots → Reduce velocity/accel, tune PID
 
 ## File Organization
 
 ```
 MDS/
-├── main.py                    # Raven motor controller example
-├── main_pi.py                 # Raspberry Pi main script with Nav + PiStreamer
-├── main_comp.py               # Computer main script with ComputerReceiver + ClickProcessor
-├── raven.py                   # Raven motor controller serial interface (local implementation)
-├── nav.py                     # Navigation system with IMU, odometry, and path planning
-├── RobotHandler.py            # State machine for autonomous game logic
-├── config.py                  # Game field configuration (boundaries, class names)
-├── robot.py                   # Robot control script
-├── requirements.txt           # Python dependencies (legacy, use pyproject.toml)
-├── pyproject.toml             # Modern Python project configuration and dependencies
-├── out.jpg                   # Example output image
-├── runs/                     # Root-level runs directory (generated)
-├── images/                   # Saved frames from SaveImageProcessor (generated)
-├── connection/               # Remote communication system (TCP-based)
-│   ├── __init__.py
-│   ├── PiStreamer.py         # Pi-side video streamer and movement receiver
-│   ├── ComputerReceiver.py   # Computer-side video receiver and movement sender
-│   ├── protocol.py           # Custom TCP messaging protocol
-│   ├── config.py             # Network and video configuration
-│   ├── message_types.py      # Message type constants (CLOSE, ADD_MOVEMENT, OVERRIDE_MOVEMENTS)
-│   ├── CameraCapture.py      # Unified camera interface (USB/PiCamera)
-│   └── frame_processor/      # Frame processing architecture
-│       ├── FrameProcessor.py      # Abstract base class
-│       ├── ClickProcessor.py      # Click-to-move interface
-│       └── SaveImageProcessor.py  # Frame capture to disk
-├── coordinates/              # **IMPORTANT: Use these for all coordinate transformations**
-│   └── relativeCoordinates.py     # SE(2) coordinate transformation utilities (world ↔ robot-relative)
-├── calibration/              # Camera calibration scripts
-│   ├── distortion_calibration.py  # Intrinsic camera calibration
-│   ├── manual_calibration.py      # Ground plane homography calibration
-│   └── manual_marking.py          # Interactive point marking utility
+├── main_pi.py, main_comp.py       # Pi (Nav+PiStreamer), Computer (Receiver+Click)
+├── raven.py, nav.py               # Motor controller, Navigation (IMU+odometry)
+├── RobotHandler.py, config.py     # State machine, Field config
+├── pyproject.toml                 # Dependencies
+├── connection/                    # TCP streaming
+│   ├── PiStreamer.py, ComputerReceiver.py, protocol.py, message_types.py
+│   ├── CameraCapture.py, config.py
+│   └── frame_processor/ (ClickProcessor, SaveImageProcessor)
+├── coordinates/relativeCoordinates.py  # **SE(2) transforms (ALWAYS use)**
+├── calibration/ (distortion, manual, marking)
 └── yolo/
-    ├── last.pt               # **PRIMARY SEGMENTATION MODEL** (8.1MB, custom-trained)
-    ├── best.pt               # Best checkpoint from segmentation training (6.4MB)
-    ├── yolo11n.pt            # Pretrained YOLOv11n detection model (COCO, 5.4MB)
-    ├── segment.py            # **Main segmentation script** - loads last.pt
-    ├── mask_utils.py         # **Mask refinement** (colored tape, quadrilateral fitting)
-    ├── zone_utils.py         # **Zone detection** (quad extraction, coord transform)
-    ├── can_utils.py          # **Can detection** (bottom-center extraction)
-    ├── pixelTo3D.py          # **Pixel-to-ground transformation** (camera calibration)
-    ├── yolo_detect.py        # Detection script for pretrained models
-    ├── detect.py             # Alternative detection interface
-    ├── profiler.py           # Performance profiling utility
-    ├── yolo11n_ncnn_model/   # NCNN optimized model for embedded deployment
-    │   ├── model.ncnn.bin
-    │   ├── model.ncnn.param
-    │   ├── model_ncnn.py
-    │   └── metadata.yaml
-    ├── runs/detect/          # Detection output directory (generated)
-    └── train/
-        ├── yolo11n.pt        # Base model for training
-        ├── train.py          # Training script with auto-incrementing experiments
-        ├── validate.py       # Model validation script
-        ├── check_frozen_layers.py  # Utility to inspect layer freeze status
-        ├── datasets/         # Training datasets
-        │   ├── combined1/    # Primary combined dataset
-        │   ├── Pringles1/
-        │   └── Cheetos/
-        └── runs/train/       # Training outputs (generated)
-            ├── run_counter.txt
-            ├── exp1/
-            ├── exp2/
-            └── exp{N}/
-                └── weights/
-                    ├── best.pt   # Best model checkpoint
-                    └── last.pt   # Last epoch checkpoint
+    ├── last.pt, best.pt           # **PRIMARY segmentation models**
+    ├── segment.py                 # Main segmentation script
+    ├── mask_utils.py, zone_utils.py, can_utils.py, pixelTo3D.py
+    ├── yolo_detect.py, yolo11n.pt, yolo11n_ncnn_model/
+    └── train/ (train.py, validate.py, datasets/, runs/train/exp{N}/weights/)
 ```
 
 ## Model Information
 
-### Custom Segmentation Model (yolo/last.pt)
+**Custom Segmentation** (`yolo/last.pt`): YOLOv11n, 640x640, thresh=0.25, 8 classes
+- 0: Boundary, 1: Golden Can, 2: Golden Zone, 3: Green Can, 4: Green Zone, 5: Red Can, 6: Red Zone, 7: Robot
+- Outputs: `result.boxes`, `result.masks`, `result.names`
 
-The primary model for MASLAB 2026 competition - trained for instance segmentation of game objects.
-
-**Model Details:**
-- Architecture: YOLOv11n segmentation
-- Task: Instance segmentation (pixel-level masks)
-- Input size: 640x640 pixels
-- Confidence threshold: 0.25 (configurable in `segment.py`)
-- Classes: 8 game-specific classes (see `config.py`)
-
-**Class Information:**
-```python
-0: 'Boundary'      # Field boundary markers
-1: 'Golden Can'    # High-value scoring objects
-2: 'Golden Zone'   # High-value scoring zones (segmented)
-3: 'Green Can'     # Team-colored cans
-4: 'Green Zone'    # Team scoring zones (segmented)
-5: 'Red Can'       # Opponent team cans
-6: 'Red Zone'      # Opponent scoring zones (segmented)
-7: 'Robot'         # Other robots on field
-```
-
-**Model Outputs:**
-- `result.boxes`: Bounding boxes with class IDs and confidence scores
-- `result.masks`: Pixel-level segmentation masks for each detection
-- `result.names`: Dictionary mapping class IDs to class names
-
-### Pretrained Detection Model (yolo/yolo11n.pt)
-
-For general object detection (non-segmentation), the YOLOv11n model is trained on COCO dataset with 80 object classes including:
-- People and vehicles: person, bicycle, car, motorcycle, bus, truck
-- Animals: cat, dog, bird, horse, cow, sheep, etc.
-- Common objects: chair, bottle, book, cell phone, laptop, etc.
-
-Full class list available in `yolo/yolo11n_ncnn_model/metadata.yaml`.
-
-Input size: 640x640 pixels
-Stride: 32
-Task: Object detection (bounding boxes only)
+**Pretrained Detection** (`yolo11n.pt`): COCO 80 classes, 640x640, bounding boxes only

@@ -11,8 +11,8 @@ VIDEO_PORT = 5000  # Port for video streaming
 COMMAND_PORT = 5001  # Port for command data
 
 # Video settings
-FRAME_WIDTH = 1920
-FRAME_HEIGHT = 1080
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 480
 JPEG_QUALITY = 80  # 0-100, higher = better quality but more bandwidth
 DEFAULT_MAX_FPS = 30.0  # Default maximum frames per second for streaming
 
