@@ -175,7 +175,7 @@ class ComputerReceiver():
                 else:
                     failed_frames = 0
 
-                frame_id, frame_data, x, y, theta = result
+                frame_data, frame_id, x, y, theta = result
 
                 # Decode JPEG
                 np_arr = np.frombuffer(frame_data, dtype=np.uint8)

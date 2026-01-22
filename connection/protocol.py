@@ -122,12 +122,15 @@ def send_frame(
     Returns:
         True if successful
     """
-    # Create frame packet: 4-byte frame_id + 3 floats (x, y, theta) + frame data
-    packet = struct.pack('!I', frame_id) + struct.pack('!fff', x, y, theta) + frame_data
+    # Create frame packet: 4-byte frame_id + 3 floats (x, y, theta) + frame
+    # data
+    packet = struct.pack('!I', frame_id) + \
+        struct.pack('!fff', x, y, theta) + frame_data
     return send_message(sock, packet)
 
 
-def recv_frame(sock: socket.socket) -> Optional[Tuple[int, bytes, float, float, float]]:
+def recv_frame(
+        sock: socket.socket) -> Optional[Tuple[bytes, int, float, float, float]]:
     """
     Receive a video frame with metadata and robot pose.
 
@@ -135,21 +138,22 @@ def recv_frame(sock: socket.socket) -> Optional[Tuple[int, bytes, float, float, 
         sock: Socket to receive from
 
     Returns:
-        Tuple of (frame_id, frame_data, x, y, theta) or None if failed
-            frame_id: Frame sequence number
+        Tuple of (frame_data, frame_id, x, y, theta) or None if failed
             frame_data: JPEG-encoded frame bytes
+            frame_id: Frame sequence number
             x: Robot x position in mm (world coordinates)
             y: Robot y position in mm (world coordinates)
             theta: Robot orientation in radians
     """
     data = recv_message(sock)
-    if data is None or len(data) < 16:  # 4 bytes frame_id + 12 bytes (3 floats) + frame data
+    if data is None or len(
+            data) < 16:  # 4 bytes frame_id + 12 bytes (3 floats) + frame data
         return None
 
     frame_id = struct.unpack('!I', data[:4])[0]
     x, y, theta = struct.unpack('!fff', data[4:16])
     frame_data = data[16:]
-    return frame_id, frame_data, x, y, theta
+    return frame_data, frame_id, x, y, theta
 
 
 def send_command(
