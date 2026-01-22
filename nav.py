@@ -220,7 +220,9 @@ class Nav:
                 y_rel: Lateral distance (positive = left)
         """
         # Get robot's current world position and orientation
-        robot_x, robot_y = self.raven.get_odometry()
+        od = self.raven.get_odometry()
+        print(od)
+        robot_x, robot_y = od
         robot_theta = self.angle
 
         # Use the centralized coordinate transformation function
