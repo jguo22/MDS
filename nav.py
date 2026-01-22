@@ -25,16 +25,6 @@ class NavMove:
         self.dist = dist
         self.smooth = smooth
 
-    def __repr__(self):
-        """
-        Human Readable Print
-        """
-        return f"Nav Move: l_c = {
-            self.left} \n r_c = {
-            self.right} \n distance = {
-            self.dist} \n smooth = {
-                self.smooth}"
-
 
 class Nav:
     def __init__(self):
