@@ -129,22 +129,24 @@ def main():
     # time.sleep(1.15)
     # nav.raven.set_servo_position(Raven.ServoChannel.CH1, 0)
 # Smooth = False
-    # nav.addPath(NavMove(1.005, .995, get_forward_mm(2200)[2], False, True))
-    # nav.addPath(NavMove(1.3, 0.7, get_rotate() / 2 - 200, False, True))
-    # nav.addPath(NavMove(1.12, .88, get_forward_mm(700)[2], False, True))
-    # nav.addPath(NavMove(1.5, 0.5, get_rotate() / 2 - 300, False, True))
-    # nav.addPath(NavMove(1, 1, 5000, False, True))
+    nav.addPath(NavMove(1.005, .995, get_forward_mm(2100)[2], False, True))
+    nav.addPath(NavMove(1.3, 0.7, get_rotate() / 2 - 200, False, True))
+    nav.addPath(NavMove(1.12, .88, get_forward_mm(700)[2], False, True))
+    nav.addPath(NavMove(1.5, 0.5, get_rotate() / 2 - 300, False, True))
+    nav.addPath(NavMove(1, 1, 5000, False, True))
     # x, y = closest_centers[0]
     # nav.override_paths_world_xy(x, y)
 
 
-    # nav.addPath(NavMove(-1, -1, 4000, False, True))
-    # nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2, False, True))
+    nav.addPath(NavMove(-1, -1, 4000, False, True))
+    nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2 - 100, False, True))
 
-    # nav.addPath(NavMove(-1, -1, 13000, False, True))
-    # nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2, False, True))
-    # nav.addPath(NavMove(.95, 1.05, 5000, False, True))
-    # nav.addPath(NavMove(0.7, 1.3, get_rotate() / 2, False, True))
+    nav.addPath(NavMove(-1, -1, 7000, False, True))
+    nav.addPath(NavMove(-1.5, -0.5, get_rotate() / 2- 200, False, True))
+    nav.addPath(NavMove(0.7, 1.3, get_rotate() / 2, False, True))
+    nav.addPath(NavMove(.88, 1.12, get_forward_mm(700)[2], False, True))
+    nav.addPath(NavMove(0.5, 1.5, get_rotate() / 2 - 300, False, True))
+    nav.addPath(NavMove(1, 1, 5000, False, True))
 # Smooth = True
     # nav.addPath(NavMove(1.05, 0.95, 10000, True, True))
     # nav.addPath(NavMove(1.3, 0.7, get_rotate() / 2, True, True))
@@ -210,8 +212,6 @@ def main():
                 if nav.moving == False:
                     nav.releaseGrip() # TODO: implement releaseGrip
                     RobotState = "Finding Can"
-
-
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     while True:
