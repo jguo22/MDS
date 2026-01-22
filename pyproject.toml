@@ -15,6 +15,7 @@ dependencies = [
     "opencv-python",
     "adafruit-circuitpython-bno08x",
     "pyserial",
+	"spatialmath-python"
 ]
 
 [project.optional-dependencies]

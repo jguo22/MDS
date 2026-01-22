@@ -33,7 +33,11 @@ class NavMove:
         """
         Human Readable Print
         """
-        return f"Nav Move: \n l_c={ self.left} \n r_c={ self.right} \n distance={ self.dist} \n smooth={ self.smooth}"
+        return f"Nav Move: \n l_c={
+            self.left} \n r_c={
+            self.right} \n distance={
+            self.dist} \n smooth={
+                self.smooth}"
 
 
 class Nav:
@@ -94,8 +98,8 @@ class Nav:
                     delta_time = FRAME_TIME
                 start_time = time.time()
 
-                print(f'x, y is {self.raven.get_odometry()}')
-                print(f'angle is {self.raven.get_angle()}')
+                # print(f'x, y is {self.raven.get_odometry()}')
+                # print(f'angle is {self.raven.get_angle()}')
 
                 self._updatePath(delta_time)
         except Exception:
