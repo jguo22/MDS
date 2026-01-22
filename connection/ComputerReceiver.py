@@ -14,7 +14,7 @@ Run on the computer that will process the video and send movement commands.
 import socket
 import threading
 import time
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 import cv2
 import numpy as np
 import traceback
@@ -59,14 +59,13 @@ class ComputerReceiver():
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
 
+        # takes in frame, frame_id, x, y, theta
         self.on_frame: Callable[[np.ndarray, int, float, float, float], None] = (
             lambda frame, frame_id, x, y, theta: None)
-        self.latest_frame: Optional[np.ndarray] = None
-        self.latest_frame_id: int = 0
-        self.latest_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)  # (x, y, theta)
         self._lock = threading.Lock()
 
-    def set_frame_callback(self, callback: Callable[[np.ndarray, int, float, float, float], None]):
+    def set_frame_callback(
+            self, callback: Callable[[np.ndarray, int, float, float, float], None]):
         """
         Set callback for processing frames and generating movement commands.
         THIS BLOCKS THE RECEIVING FRAMES LOOP
@@ -143,13 +142,6 @@ class ComputerReceiver():
         return protocol.send_command(
             self.command_client_socket, message_types.CLOSE, [])
 
-    def get_latest_frame(self) -> Optional[Tuple[np.ndarray, int]]:
-        """Get the latest received frame. Thread-safe."""
-        with self._lock:
-            if self.latest_frame is not None:
-                return self.latest_frame.copy(), self.latest_frame_id
-        return None
-
     def receive_loop(self, show_video: bool = True,
                      window_name: str = "Pi Camera"):
         """
@@ -191,12 +183,6 @@ class ComputerReceiver():
 
                 if frame is None:
                     continue
-
-                # Store latest frame and pose
-                with self._lock:
-                    self.latest_frame = frame.copy()
-                    self.latest_frame_id = frame_id
-                    self.latest_pose = (x, y, theta)
 
                 # Process frame with callback and get movement command
                 try:
@@ -254,7 +240,7 @@ class ComputerReceiver():
         self.command_client_socket = None
         print("client connection stopped")
 
-    # SENDING COMMANDS
+    # ------------------ SENDING COMMANDS ------------------
     def send_world_xy(self, world_x: float, world_y: float) -> bool:
         """
         Send world coordinate navigation command to the Pi.

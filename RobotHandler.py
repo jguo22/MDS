@@ -1,9 +1,14 @@
 import time
+import math
 import numpy as np
 from enum import Enum
+from typing import List, Tuple
+from spatialmath import SE2
 from yolo.segment import segmentImage
 from yolo.zone_utils import getZones
-from config import CENTER_BORDER_X
+from yolo.can_utils import getCans
+from config import CENTER_BORDER_X, CAN_DIAMETER, BASE_D, SCOOPER_LENGTH
+from coordinates.relativeCoordinates import plan_path_poses, world_to_relative
 
 
 class RobotState(Enum):
@@ -21,7 +26,7 @@ GOLDEN_ZONE_OPP = 5
 
 
 class RobotHandler():
-    def __init__(self):
+    def __init__(self, computer_receiver):
         self.startFrame: int = -1
         self.startTime = time.time()
         self.state = RobotState.StartScan
@@ -30,11 +35,26 @@ class RobotHandler():
         # np.array([[x1, y1], [x2, y2], [x3, y3], [x4, y4]])
         self.zones = [None, None, None, None, None, None]
 
+        # Store planned path to cans
+        self.planned_path = []
+        self.lastTimeSentPath = 0
+
+        self.computer_receiver = computer_receiver
+        self.isHandlingFrame = False
+
     def start(self):
         self.startFrame = -1
         self.startTime = time.time()
 
-    def handleFrame(self, frame: np.ndarray, frame_id: int):
+    def handleFrame(
+            self,
+            frame: np.ndarray,
+            frame_id: int,
+            x: float,
+            y: float,
+            theta: float):
+        self.isHandlingFrame = True
+
         result = segmentImage(frame)
         getZones(result, frame)
 
@@ -42,12 +62,35 @@ class RobotHandler():
             if self.startFrame == -1:
                 self.startFrame = frame_id
 
+                # ------------- PLAN PATH TO DETECTED CANS -------------
+                # Get all detected cans in image coordinates
+                can_locations_xy, _ = getCans(result, frame)
+
+                # Filter cans that are on our side of the center border
+                filtered_cans = [
+                    (x, y) for x, y in can_locations_xy
+                    if x < (CENTER_BORDER_X + CAN_DIAMETER)
+                ]
+
+                # Sort cans by y-coordinate (positive to negative)
+                sorted_cans = sorted(filtered_cans, key=lambda p: -p[1])
+
+                # Store the planned path
+                self.planned_path = sorted_cans
+
         elif self.state == RobotState.StartGather:
-            pass
+            # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
+            if self.lastTimeSentPath == 0:
+                self.lastTimeSentPath == time.time()
+
+                plan = plan_path_poses(self.planned_path, SE2(x, y, theta))
+
         elif self.state == RobotState.MoveToZone:
             pass
         else:
             print("ERROR: INVALID STATE")
+
+        self.isHandlingFrame = False
 
     def getOurZones(self, result, image):
         """
@@ -95,3 +138,48 @@ class RobotHandler():
         # Check if all zones have been detected
         all_detected = all(zone is not None for zone in self.zones)
         return all_detected
+
+    def is_point_in_reach(
+        self,
+        point: Tuple[float, float],
+        robot_pos: Tuple[float, float],
+        robot_heading: float,
+    ) -> bool:
+        """
+        Check if a point is within reach of the robot (circular radius OR forward rectangle).
+
+        Uses SE(2) transformation to convert to robot-relative coordinates, then checks:
+        1. Within circular radius: (BASE_D - CAN_DIAMETER) / 2
+        2. Within rectangle: SCOOPER_LENGTH forward, (BASE_D - CAN_DIAMETER) wide
+
+        Args:
+            point: (x, y) world coordinates in mm
+            robot_pos: (x, y) robot position in mm
+            robot_heading: Robot heading in radians
+
+        Returns:
+            bool: True if point is reachable
+        """
+        robot_x, robot_y = robot_pos
+
+        # Check 2: Is point within rectangle in front of robot?
+        # Transform point to robot's local coordinate frame using SE2
+        robot_pose = SE2(robot_x, robot_y, robot_heading)
+        local_x, local_y = world_to_relative(point, robot_pose)
+
+        # Check 1: Is point within circular radius?
+        distance = math.sqrt(local_x**2 + local_y**2)
+        if distance <= (BASE_D - CAN_DIAMETER) / 2:
+            return True
+
+        # Check if point is within rectangle bounds
+        # Rectangle extends from 0 to rect_length in front (local_x)
+        # and from -rect_width/2 to +rect_width/2 sideways (local_y)
+        rect_length = SCOOPER_LENGTH
+        rect_width = BASE_D - CAN_DIAMETER
+        in_rectangle = (
+            0 <= local_x <= rect_length and
+            -rect_width / 2 <= local_y <= rect_width / 2
+        )
+
+        return in_rectangle

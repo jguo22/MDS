@@ -78,9 +78,10 @@ class PiStreamer():
         self.frame_id = 0
         self.running = False
 
-        # NOTE: movement callback blocks the movement receiving thread
+        # movement callback blocks the command receiving thread
+        # takes in msg_type and args and does the command
         self.command_callback: Callable[[
-            int, list[float]], None] = (lambda _msg_type, _args: None)
+            int, list[float]], None] = (lambda _, __: None)
 
         self._command_receiver_thread: Optional[threading.Thread] = None
 

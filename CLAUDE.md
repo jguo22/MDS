@@ -72,8 +72,41 @@ angle = raven.get_angle()     # Heading in radians
 
 ## Navigation System
 
+### IMUWrapper Class (IMUWrapper.py)
+
+Wrapper for the BNO08x IMU sensor providing simplified heading access.
+
+**Key Features:**
+- **Automatic offset calibration**: Records initial heading as zero on startup
+- **Quaternion-to-yaw conversion**: Converts IMU quaternion to heading angle
+- **Fast initialization**: Sends 5 requests to speed up IMU startup
+
+**Usage:**
+```python
+from IMUWrapper import IMUWrapper
+
+imu = IMUWrapper()  # Initializes I2C at 800kHz, calibrates offset
+
+# Get current heading relative to startup position
+heading = imu.get_heading()  # Returns angle in radians
+
+# Hard reset IMU (if needed)
+imu.hard_reset()
+```
+
+**Implementation Details:**
+- I2C frequency: 800 kHz
+- Report type: `BNO_REPORT_ROTATION_VECTOR` (quaternion output)
+- Heading calculation: Converts quaternion (w, x, y, z) to yaw using atan2
+- Offset: Stores initial heading and subtracts from all subsequent readings
+
+**Important Notes:**
+- IMU must be initialized **before** Raven board (as noted in Nav class)
+- Heading is relative to startup orientation (not absolute/magnetic north)
+- Uses adafruit-circuitpython-bno08x library
+
 ### Nav Class (nav.py)
-The `Nav` class provides high-level navigation and odometry for the robot. It integrates the Raven motor controller with an IMU (BNO08x) for precise positioning and path following.
+The `Nav` class provides high-level navigation and odometry for the robot. It integrates the Raven motor controller with an IMU (BNO08x via IMUWrapper) for precise positioning and path following.
 
 **Key Features:**
 - **IMU Integration**: BNO08x sensor via I2C for heading tracking
@@ -380,49 +413,90 @@ class CustomProcessor(FrameProcessor):
 **Integrating with ComputerReceiver:**
 Frame processors are integrated into `main_comp.py` to process incoming video frames and generate navigation commands.
 
-### Pixel-to-3D Transformation (pixelTo3D.py)
+**Using with RobotHandler:**
+```python
+from connection.frame_processor.FrameProcessor import FrameProcessor
+from RobotHandler import RobotHandler
 
-The `pixelTo3D` module converts pixel coordinates from the camera to real-world coordinates on the ground plane.
+class GameProcessor(FrameProcessor):
+    def __init__(self, robot_handler):
+        self.robot_handler = robot_handler
+
+    def process(self, frame, frame_id):
+        # Process frame through state machine
+        self.robot_handler.handleFrame(frame, frame_id)
+        return None  # RobotHandler manages movement internally
+
+# Usage in main_comp.py:
+receiver = ComputerReceiver()
+handler = RobotHandler(receiver)
+processor = GameProcessor(handler)
+# Add processor to receiver's frame processing pipeline
+```
+
+### Pixel-to-3D Transformation (yolo/pixelTo3D.py)
+
+The `pixelTo3D` module converts pixel coordinates from the camera to real-world coordinates on the ground plane using camera calibration and perspective transformation.
 
 **Key Components:**
 - **Camera Calibration**: Intrinsic matrix and distortion coefficients from camera calibration
-- **Homography Matrix**: 3x3 transformation from image plane to ground plane (in mm)
+- **Camera Rotation**: `ANGLE_MATRIX = SO3.Rx(-1).R` - rotation around x-axis by -1 radian (camera tilt)
 - **Coordinate Systems**:
   - Pixel coordinates: Origin at top-left, u increases right, v increases down
-  - Robot coordinates: Origin at camera, x increases forward, y increases left
+  - Camera coordinates: 3D coordinates in camera reference frame
+  - Robot/Ground coordinates: Origin at camera, x increases forward, y increases left
 
-**Main Function:**
-```python
-from pixelTo3D import transform_uv_to_xy
+**Main Functions:**
 
-# Convert pixel click to ground plane coordinates
-x_mm, y_mm = transform_uv_to_xy(u=320, v=240)  # Center of 640x480 frame
+1. **`transform_uv_to_xy(pixel_x, pixel_y)`**: Pixel to ground plane
+   - Undistorts pixel coordinates using camera matrix and distortion coefficients
+   - Converts to normalized camera coordinates
+   - Applies camera rotation (tilt correction)
+   - Projects ray onto ground plane (z=0)
+   - Returns: `(x, y)` in mm, or `None` if point is behind camera or invalid
 
-# x: forward distance from camera (mm)
-# y: lateral distance from camera, positive = left (mm)
-```
+2. **`undistort_pixel(pixel_x, pixel_y)`**: Removes lens distortion
+   - Uses OpenCV's `undistortPoints()` with camera calibration
+   - Returns corrected pixel coordinates
+
+3. **`pixel_to_camera_coords(pixel_x, pixel_y)`**: Pixel to 3D camera frame
+   - Undistorts pixel
+   - Computes ray direction from camera center through pixel
+   - Used internally by `transform_uv_to_xy()`
 
 **Camera Calibration Data:**
 ```python
 CAMERA_MATRIX = np.array([
-    [900.83, 0, 319.14],
-    [0, 905.18, 236.54],
+    [900.83135648, 0, 319.13723878],
+    [0, 905.17695622, 236.54418761],
     [0, 0, 1]
 ])
 
 DISTORTION = np.array([
-    [0.0963, 0.7159, 0.0037, 0.0118, -6.7639]
+    [9.62758290e-02, 7.15871128e-01, 3.69387355e-03,
+     1.18130977e-02, -6.76390055e+00]
 ])
+
+ANGLE_MATRIX = SO3.Rx(-1).R  # Camera pitch angle
 ```
 
-**Homography Matrix:**
-The homography matrix `h` is precalculated from camera calibration and transforms image points to ground plane points:
+**Important Notes:**
+- Uses **640x480 resolution** - ensure camera and inference use matching resolution
+- Returns `None` for points behind camera or outside valid projection range
+- The transformation accounts for camera tilt via `ANGLE_MATRIX`
+- Y-coordinate in ground plane: positive = left, negative = right
+
+**Usage in Zone and Can Detection:**
 ```python
-h = np.array([
-    [-6.09741811e-01, -2.09501156e-02, 1.57159029e+02],
-    [2.85708157e-02, 9.39073240e-03, -5.18950601e+02],
-    [6.09393965e-04, -7.78799171e-03, 1.00000000e+00]
-])
+from yolo.pixelTo3D import transform_uv_to_xy
+
+# Transform zone vertices
+for vertex in zone_vertices:
+    u, v = vertex  # pixel coordinates
+    xy = transform_uv_to_xy(u, v)
+    if xy is not None:
+        x, y = xy  # ground plane coordinates in mm
+        # Use for navigation or zone assignment
 ```
 
 **Usage in Click-to-Move:**
@@ -431,6 +505,110 @@ h = np.array([
 3. `ComputerReceiver.send_xy(x, y)` calculates rotation angle and distance
 4. Movement commands sent: rotate to face target, then drive forward
 5. Robot executes smooth path to clicked location
+
+### Coordinate Transformations (coordinates/relativeCoordinates.py)
+
+**IMPORTANT**: Always use the `relativeCoordinates` module for coordinate transformations between world and robot-relative frames. DO NOT manually implement rotation/translation math.
+
+The `coordinates/relativeCoordinates.py` module provides robust SE(2) transformations using the `spatialmath` library for converting between world coordinates and robot-relative coordinates.
+
+**Coordinate Systems:**
+- **World frame**: Fixed reference (x forward, y left, origin at starting position)
+- **Robot-relative frame**: Origin at robot position, x forward from robot, y left of robot
+
+**Key Functions:**
+
+1. **`world_to_relative(world_point, robot_pose)`**: Convert world point to robot-relative
+   ```python
+   from spatialmath import SE2
+   from coordinates.relativeCoordinates import world_to_relative
+
+   # Robot at (1000, 500) facing 45 degrees
+   robot_pose = SE2(1000, 500, math.pi/4)
+   world_point = (2000, 1500)
+
+   # Get point in robot's local frame
+   local_x, local_y = world_to_relative(world_point, robot_pose)
+   # local_x: forward from robot, local_y: left of robot
+   ```
+
+2. **`relative_to_world(rel_point, robot_pose)`**: Convert robot-relative to world
+   ```python
+   # Point 500mm in front of robot, 200mm to the left
+   rel_point = (500, 200)
+   world_x, world_y = relative_to_world(rel_point, robot_pose)
+   ```
+
+3. **`angle_between_points(point1, point2)`**: Calculate angle from point1 to point2
+   ```python
+   angle = angle_between_points((0, 0), (1000, 1000))  # Returns π/4 radians
+   ```
+
+4. **`transform_pose_world_to_relative(world_pose, robot_pose)`**: Transform full pose (position + orientation)
+
+5. **`plan_path_poses(points, start_pose)`**: Generate pose sequence for path planning
+
+**When to Use:**
+- ✅ Checking if a point is in front of the robot
+- ✅ Converting sensor data to world coordinates
+- ✅ Planning paths in robot-relative frame
+- ✅ Any coordinate transformation between frames
+- ❌ DO NOT manually implement `cos(theta) * dx - sin(theta) * dy` transformations
+- ❌ DO NOT write custom rotation matrices for 2D transformations
+
+**Example - Check if Point is in Rectangle in Front of Robot:**
+```python
+from spatialmath import SE2
+from coordinates.relativeCoordinates import world_to_relative
+
+# Get robot state
+robot_x, robot_y = nav.raven.get_odometry()
+robot_heading = nav.raven.get_angle()
+
+# Create robot pose
+robot_pose = SE2(robot_x, robot_y, robot_heading)
+
+# Transform target point to robot frame
+target_point = (1500, 800)  # World coordinates
+local_x, local_y = world_to_relative(target_point, robot_pose)
+
+# Check if in rectangle in front (example: 500mm forward, 300mm wide)
+if 0 <= local_x <= 500 and -150 <= local_y <= 150:
+    print("Point is in front of robot!")
+```
+
+**Benefits:**
+- Mathematically robust using SE(2) group theory
+- Consistent with spatialmath library conventions
+- Handles edge cases correctly (all quadrants, zero distances)
+- More maintainable than manual math
+- Well-tested and documented
+
+### Camera Calibration (calibration/)
+
+The `calibration/` directory contains scripts for camera calibration used by the pixel-to-3D transformation.
+
+**Calibration Scripts:**
+
+1. **`distortion_calibration.py`**: Intrinsic camera calibration
+   - Uses checkerboard pattern to compute camera matrix and distortion coefficients
+   - Generates `CAMERA_MATRIX` and `DISTORTION` arrays used in `pixelTo3D.py`
+   - Required when changing cameras or camera mounting
+
+2. **`manual_calibration.py`**: Ground plane homography calibration
+   - Manual marking of known ground plane points
+   - Computes transformation from pixel coordinates to ground plane
+   - Used to determine camera rotation (`ANGLE_MATRIX`)
+
+3. **`manual_marking.py`**: Interactive point marking utility
+   - Helper for manual calibration workflows
+   - Click to mark corresponding points in image and real world
+
+**When to Recalibrate:**
+- Camera hardware change (different camera or lens)
+- Camera mounting position or angle changes
+- Pixel-to-ground transformation becomes inaccurate
+- Zone or can coordinates are consistently off
 
 **Connection Features:**
 - Single-use connection instances (no race conditions)
@@ -505,9 +683,75 @@ if result:
 
 ## Vision System
 
-### YOLO Detection Pipeline
-Located in `yolo/` directory with the following structure:
-- `yolo11n.pt`: YOLOv11n PyTorch model trained on COCO dataset
+### YOLO Segmentation Pipeline (Custom Model)
+
+The project uses a **custom-trained YOLOv11 segmentation model** for MASLAB 2026 competition. The segmentation model detects and segments game objects with pixel-level masks.
+
+**Key Files:**
+- `yolo/last.pt`: **Primary segmentation model** (8.1MB) - trained on MASLAB game objects
+- `yolo/best.pt`: Best checkpoint from training (6.4MB)
+- `yolo/segment.py`: Main segmentation script - loads model and runs inference
+- `yolo/mask_utils.py`: Mask refinement pipeline (colored tape detection, quadrilateral fitting)
+- `yolo/zone_utils.py`: Zone detection utilities (quadrilateral extraction, coordinate transformation)
+- `yolo/can_utils.py`: Can detection utilities (bottom-center extraction for navigation)
+
+**Detected Classes (config.py):**
+The model is trained to detect 8 game-specific classes:
+```python
+CLASS_NAMES = [
+    'Boundary',      # Field boundaries
+    'Golden Can',    # High-value scoring objects
+    'Golden Zone',   # High-value scoring zones
+    'Green Can',     # Team-colored cans
+    'Green Zone',    # Team scoring zones
+    'Red Can',       # Opponent team cans
+    'Red Zone',      # Opponent scoring zones
+    'Robot'          # Other robots
+]
+```
+
+**Running Segmentation:**
+```python
+from yolo.segment import segmentImage
+import cv2 as cv
+
+image = cv.imread("frame.jpg")
+result = segmentImage(image)  # Returns YOLO result with masks
+
+# Result contains:
+# - result.boxes: Bounding boxes with class IDs and confidence
+# - result.masks: Segmentation masks for each detected object
+# - result.names: Dictionary mapping class IDs to class names
+```
+
+**Mask Refinement Pipeline:**
+
+The segmentation results are refined using color-based filtering to improve zone boundary detection:
+
+1. **Initial Segmentation** (`segmentImage()`): YOLO produces rough masks
+2. **Colored Tape Detection** (`fixSegmentation()`): HSV-based filtering to detect colored boundary tape
+   - Uses relative saturation/brightness (robust to lighting changes)
+   - Dominant hue extraction from mask region
+   - Convex hull computation for smooth boundaries
+3. **Quadrilateral Fitting** (`calculateQuadFromMask()`): Douglas-Peucker algorithm with area preservation
+   - Tries multiple epsilon values to find best 4-vertex approximation
+   - Penalizes sharp angles (<30°) and area loss
+   - Falls back to minimum area rectangle if no good quad found
+
+**Key Parameters** (in `mask_utils.py`):
+```python
+params = {
+    'dom_sat_min': 70,      # Minimum saturation for dominant hue
+    'dom_val_min': 140,     # Minimum brightness for dominant hue
+    'hue_tolerance': 15,    # Hue matching tolerance (±15 degrees)
+    'blur_size': 21,        # Kernel size for local averaging
+    'erode_size': 15,       # Erosion to remove black borders
+}
+```
+
+### YOLO Detection Pipeline (Pretrained Model)
+For general object detection (non-segmentation), the following models are available:
+- `yolo11n.pt`: YOLOv11n PyTorch model trained on COCO dataset (80 classes)
 - `yolo11n_ncnn_model/`: NCNN-optimized model for embedded deployment
   - `model.ncnn.bin`: Binary model weights
   - `model.ncnn.param`: Model architecture parameters
@@ -697,14 +941,181 @@ python3 yolo/yolo_detect.py --model yolo/train/runs/train/exp2/weights/best.pt -
 
 **Threshold Tuning:** Custom models often need lower thresholds (0.2-0.4) compared to pretrained models (0.5+).
 
+## Game-Specific Detection
+
+### Zone Detection (zone_utils.py)
+
+Detects and extracts the 6 scoring zones (3 ours, 3 opponent) from segmentation results.
+
+**Key Functions:**
+
+1. **`getZones(result, image)`**: Main zone detection pipeline
+   - Extracts quadrilaterals from YOLO segmentation masks
+   - Transforms pixel coordinates to ground plane (mm) using `transform_uv_to_xy()`
+   - Filters invalid zones (e.g., vertices behind camera where y < 0)
+   - Returns: `(quads_xy, class_names)` where quads_xy are (4, 2) arrays in mm
+
+2. **`getQuadrilateralsAndClasses(result, image)`**: Extracts quads from masks
+   - Applies `fixSegmentation()` to refine masks using colored tape detection
+   - Computes quadrilaterals using `calculateQuadFromMask()`
+   - Filters to only zone classes: 'Green Zone', 'Golden Zone', 'Red Zone'
+
+3. **`annotate_poly(image, polygon, color)`**: Visualization helper
+   - Draws polygon contours and corner points on image
+
+**Field Configuration (config.py):**
+```python
+# Field boundaries in mm (ground plane coordinates)
+CENTER_BORDER_X = 2133.6   # Center divider (our side: x < CENTER_BORDER_X)
+BACK_BORDER_X = -304.8     # Back wall
+LEFT_BORDER_Y = 1219.2     # Left boundary
+RIGHT_BORDER_Y = -1219.2   # Right boundary
+CAN_DIAMETER = 76.2        # Can diameter for filtering
+```
+
+### Can Detection (can_utils.py)
+
+Detects cans and extracts their ground plane locations for navigation.
+
+**Key Functions:**
+
+1. **`getCans(result, image)`**: Main can detection pipeline
+   - Processes all 'Green Can', 'Golden Can', 'Red Can' detections
+   - Extracts bottom-center pixel of each can using `getBottomCenterPixel()`
+   - Transforms to ground plane coordinates (mm)
+   - Returns: `(can_locations_xy, class_names)` where locations are [x, y] in mm
+
+2. **`getBottomCenterPixel(mask)`**: Can location extraction
+   - Computes smooth region from mask using `getSmoothRegionFromMask()`
+   - Finds mean u-coordinate across entire mask (horizontal center)
+   - Finds bottom-most v-coordinate (base of can for accurate ground plane mapping)
+   - Returns: `(center_x, max_y)` in pixel coordinates
+
+**Why Bottom-Center?**
+- The bottom of the can is on the ground plane, giving accurate x,y coordinates
+- Using the mean u-coordinate across the entire mask ensures robust horizontal centering
+- This is more reliable than using bounding box center for navigation
+
+### RobotHandler State Machine (RobotHandler.py)
+
+High-level autonomous control using state-based logic.
+
+**States (RobotState enum):**
+```python
+StartScan = 1      # Initial scanning phase
+StartGather = 2    # Gather detected cans
+MoveToZone = 3     # Move to scoring zone
+```
+
+**Zone Indexing:**
+```python
+GREEN_ZONE = 0        # Our green scoring zone
+RED_ZONE = 1          # Our red scoring zone
+GOLDEN_ZONE = 2       # Our golden scoring zone
+GREEN_ZONE_OPP = 3    # Opponent green zone
+RED_ZONE_OPP = 4      # Opponent red zone
+GOLDEN_ZONE_OPP = 5   # Opponent golden zone
+```
+
+**Key Methods:**
+
+1. **`handleFrame(frame, frame_id)`**: Main frame processing loop
+   - Runs segmentation via `segmentImage()`
+   - Calls `getZones()` to detect scoring zones
+   - State-specific logic:
+     - **StartScan**: Records start frame, transitions to gather
+     - **StartGather**: Detects cans, filters by field side, plans path
+     - **MoveToZone**: Executes scoring behavior
+
+2. **`getOurZones(result, image)`**: Zone assignment logic
+   - Detects all 6 zones and assigns to appropriate indices
+   - Uses `center_x < CENTER_BORDER_X` to determine our side vs opponent
+   - Only updates zones that haven't been detected yet (are None)
+   - Returns: `True` when all 6 zones detected
+
+**Can Path Planning:**
+The gather state filters and sorts cans for efficient collection:
+```python
+# Filter cans on our side (accounting for can diameter)
+filtered_cans = [
+    (x, y) for x, y in can_locations_xy
+    if x < (CENTER_BORDER_X + CAN_DIAMETER)
+]
+
+# Sort by y-coordinate (positive to negative) for sweep pattern
+sorted_cans = sorted(filtered_cans, key=lambda p: -p[1])
+```
+
+**Integration with Navigation:**
+```python
+from RobotHandler import RobotHandler
+
+handler = RobotHandler(computer_receiver)
+handler.start()
+
+# In frame processing loop:
+handler.handleFrame(frame, frame_id)
+
+# Access planned path for execution
+for x, y in handler.planned_path:
+    computer_receiver.send_xy(x, y)
+```
+
 ## Development Workflow
+
+### Game Operation Workflow
+
+**Testing Segmentation Pipeline:**
+```bash
+# Test segmentation on a single image
+cd yolo
+python3 segment.py
+
+# This will:
+# 1. Load last.pt model
+# 2. Run segmentation on yolo/test.jpg
+# 3. Display original segmentation, quadrilaterals, and refined masks
+# 4. Press 'q' to quit
+```
+
+**Full Game Integration:**
+1. **Start Raspberry Pi with segmentation**:
+   ```bash
+   python3 main_pi.py --camera usb0
+   ```
+
+2. **Start computer with RobotHandler**:
+   ```python
+   # In main_comp.py:
+   from RobotHandler import RobotHandler
+
+   receiver = ComputerReceiver()
+   handler = RobotHandler(receiver)
+
+   # In frame processing loop:
+   handler.handleFrame(frame, frame_id)
+   ```
+
+3. **State transitions**:
+   - Robot starts in `StartScan` state
+   - Detects zones and assigns to appropriate indices
+   - Transitions to `StartGather` when ready
+   - Plans path to cans (filtered by field side, sorted by y-coordinate)
+   - Executes movement via `computer_receiver.send_xy()`
+
+**Debugging Tips:**
+- Use `segment.py` to visually verify segmentation quality on test images
+- Check console output for zone/can coordinate transformations
+- Monitor `handler.planned_path` to verify path planning logic
+- Tune mask refinement parameters in `mask_utils.params` if colored tape detection fails
 
 ### Working with YOLO Models
 1. **Training custom models**: Edit `yolo/train/train.py` to configure dataset and parameters, then run
 2. **Model export**: Models can be exported to NCNN format for embedded deployment
-3. **Testing**: Run detection on test images/videos before deploying to robot
-4. **Tuning**: Adjust confidence threshold (`--thresh`) based on detection requirements
-5. **Debugging**: Use profiler (`yolo/profiler.py`) to measure inference performance
+3. **Testing segmentation**: Use `segment.py` for interactive visualization of masks and quadrilaterals
+4. **Testing detection**: Run detection on test images/videos before deploying to robot
+5. **Tuning**: Adjust confidence threshold in `segment.py` (default: 0.25) or `--thresh` for detection
+6. **Debugging**: Use profiler (`yolo/profiler.py`) to measure inference performance
 
 ### Motor Control Integration
 When integrating vision with motor control:
@@ -712,6 +1123,19 @@ When integrating vision with motor control:
 2. Calculate control signals based on detection results (e.g., bounding box centers)
 3. Send commands to Raven board to actuate motors
 4. Main control loop should handle both vision processing and motor updates
+
+### Best Practices
+
+**Coordinate Transformations:**
+- **ALWAYS** use `coordinates/relativeCoordinates.py` for world ↔ robot-relative transformations
+- **NEVER** manually implement rotation/translation math (e.g., `cos(theta) * dx - sin(theta) * dy`)
+- Use `SE2` from `spatialmath` library to represent poses (position + orientation)
+- Example: `from coordinates.relativeCoordinates import world_to_relative, relative_to_world`
+
+**Code Organization:**
+- Keep game-specific logic in `RobotHandler.py` state machine
+- Use `config.py` for field dimensions and game parameters
+- Coordinate transformations should use the standardized utilities, not custom implementations
 
 ### Remote Operation Workflow
 See the **Development Workflow** section under "Remote Communication System" for detailed startup and reconnection procedures.
@@ -737,10 +1161,13 @@ See the **Development Workflow** section under "Remote Communication System" for
 
 ### Common Pitfalls and Solutions
 
-**Detection Issues:**
+**Detection and Segmentation Issues:**
 - **False positives on backgrounds**: Add 10-20% background-only images with empty label files to training dataset
-- **Low confidence scores**: Custom models often perform best with lower thresholds (0.2-0.4 vs 0.5 default)
+- **Low confidence scores**: Custom segmentation model uses 0.25 threshold (vs 0.5 for detection models)
 - **Model not detecting objects**: Check if input resolution matches training size (640x640), verify model path
+- **Segmentation masks missing colored tape**: Tune parameters in `mask_utils.params` (hue_tolerance, blur_size, saturation thresholds)
+- **Quadrilateral fitting fails**: Check `calculateQuadFromMask()` - may need to adjust epsilon range or angle penalty
+- **Zone vertices behind camera**: `transform_uv_to_xy()` returns None for invalid points; ensure zones are in camera view
 
 **Camera and Display:**
 - **Camera resolution**: For PiCamera, always specify `--resolution` to avoid configuration issues
@@ -786,7 +1213,8 @@ MDS/
 ├── main_comp.py               # Computer main script with ComputerReceiver + ClickProcessor
 ├── raven.py                   # Raven motor controller serial interface (local implementation)
 ├── nav.py                     # Navigation system with IMU, odometry, and path planning
-├── pixelTo3D.py              # Pixel-to-3D transformation (camera calibration + homography)
+├── RobotHandler.py            # State machine for autonomous game logic
+├── config.py                  # Game field configuration (boundaries, class names)
 ├── robot.py                   # Robot control script
 ├── requirements.txt           # Python dependencies (legacy, use pyproject.toml)
 ├── pyproject.toml             # Modern Python project configuration and dependencies
@@ -805,11 +1233,24 @@ MDS/
 │       ├── FrameProcessor.py      # Abstract base class
 │       ├── ClickProcessor.py      # Click-to-move interface
 │       └── SaveImageProcessor.py  # Frame capture to disk
+├── coordinates/              # **IMPORTANT: Use these for all coordinate transformations**
+│   └── relativeCoordinates.py     # SE(2) coordinate transformation utilities (world ↔ robot-relative)
+├── calibration/              # Camera calibration scripts
+│   ├── distortion_calibration.py  # Intrinsic camera calibration
+│   ├── manual_calibration.py      # Ground plane homography calibration
+│   └── manual_marking.py          # Interactive point marking utility
 └── yolo/
-    ├── yolo11n.pt            # Pretrained YOLOv11n model (COCO dataset, 80 classes)
-    ├── yolo_detect.py        # Main detection script for inference
+    ├── last.pt               # **PRIMARY SEGMENTATION MODEL** (8.1MB, custom-trained)
+    ├── best.pt               # Best checkpoint from segmentation training (6.4MB)
+    ├── yolo11n.pt            # Pretrained YOLOv11n detection model (COCO, 5.4MB)
+    ├── segment.py            # **Main segmentation script** - loads last.pt
+    ├── mask_utils.py         # **Mask refinement** (colored tape, quadrilateral fitting)
+    ├── zone_utils.py         # **Zone detection** (quad extraction, coord transform)
+    ├── can_utils.py          # **Can detection** (bottom-center extraction)
+    ├── pixelTo3D.py          # **Pixel-to-ground transformation** (camera calibration)
+    ├── yolo_detect.py        # Detection script for pretrained models
+    ├── detect.py             # Alternative detection interface
     ├── profiler.py           # Performance profiling utility
-    ├── turn.py               # (Placeholder)
     ├── yolo11n_ncnn_model/   # NCNN optimized model for embedded deployment
     │   ├── model.ncnn.bin
     │   ├── model.ncnn.param
@@ -837,7 +1278,37 @@ MDS/
 
 ## Model Information
 
-The YOLO11n model is trained on COCO dataset with 80 object classes including:
+### Custom Segmentation Model (yolo/last.pt)
+
+The primary model for MASLAB 2026 competition - trained for instance segmentation of game objects.
+
+**Model Details:**
+- Architecture: YOLOv11n segmentation
+- Task: Instance segmentation (pixel-level masks)
+- Input size: 640x640 pixels
+- Confidence threshold: 0.25 (configurable in `segment.py`)
+- Classes: 8 game-specific classes (see `config.py`)
+
+**Class Information:**
+```python
+0: 'Boundary'      # Field boundary markers
+1: 'Golden Can'    # High-value scoring objects
+2: 'Golden Zone'   # High-value scoring zones (segmented)
+3: 'Green Can'     # Team-colored cans
+4: 'Green Zone'    # Team scoring zones (segmented)
+5: 'Red Can'       # Opponent team cans
+6: 'Red Zone'      # Opponent scoring zones (segmented)
+7: 'Robot'         # Other robots on field
+```
+
+**Model Outputs:**
+- `result.boxes`: Bounding boxes with class IDs and confidence scores
+- `result.masks`: Pixel-level segmentation masks for each detection
+- `result.names`: Dictionary mapping class IDs to class names
+
+### Pretrained Detection Model (yolo/yolo11n.pt)
+
+For general object detection (non-segmentation), the YOLOv11n model is trained on COCO dataset with 80 object classes including:
 - People and vehicles: person, bicycle, car, motorcycle, bus, truck
 - Animals: cat, dog, bird, horse, cow, sheep, etc.
 - Common objects: chair, bottle, book, cell phone, laptop, etc.
@@ -846,4 +1317,4 @@ Full class list available in `yolo/yolo11n_ncnn_model/metadata.yaml`.
 
 Input size: 640x640 pixels
 Stride: 32
-Task: Object detection (bounding boxes)
+Task: Object detection (bounding boxes only)

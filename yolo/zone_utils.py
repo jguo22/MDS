@@ -125,8 +125,8 @@ def getZones(result, image):
         vertices = quad.reshape(4, 2)
 
         # Transform each vertex
-        transformed_vertices = []
         isValidQuad = True
+        transformed_vertices = []
         for vertex in vertices:
             u, v = vertex[0], vertex[1]  # pixel coordinates
             xy = transform_uv_to_xy(u, v)  # ground plane coordinates (mm)
@@ -134,9 +134,6 @@ def getZones(result, image):
             if xy is None:
                 isValidQuad = False
                 break
-            else:
-                x, y = xy
-                transformed_vertices.append([x, y])
         if not isValidQuad:
             continue
 

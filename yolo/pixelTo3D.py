@@ -23,7 +23,6 @@ def pixel_to_camera_coords(
     pixel_x,  # 0 to 640
     pixel_y,  # 0 to 480
 ):
-    # TODO: FIX THIS
     """
     Convert a pixel coordinate to 3D camera coordinates.
     NOTE: USING 640x480
@@ -54,20 +53,6 @@ def pixel_to_camera_coords(
 
     # Step 4: If depth provided, calculate actual 3D position
     return ray_direction
-
-
-def pixel_to_robot_horizontal(pixel_x, pixel_y):
-    ray_direction = pixel_to_camera_coords(pixel_x, pixel_y)
-
-    ray_direction = ANGLE_MATRIX @ ray_direction
-
-    x = ray_direction[0]
-    y = ray_direction[1]
-    z = ray_direction[2]
-
-    x_scaled = x / z * HEIGHT_MM
-    y_scaled = y / z * HEIGHT_MM
-    return x_scaled, y_scaled
 
 
 h = np.array([[-6.09741811e-01, - 2.09501156e-02, 1.57159029e+02],

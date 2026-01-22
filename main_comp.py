@@ -1,6 +1,7 @@
 import time
 import argparse
 import threading
+from RobotHandler import RobotHandler
 from connection import config
 from connection.ComputerReceiver import ComputerReceiver
 from connection.frame_processor.ClickProcessor import ClickProcessor
@@ -29,31 +30,38 @@ def main():
     window_name = "Pi Camera"
 
     # ----------------- CREATE RECEIVER AND PROCESSORS -----------------
-    receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
-    click_processor = ClickProcessor(receiver, window_name)
+    computer_receiver = ComputerReceiver(
+        args.host, args.video_port, args.coord_port)
+    click_processor = ClickProcessor(computer_receiver, window_name)
     save_image_processor = SaveImageProcessor(2)
+    robotHandler = RobotHandler(computer_receiver)
 
-    def process(frame: np.ndarray, frame_id: int) -> None:
+    def process(
+            frame: np.ndarray,
+            frame_id: int,
+            x: float,
+            y: float,
+            theta: float) -> None:
         # Update frame dimensions
         # save_image_processor.process(frame, frame_id)
         click_processor.process(frame, frame_id)
         pass
 
     # Set the frame callback to use our processor
-    receiver.set_frame_callback(process)
+    computer_receiver.set_frame_callback(process)
 
     # Start keyboard input thread
     threading.Thread(target=handleKeyboardMovementsLoop, daemon=True).start()
 
     # ----------------- START SERVERS -----------------
-    if not receiver.start_servers():
+    if not computer_receiver.start_servers():
         return
 
     while True:
         print("connecting")
-        if receiver.wait_for_connection():
+        if computer_receiver.wait_for_connection():
             print("Starting receive loop...")
-            receiver.receive_loop(
+            computer_receiver.receive_loop(
                 show_video=not args.no_display,
                 window_name=window_name
             )

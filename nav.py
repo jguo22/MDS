@@ -5,14 +5,14 @@ from typing import Tuple
 from raven import Raven
 from coordinates.relativeCoordinates import world_to_relative
 
+from config import WHEEL_D, BASE_D
+
 
 # Miguel's Navigation movement class
 LEFT_MOTOR = Raven.MotorChannel.CH2
 RIGHT_MOTOR = Raven.MotorChannel.CH3
 TICK_ROTATION = 64 * 50
 # measurements in mm
-WHEEL_D = 101.6
-BASE_D = 237.236
 ANGLE_PROP = 5000
 ANGLE_D = 5000
 
@@ -224,7 +224,8 @@ class Nav:
         robot_theta = self.angle
 
         # Use the centralized coordinate transformation function
-        return world_to_relative(world_x, world_y, robot_x, robot_y, robot_theta)
+        return world_to_relative(
+            world_x, world_y, robot_x, robot_y, robot_theta)
 
     def override_paths_world_xy(self, world_x, world_y):
         """

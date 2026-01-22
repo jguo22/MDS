@@ -16,3 +16,7 @@ CLASS_NAMES = [
     'Red Zone',
     'Robot'
 ]
+
+WHEEL_D = 101.6
+BASE_D = 237.236
+SCOOPER_LENGTH = 254

@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Tuple
 from connection.ComputerReceiver import ComputerReceiver
 from .FrameProcessor import FrameProcessor
-from pixelTo3D import transform_uv_to_xy
+from yolo.pixelTo3D import transform_uv_to_xy
 
 
 class ClickProcessor(FrameProcessor):
