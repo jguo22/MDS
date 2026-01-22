@@ -60,7 +60,9 @@ def main():
 
             # Create new streamer instance for this connection
             streamer = PiStreamer(
-                camera=camera,
+                camera,
+                nav.raven,
+                nav.imu_wrapper,
                 host=config.COMPUTER_IP,
                 video_port=config.VIDEO_PORT,
                 command_port=config.COMMAND_PORT

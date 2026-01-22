@@ -4,6 +4,7 @@ import numpy as np
 from enum import Enum
 from typing import List, Tuple
 from spatialmath import SE2
+from connection.ComputerReceiver import ComputerReceiver
 from yolo.segment import segmentImage
 from yolo.zone_utils import getZones
 from yolo.can_utils import getCans
