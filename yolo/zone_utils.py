@@ -3,8 +3,9 @@ Zone detection and quadrilateral utilities.
 """
 import cv2 as cv
 import numpy as np
-from pixelTo3D import transform_uv_to_xy
-from mask_utils import fixSegmentation, calculateQuadFromMask
+
+from .pixelTo3D import transform_uv_to_xy
+from .mask_utils import fixSegmentation, calculateQuadFromMask
 
 
 def getQuadCenter(quad):

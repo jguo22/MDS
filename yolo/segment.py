@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 from ultralytics.models.yolo import YOLO
 
-from mask_utils import calculateQuadFromMask, fixSegmentation, yoloMaskToBinary
-from zone_utils import annotate_poly
+from .mask_utils import calculateQuadFromMask, fixSegmentation, yoloMaskToBinary
+from .zone_utils import annotate_poly
 
 
 SCRIPT_DIR = Path(__file__).parent.absolute()

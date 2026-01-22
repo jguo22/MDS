@@ -1,11 +1,14 @@
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
 
 
 class FrameProcessor(ABC):
     @abstractmethod
-    def process(self, frame: np.ndarray,
-                frame_id: int) -> Optional[Tuple[float, float, float]]:
+    def process(
+            self,
+            frame: np.ndarray,
+            frame_id: int,
+            x: float,
+            y: float,
+            theta: float) -> None:
         pass
-

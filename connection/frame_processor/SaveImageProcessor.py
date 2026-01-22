@@ -2,7 +2,7 @@ import os
 import time
 import cv2
 import numpy as np
-from typing import Optional, Tuple
+
 from .FrameProcessor import FrameProcessor
 
 
@@ -30,8 +30,13 @@ class SaveImageProcessor(FrameProcessor):
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def process(self, frame: np.ndarray,
-                frame_id: int) -> Optional[Tuple[float, float, float]]:
+    def process(
+            self,
+            frame: np.ndarray,
+            frame_id: int,
+            x: float,
+            y: float,
+            theta: float) -> None:
         """
         Process a frame, saving it to disk if cooldown has passed.
 

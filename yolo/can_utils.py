@@ -1,6 +1,7 @@
-from mask_utils import getSmoothRegionFromMask, yoloMaskToBinary
 import numpy as np
-from pixelTo3D import transform_uv_to_xy
+
+from .pixelTo3D import transform_uv_to_xy
+from .mask_utils import getSmoothRegionFromMask, yoloMaskToBinary
 
 
 def getBottomCenterPixel(mask):

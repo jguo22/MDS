@@ -4,11 +4,9 @@ import threading
 from RobotHandler import RobotHandler
 from connection import config
 from connection.ComputerReceiver import ComputerReceiver
-from connection.frame_processor.ClickProcessor import ClickProcessor
+from connection.frame_processor.ClickProcessor import ClickAndKeyboardProcessor
 from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
 import numpy as np
-
-from handleKeyboardMovements import handleKeyboardMovementsLoop
 
 
 def main():
@@ -32,7 +30,7 @@ def main():
     # ----------------- CREATE RECEIVER AND PROCESSORS -----------------
     computer_receiver = ComputerReceiver(
         args.host, args.video_port, args.coord_port)
-    click_processor = ClickProcessor(computer_receiver, window_name)
+    inputProcessor = ClickAndKeyboardProcessor(computer_receiver, window_name)
     save_image_processor = SaveImageProcessor(2)
     robotHandler = RobotHandler(computer_receiver)
 
@@ -44,14 +42,16 @@ def main():
             theta: float) -> None:
         # Update frame dimensions
         # save_image_processor.process(frame, frame_id)
-        click_processor.process(frame, frame_id)
-        pass
+        inputProcessor.process(frame, frame_id, x, y, theta)
+        robotHandler.handleFrame(frame, frame_id, x, y, theta)
 
     # Set the frame callback to use our processor
     computer_receiver.set_frame_callback(process)
 
     # Start keyboard input thread
-    threading.Thread(target=handleKeyboardMovementsLoop, daemon=True).start()
+    threading.Thread(
+        target=inputProcessor.handleKeyboardMovementsLoop,
+        daemon=True).start()
 
     # ----------------- START SERVERS -----------------
     if not computer_receiver.start_servers():
