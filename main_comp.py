@@ -41,7 +41,7 @@ def main():
             y: float,
             theta: float) -> None:
         # Update frame dimensions
-        # save_image_processor.process(frame, frame_id)
+        save_image_processor.process(frame, frame_id, x, y, theta)
         inputProcessor.process(frame, frame_id, x, y, theta)
         # robotHandler.handleFrame(frame, frame_id, x, y, theta)
 
