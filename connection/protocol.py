@@ -130,9 +130,9 @@ def send_frame(
     return send_message(sock, packet)
 
 
-def send_disconnect(sock: socket.socket) -> bool:
+def send_disconnect_from_pi(sock: socket.socket) -> bool:
     """
-    Send graceful disconnect signal (single 0 byte).
+    Send graceful disconnect signal from Pi (single 0 byte).
 
     Args:
         sock: Socket to send on

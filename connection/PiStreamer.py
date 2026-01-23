@@ -268,7 +268,7 @@ class PiStreamer():
         self.running = False
         # Send graceful disconnect signal before closing
         if self.video_client_socket:
-            protocol.send_disconnect(self.video_client_socket)
+            protocol.send_disconnect_from_pi(self.video_client_socket)
         protocol.close_socket(self.video_client_socket)
         self.video_client_socket = None
         protocol.close_socket(self.command_client_socket)
