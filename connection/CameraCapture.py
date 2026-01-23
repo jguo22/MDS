@@ -42,6 +42,9 @@ class CameraCapture:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
 
+        self.cap.set(cv2.CAP_PROP_FPS, DEFAULT_MAX_FPS)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
         # disable auto exposure and white balance to prevent messing up calibration
         # Set to manual exposure mode with 0.25 "magic number"
         self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
@@ -54,7 +57,12 @@ class CameraCapture:
         # Set Resolution
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.FRAME_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
-        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        # self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+
+        print(f"Actual FPS: {self.cap.get(cv2.CAP_PROP_FPS)}")
+        print(f"Actual Width: {self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)}")
+        print(f"Actual Height: {self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)}")
+        print(f"Actual Buffer: {self.cap.get(cv2.CAP_PROP_BUFFERSIZE)}")
         return True
 
     def read(self) -> Optional[np.ndarray]:
