@@ -11,8 +11,10 @@ VIDEO_PORT = 5000  # Port for video streaming
 COMMAND_PORT = 5001  # Port for command data
 
 # Video settings
-FRAME_WIDTH = 800
-FRAME_HEIGHT = 450
+# networking likes multiples of 32 for some reason,
+# when i put 854, it sent 864 instead
+FRAME_WIDTH = 864
+FRAME_HEIGHT = 480
 JPEG_QUALITY = 80  # 0-100, higher = better quality but more bandwidth
 DEFAULT_MAX_FPS = 30.0  # Default maximum frames per second for streaming
 
