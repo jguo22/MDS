@@ -22,6 +22,7 @@ import math
 import nav
 
 from . import config, protocol, message_types
+from profiler import Profiler
 
 
 class ComputerReceiver():
@@ -63,6 +64,9 @@ class ComputerReceiver():
         self.on_frame: Callable[[np.ndarray, int, float, float, float], None] = (
             lambda frame, frame_id, x, y, theta: None)
         self._lock = threading.Lock()
+
+        # Profiler for receive loop performance
+        self.profiler = Profiler()
 
     def set_frame_callback(
             self, callback: Callable[[np.ndarray, int, float, float, float], None]):
@@ -160,9 +164,12 @@ class ComputerReceiver():
         frame_count = 0
 
         print("Receiving frames. Press 'q' to quit.")
+        print("Press 'p' to save profiler data.")
         failed_frames: int = 0
         while True:
             try:
+                self.profiler.start()
+
                 # Receive frame
                 result = protocol.recv_frame(self.video_client_socket)
                 if result is None:
@@ -175,11 +182,14 @@ class ComputerReceiver():
                 else:
                     failed_frames = 0
 
+                self.profiler.record("recv_frame")
+
                 frame_data, frame_id, x, y, theta = result
 
                 # Decode JPEG
                 np_arr = np.frombuffer(frame_data, dtype=np.uint8)
                 frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                self.profiler.record("decode_jpeg")
 
                 if frame is None:
                     continue
@@ -187,6 +197,7 @@ class ComputerReceiver():
                 # Process frame with callback and get movement command
                 try:
                     self.on_frame(frame, frame_id, x, y, theta)
+                    self.profiler.record("frame_callback")
                 except Exception as e:
                     print("Error in frame callback")
                     print(e)
@@ -207,12 +218,21 @@ class ComputerReceiver():
                 # Display
                 if show_video:
                     cv2.imshow(window_name, frame)
+                    self.profiler.record("imshow")
                     key = cv2.waitKey(1) & 0xFF
+                    self.profiler.record("waitKey")
+
                     if key == ord('q'):
                         break
                     elif key == ord('s'):
                         cv2.imwrite(f"capture_{frame_id}.jpg", frame)
                         print(f"Saved capture_{frame_id}.jpg")
+                    elif key == ord('p'):
+                        print("Saving profiler data...")
+                        self.profiler.save_profile()
+                        print("Profiler data saved!")
+
+                self.profiler.end_frame()
             except KeyboardInterrupt:
                 print("\nStopped by user")
                 self.close_client_connections()

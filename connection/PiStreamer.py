@@ -35,6 +35,7 @@ import traceback
 from IMUWrapper import IMUWrapper
 from RavenWrapper import RavenWrapper
 from connection import message_types
+from profiler import Profiler
 
 from . import config
 from . import protocol
@@ -86,6 +87,9 @@ class PiStreamer():
             int, list[float]], None] = (lambda _, __: None)
 
         self._command_receiver_thread: Optional[threading.Thread] = None
+
+        # Profiler for stream performance
+        self.profiler = Profiler()
 
     def set_command_callback(
             self, callback: Callable[[int, list[float]], None]):
@@ -197,9 +201,11 @@ class PiStreamer():
         frame_interval = 1.0 / max_fps
 
         print("Streaming started. Press Ctrl+C to stop.")
+        print(f"Target FPS: {max_fps} (frame interval: {frame_interval*1000:.1f}ms)")
 
         while self.running:
             try:
+                self.profiler.start()
                 start_time = time.time()
 
                 # Capture frame
@@ -208,6 +214,7 @@ class PiStreamer():
                     print("failed to read frame from camera")
                     time.sleep(0.1)
                     continue
+                self.profiler.record("camera_read")
 
                 # Encode as JPEG
                 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
@@ -217,10 +224,12 @@ class PiStreamer():
                 if not success:
                     print("Failed to encode frame")
                     continue
+                self.profiler.record("jpeg_encode")
 
                 # Get current robot pose
                 x, y = self.ravenWrapper.get_odometry()
                 theta = self.imu_wrapper.get_heading()
+                self.profiler.record("get_pose")
 
                 # Send frame with pose data
                 if not protocol.send_frame(
@@ -230,13 +239,20 @@ class PiStreamer():
                         x, y, theta):
                     print("Failed to send frame. Continuing...")
                     continue
+                self.profiler.record("send_frame")
 
                 self.frame_id += 1
 
                 # Rate limiting
                 elapsed = time.time() - start_time
                 if elapsed < frame_interval:
-                    time.sleep(frame_interval - elapsed)
+                    sleep_time = frame_interval - elapsed
+                    time.sleep(sleep_time)
+                    self.profiler.record("rate_limit_sleep")
+                else:
+                    self.profiler.record("rate_limit_sleep")
+
+                self.profiler.end_frame()
             except KeyboardInterrupt:
                 print("\nStreaming stopped by user")
                 self.stop()

@@ -7,6 +7,7 @@ from connection.ComputerReceiver import ComputerReceiver
 from connection.frame_processor.ClickProcessor import ClickAndKeyboardProcessor
 from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
 import numpy as np
+from profiler import Profiler
 
 
 def main():
@@ -34,6 +35,9 @@ def main():
     save_image_processor = SaveImageProcessor(2)
     robotHandler = RobotHandler(computer_receiver)
 
+    # Create main profiler for frame processing pipeline
+    main_profiler = Profiler()
+
     def process(
             frame: np.ndarray,
             frame_id: int,
@@ -41,9 +45,13 @@ def main():
             y: float,
             theta: float) -> None:
         # Update frame dimensions
-        save_image_processor.process(frame, frame_id, x, y, theta)
+        # save_image_processor.process(frame, frame_id, x, y, theta)
+        main_profiler.start()
         inputProcessor.process(frame, frame_id, x, y, theta)
-        # robotHandler.handleFrame(frame, frame_id, x, y, theta)
+        main_profiler.record("inputProcessor")
+        robotHandler.handleFrame(frame, frame_id, x, y, theta)
+        main_profiler.record("robotHandler")
+        main_profiler.end_frame()
 
     # Set the frame callback to use our processor
     computer_receiver.set_frame_callback(process)
