@@ -59,7 +59,7 @@ class RobotHandler():
             x: float,
             y: float,
             theta: float):
-        self.profiler.start()
+        self.profiler.start_frame()
         self.isHandlingFrame = True
 
         result = segmentImage(frame)

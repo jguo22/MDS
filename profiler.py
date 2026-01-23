@@ -17,7 +17,7 @@ class Profiler:
         self.profile = cProfile.Profile()
         self._profile_enabled = False
 
-    def start(self):
+    def start_frame(self):
         if not self._profile_enabled:
             self.profile.enable()
             self._profile_enabled = True

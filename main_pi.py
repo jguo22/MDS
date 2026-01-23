@@ -74,7 +74,7 @@ def main():
             # Attempt connection and stream
             if streamer.connect():
                 print("Connected! Streaming...")
-                streamer.stream(max_fps=config.DEFAULT_MAX_FPS)
+                streamer.stream(max_fps=config.FPS)
                 # stream() blocks until disconnected
                 print("Stream ended")
             else:

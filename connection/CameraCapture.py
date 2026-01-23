@@ -42,7 +42,7 @@ class CameraCapture:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
 
-        self.cap.set(cv2.CAP_PROP_FPS, DEFAULT_MAX_FPS)
+        self.cap.set(cv2.CAP_PROP_FPS, config.FPS)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         # disable auto exposure and white balance to prevent messing up calibration

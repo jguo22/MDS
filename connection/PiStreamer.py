@@ -184,7 +184,7 @@ class PiStreamer():
 
         print("Command receiver thread exiting")
 
-    def stream(self, max_fps: float = config.DEFAULT_MAX_FPS):
+    def stream(self, max_fps: float = config.FPS):
         """
         Start streaming video frames. Blocks until connection is lost or stopped.
 
@@ -201,11 +201,12 @@ class PiStreamer():
         frame_interval = 1.0 / max_fps
 
         print("Streaming started. Press Ctrl+C to stop.")
-        print(f"Target FPS: {max_fps} (frame interval: {frame_interval*1000:.1f}ms)")
+        print(
+            f"Target FPS: {max_fps} (frame interval: {frame_interval*1000:.1f}ms)")
 
         while self.running:
             try:
-                self.profiler.start()
+                self.profiler.start_frame()
                 start_time = time.time()
 
                 # Capture frame
