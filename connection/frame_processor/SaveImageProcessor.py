@@ -47,6 +47,7 @@ class SaveImageProcessor(FrameProcessor):
         Returns:
             Always returns None
         """
+        print(frame.shape)
         current_time = time.time()
 
         # Check if cooldown has passed
