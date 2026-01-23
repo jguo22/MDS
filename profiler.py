@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 from typing import Dict, List
 import time
+import sys
 
 # Get absolute path to profiles directory (relative to this script)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,7 +40,7 @@ class Profiler:
         for name, times in self.timings.items():
             if times:
                 print(
-                    f"{name}: {sum(times[-10:])/len(times[-10:]):.2f}ms (last 10 avg)")
+                    f"{name}: {sum(times[-10:]) / len(times[-10:]):.2f}ms (last 10 avg)")
         print("=" * 30)
 
     def save_profile(self):
