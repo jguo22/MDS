@@ -71,7 +71,7 @@ def train_model():
     model = YOLO("yolo11n-seg.pt")
 
     # Start training
-    results = model.train(**config)
+    _results = model.train(**config)
 
     # Get the path where YOLO saved the best model
     model_path = Path(config['project']) / \

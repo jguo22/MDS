@@ -21,9 +21,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "black",
-    "flake8",
+    "ruff",
+    "autopep8",
+    "pyright"
 ]
 
 [tool.setuptools]

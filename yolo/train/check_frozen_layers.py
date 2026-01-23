@@ -26,7 +26,7 @@ for name, param in torch_model.named_parameters():
         trainable_count += 1
 
 print("\n" + "=" * 80)
-print(f"\nLayers that will be FROZEN (requires_grad=False):")
+print("\nLayers that will be FROZEN (requires_grad=False):")
 print("-" * 80)
 for name, param in torch_model.named_parameters():
     if not param.requires_grad:
@@ -34,7 +34,7 @@ for name, param in torch_model.named_parameters():
         frozen_count += 1
 
 print("\n" + "=" * 80)
-print(f"Summary:")
+print("Summary:")
 print(f"  Total trainable layers: {trainable_count}")
 print(f"  Total frozen layers: {frozen_count}")
 print(f"  Total parameters: {frozen_count + trainable_count}")

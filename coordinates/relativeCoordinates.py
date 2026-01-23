@@ -40,7 +40,7 @@ conversions that properly handle both translation and rotation.
 
 import numpy as np
 from spatialmath import SE2
-from typing import List, Tuple, Union, Sequence
+from typing import List, Tuple, Union
 import math
 
 

@@ -1,4 +1,3 @@
-import struct
 import serial
 import serial.tools.list_ports
 import numpy as np
@@ -7,18 +6,19 @@ import time
 
 try:
     from gpiozero import DigitalOutputDevice
-except:
+except BaseException as e:
+    print(e)
     pass
 
 
 class STM32Programmer:
     # Constants
     MAX_MEMORY_SIZE = 256
-    ## Basic
+    # Basic
     START = b"\x7F"
     ACK = b"\x79"
     NACK = b"\0x1F"
-    ## Commands
+    # Commands
     GET_ID = 0x02
     WRITE_UNPROTECT = 0x73
     WRITE_MEMORY = 0x31
@@ -82,7 +82,7 @@ class STM32Programmer:
                 # Write rest at next 256 address
                 return self.__write_memory(
                     start_address + STM32Programmer.MAX_MEMORY_SIZE,
-                    data[STM32Programmer.MAX_MEMORY_SIZE :],
+                    data[STM32Programmer.MAX_MEMORY_SIZE:],
                 )
         else:
             if self.__write_command(STM32Programmer.WRITE_MEMORY):
@@ -163,7 +163,8 @@ class STM32Programmer:
 
     def go(self):
         if self.__write_command(STM32Programmer.GO):
-            return self.__write_with_crc(self.__program_start_address.to_bytes(4))
+            return self.__write_with_crc(
+                self.__program_start_address.to_bytes(4))
 
 
 class BNRGLPProgrammer(STM32Programmer):
@@ -229,7 +230,8 @@ if __name__ == "__main__":
             if pin is not None:
                 try:
                     return DigitalOutputDevice(pin, initial_value=init_val)
-                except:
+                except BaseException as e:
+                    print(e)
                     pass
             return None
 
@@ -241,7 +243,8 @@ if __name__ == "__main__":
         return (serial_args, pins)
 
     for programmer_class in STM32Programmer.__subclasses__():
-        SUPPORTED_DEVICES[programmer_class.__name__] = {"class": programmer_class}
+        SUPPORTED_DEVICES[programmer_class.__name__] = {
+            "class": programmer_class}
 
     # Adapted from https://www.geeksforgeeks.org/python-key-value-pair-using-argparse/
     # create a keyvalue class
@@ -262,11 +265,17 @@ if __name__ == "__main__":
         "Device", "Options for selecting device and binary file"
     )
     device_parser.add_argument(
-        "-d", "--device", type=str, required=True, help="Device or programmer to use"
-    )
+        "-d",
+        "--device",
+        type=str,
+        required=True,
+        help="Device or programmer to use")
     device_parser.add_argument(
-        "-b", "--binary", type=str, required=True, help="Binary (*.bin) firmware file"
-    )
+        "-b",
+        "--binary",
+        type=str,
+        required=True,
+        help="Binary (*.bin) firmware file")
     device_parser.add_argument(
         "-dargs",
         "--device-args",
@@ -277,7 +286,8 @@ if __name__ == "__main__":
     )
     # Serial options
     default_port = sorted(serial.tools.list_ports.comports())[0].device
-    serial_parser = parser.add_argument_group("Serial", "Options for serial port")
+    serial_parser = parser.add_argument_group(
+        "Serial", "Options for serial port")
     serial_parser.add_argument(
         "-spt",
         "--serial_port",
@@ -286,21 +296,30 @@ if __name__ == "__main__":
         help="Serial port connected to the STM32",
     )
     serial_parser.add_argument(
-        "-sbd", "--serial_baud", type=int, default=115200, help="Serial port baud rate"
-    )
+        "-sbd",
+        "--serial_baud",
+        type=int,
+        default=115200,
+        help="Serial port baud rate")
     # Pin options
     pin_parser = parser.add_argument_group(
         "Pins", "Options for connecting to hardware pins"
     )
     pin_parser.add_argument(
-        "-rst", "--reset", type=int, help="Pin connected to nRST pin of the STM32"
-    )
+        "-rst",
+        "--reset",
+        type=int,
+        help="Pin connected to nRST pin of the STM32")
     pin_parser.add_argument(
-        "-bt0", "--boot0", type=int, help="Pin connected to BOOT0 pin of the STM32"
-    )
+        "-bt0",
+        "--boot0",
+        type=int,
+        help="Pin connected to BOOT0 pin of the STM32")
     pin_parser.add_argument(
-        "-bt1", "--boot1", type=int, help="Pin connected to BOOT1 pin of the STM32"
-    )
+        "-bt1",
+        "--boot1",
+        type=int,
+        help="Pin connected to BOOT1 pin of the STM32")
 
     # Parse args
     args = parser.parse_args()
@@ -311,9 +330,9 @@ if __name__ == "__main__":
         device_options = SUPPORTED_DEVICES[args.device]
     except KeyError:
         raise RuntimeError(
-            "Unsupported device or programmer. Supported devices and programmers are: \n\r%s"
-            % list(SUPPORTED_DEVICES.keys())
-        )
+            "Unsupported device or programmer. Supported devices and programmers are: \n\r%s" %
+            list(
+                SUPPORTED_DEVICES.keys()))
     programmer_class = device_options["class"]
     # Add default serial options
     try:
