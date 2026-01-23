@@ -39,3 +39,9 @@ while True:
     stream.set_odometry(odom)
 
     time.sleep(0.05)
+
+
+class Telemetry():
+    def __init__(self):
+        self.stream = Streamer()
+        pass

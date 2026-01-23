@@ -43,7 +43,7 @@ def main():
         # Update frame dimensions
         # save_image_processor.process(frame, frame_id)
         inputProcessor.process(frame, frame_id, x, y, theta)
-        robotHandler.handleFrame(frame, frame_id, x, y, theta)
+        # robotHandler.handleFrame(frame, frame_id, x, y, theta)
 
     # Set the frame callback to use our processor
     computer_receiver.set_frame_callback(process)
@@ -61,10 +61,15 @@ def main():
         print("connecting")
         if computer_receiver.wait_for_connection():
             print("Starting receive loop...")
-            computer_receiver.receive_loop(
-                show_video=not args.no_display,
-                window_name=window_name
-            )
+            try:
+                computer_receiver.receive_loop(
+                    show_video=not args.no_display,
+                    window_name=window_name
+                )
+            except KeyboardInterrupt:
+                print("\nSaving profiler data before exit...")
+                robotHandler.profiler.save_profile()
+                raise
 
         wait_time = config.RECONNECT_DELAY
         print(f"Waiting for {wait_time} seconds before reconnecting")

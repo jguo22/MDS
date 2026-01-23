@@ -11,6 +11,7 @@ from yolo.zone_utils import getZones
 from yolo.can_utils import getCans
 from config import CENTER_BORDER_X, CAN_DIAMETER, BASE_D, FT_TO_MM, SCOOPER_LENGTH
 from coordinates.relativeCoordinates import get_movement_plan, world_to_relative
+from profiler import Profiler
 
 
 class RobotState(Enum):
@@ -44,6 +45,9 @@ class RobotHandler():
         self.computer_receiver = computer_receiver
         self.isHandlingFrame = False
 
+        # Profiler for performance monitoring
+        self.profiler = Profiler()
+
     def start(self):
         self.startFrame = -1
         self.startTime = time.time()
@@ -55,10 +59,14 @@ class RobotHandler():
             x: float,
             y: float,
             theta: float):
+        self.profiler.start()
         self.isHandlingFrame = True
 
         result = segmentImage(frame)
+        self.profiler.record("segmentImage")
+
         getZones(result, frame)
+        self.profiler.record("getZones")
 
         if self.state == RobotState.StartScan:
             if self.startFrame == -1:
@@ -67,10 +75,11 @@ class RobotHandler():
                 # ------------- PLAN PATH TO DETECTED CANS -------------
                 # Get all detected cans in image coordinates
                 can_locations_xy, _ = getCans(result, frame)
+                self.profiler.record("getCans")
 
                 # Filter cans that are on our side of the center border
                 filtered_cans = [
-                    (x, y) for x, y in can_locations_xy
+                    (y * 8, x * 8) for x, y in can_locations_xy
                     if x < (CENTER_BORDER_X + CAN_DIAMETER)
                 ]
 
@@ -81,11 +90,13 @@ class RobotHandler():
                 # Store the planned path
                 self.planned_path = sorted_cans
                 # add green zone
-                self.planned_path.append((0, 4 * FT_TO_MM))
+                self.planned_path.append((4 * FT_TO_MM, 0))
+                self.state = RobotState.StartGather
+                self.profiler.record("path_planning")
 
         elif self.state == RobotState.StartGather:
             # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
-            if self.lastTimeSentPath == 0:
+            if time.time() - self.lastTimeSentPath > 2:
                 self.lastTimeSentPath = time.time()
 
                 plan = get_movement_plan(self.planned_path, SE2(x, y, theta))
@@ -97,6 +108,12 @@ class RobotHandler():
                     movement_args.extend(get_forward_mm(dist))
 
                 self.computer_receiver.override_movement(movement_args)
+                self.profiler.record("send_movement")
+
+            while len(self.planned_path) > 0 and self.is_point_in_reach(
+                    self.planned_path[0], (x, y), theta):
+                self.planned_path.pop(0)
+            self.profiler.record("check_reached")
 
         elif self.state == RobotState.MoveToZone:
             pass
@@ -104,6 +121,7 @@ class RobotHandler():
             print("ERROR: INVALID STATE")
 
         self.isHandlingFrame = False
+        self.profiler.end_frame()
 
     def getOurZones(self, result, image):
         """

@@ -227,15 +227,9 @@ class Nav:
         # Create movement path: rotate, then forward
         movements = []
 
-        # Only add rotation if angle is significant (> 0.01 radians ≈ 0.57
-        # degrees)
-        if abs(target_angle) > 0.01:
-            movements.append(NavMove(*get_rotate(target_angle), smooth=True))
+        movements.append(NavMove(*get_rotate(target_angle), False))
 
-        # Only add forward movement if distance is significant (> 1 mm)
-        if target_distance > 1.0:
-            movements.append(
-                NavMove(*get_forward_mm(target_distance), smooth=False))
+        movements.append(NavMove(*get_forward_mm(target_distance), False))
 
         # Override current path with new movements
         self.overridePaths(movements)
