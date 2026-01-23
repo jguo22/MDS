@@ -43,7 +43,8 @@ def main():
             frame_id: int,
             x: float,
             y: float,
-            theta: float) -> None:
+            theta: float,
+            camera_angle: float) -> None:
         # Update frame dimensions
         # save_image_processor.process(frame, frame_id, x, y, theta)
         main_profiler.start()

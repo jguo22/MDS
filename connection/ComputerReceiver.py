@@ -60,27 +60,28 @@ class ComputerReceiver():
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
 
-        # takes in frame, frame_id, x, y, theta
-        self.on_frame: Callable[[np.ndarray, int, float, float, float], None] = (
-            lambda frame, frame_id, x, y, theta: None)
+        # takes in frame, frame_id, x, y, theta, camera_angle
+        self.on_frame: Callable[[np.ndarray, int, float, float, float, float], None] = (
+            lambda frame, frame_id, x, y, theta, camera_angle: None)
         self._lock = threading.Lock()
 
         # Profiler for receive loop performance
         self.profiler = Profiler()
 
     def set_frame_callback(
-            self, callback: Callable[[np.ndarray, int, float, float, float], None]):
+            self, callback: Callable[[np.ndarray, int, float, float, float, float], None]):
         """
         Set callback for processing frames and generating movement commands.
         THIS BLOCKS THE RECEIVING FRAMES LOOP
 
         Args:
-            callback: Function(frame, frame_id, x, y, theta) -> None
+            callback: Function(frame, frame_id, x, y, theta, camera_angle) -> None
                 - frame: Video frame as numpy array
                 - frame_id: Frame sequence number
                 - x: Robot x position in mm (world coordinates)
                 - y: Robot y position in mm (world coordinates)
                 - theta: Robot orientation in radians
+                - camera_angle: Camera servo angle in radians
         """
         self.on_frame = callback
 
@@ -179,12 +180,16 @@ class ComputerReceiver():
                             f"Didn't Receive Frame (Connection Lost) {failed_frames}")
                     time.sleep(0.5)
                     continue
+                elif result == 0:
+                    # Graceful disconnect from Pi
+                    print("Pi disconnected gracefully")
+                    break
                 else:
                     failed_frames = 0
 
                 self.profiler.record("recv_frame")
 
-                frame_data, frame_id, x, y, theta = result
+                frame_data, frame_id, x, y, theta, camera_angle = result
 
                 # Decode JPEG
                 np_arr = np.frombuffer(frame_data, dtype=np.uint8)
@@ -196,7 +201,7 @@ class ComputerReceiver():
 
                 # Process frame with callback and get movement command
                 try:
-                    self.on_frame(frame, frame_id, x, y, theta)
+                    self.on_frame(frame, frame_id, x, y, theta, camera_angle)
                     self.profiler.record("frame_callback")
                 except Exception as e:
                     print("Error in frame callback")

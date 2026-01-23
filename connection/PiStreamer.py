@@ -229,6 +229,7 @@ class PiStreamer():
                 # Get current robot pose
                 x, y = self.ravenWrapper.get_odometry()
                 theta = self.imu_wrapper.get_heading()
+                camera_angle = self.ravenWrapper.get_camera_angle()
                 self.profiler.record("get_pose")
 
                 # Send frame with pose data
@@ -236,7 +237,8 @@ class PiStreamer():
                         self.video_client_socket,
                         encoded.tobytes(),
                         self.frame_id,
-                        x, y, theta):
+                        x, y, theta,
+                        camera_angle):
                     print("Failed to send frame. Continuing...")
                     continue
                 self.profiler.record("send_frame")
@@ -264,6 +266,9 @@ class PiStreamer():
     def stop(self):
         """Stop streaming and close socket connections."""
         self.running = False
+        # Send graceful disconnect signal before closing
+        if self.video_client_socket:
+            protocol.send_disconnect(self.video_client_socket)
         protocol.close_socket(self.video_client_socket)
         self.video_client_socket = None
         protocol.close_socket(self.command_client_socket)

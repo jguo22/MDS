@@ -107,7 +107,8 @@ def send_frame(
         frame_id: int = 0,
         x: float = 0.0,
         y: float = 0.0,
-        theta: float = 0.0) -> bool:
+        theta: float = 0.0,
+        camera_angle: float = 0.0) -> bool:
     """
     Send a video frame with metadata and robot pose.
 
@@ -118,19 +119,32 @@ def send_frame(
         x: Robot x position in mm (world coordinates)
         y: Robot y position in mm (world coordinates)
         theta: Robot orientation in radians
+        camera_angle: Camera servo angle in radians
 
     Returns:
         True if successful
     """
-    # Create frame packet: 4-byte frame_id + 3 floats (x, y, theta) + frame
-    # data
+    # Create frame packet: 4-byte frame_id + 4 floats (x, y, theta, camera_angle) + frame data
     packet = struct.pack('!I', frame_id) + \
-        struct.pack('!fff', x, y, theta) + frame_data
+        struct.pack('!ffff', x, y, theta, camera_angle) + frame_data
     return send_message(sock, packet)
 
 
+def send_disconnect(sock: socket.socket) -> bool:
+    """
+    Send graceful disconnect signal (single 0 byte).
+
+    Args:
+        sock: Socket to send on
+
+    Returns:
+        True if successful
+    """
+    return send_message(sock, b'\x00')
+
+
 def recv_frame(
-        sock: socket.socket) -> Optional[Tuple[bytes, int, float, float, float]]:
+        sock: socket.socket) -> Optional[Tuple[bytes, int, float, float, float, float] | int]:
     """
     Receive a video frame with metadata and robot pose.
 
@@ -138,22 +152,30 @@ def recv_frame(
         sock: Socket to receive from
 
     Returns:
-        Tuple of (frame_data, frame_id, x, y, theta) or None if failed
+        Tuple of (frame_data, frame_id, x, y, theta, camera_angle) or None if failed
+        Returns 0 if graceful disconnect signal received
             frame_data: JPEG-encoded frame bytes
             frame_id: Frame sequence number
             x: Robot x position in mm (world coordinates)
             y: Robot y position in mm (world coordinates)
             theta: Robot orientation in radians
+            camera_angle: Camera servo angle in radians
     """
     data = recv_message(sock)
-    if data is None or len(
-            data) < 16:  # 4 bytes frame_id + 12 bytes (3 floats) + frame data
+    if data is None:
+        return None
+
+    # Check for graceful disconnect signal (single 0 byte)
+    if len(data) == 1 and data[0] == 0:
+        return 0
+
+    if len(data) < 20:  # 4 bytes frame_id + 16 bytes (4 floats) + frame data
         return None
 
     frame_id = struct.unpack('!I', data[:4])[0]
-    x, y, theta = struct.unpack('!fff', data[4:16])
-    frame_data = data[16:]
-    return frame_data, frame_id, x, y, theta
+    x, y, theta, camera_angle = struct.unpack('!ffff', data[4:20])
+    frame_data = data[20:]
+    return frame_data, frame_id, x, y, theta, camera_angle
 
 
 def send_command(
