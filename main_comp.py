@@ -27,7 +27,7 @@ def main():
     # Create receiver and click processor
     receiver = ComputerReceiver(args.host, args.video_port, args.coord_port)
     click_processor = ClickProcessor(receiver, window_name)
-    save_image_processor = SaveImageProcessor(2)
+    save_image_processor = SaveImageProcessor(5)
 
     def process(frame: np.ndarray,
                 frame_id: int) -> None:

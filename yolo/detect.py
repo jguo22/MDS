@@ -50,7 +50,7 @@ if (not os.path.exists(model_path)):
     sys.exit(0)
 
 # Load the model into memory and get labemap
-model = YOLO(model_path, task='detect')
+model = YOLO(model_path, task='segment')
 labels = model.names
 
 # Parse input to determine if image source is a file, folder, video, or
@@ -192,11 +192,24 @@ while True:
     if resize:
         frame = cv2.resize(frame, (resW, resH))
 
+    H, W, _ = frame.shape
+
     # Run inference on frame
     results = model(frame, verbose=False)
 
+    detections = results[0].boxes  # Boxes object for bbox outputs
+
     # Extract results
-    detections = results[0].boxes
+    num = 0
+    for result in results:
+        for j, mask in enumerate(result.masks.data):
+
+            mask = mask.numpy() * 255
+
+            mask = cv2.resize(mask, (W, H))
+
+            cv2.imwrite(f'./output_{num}.png', mask)
+            num += 1
 
     # Initialize variable for basic object counting example
     object_count = 0
