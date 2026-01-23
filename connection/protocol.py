@@ -4,7 +4,7 @@ Protocol utilities for reliable message passing over TCP sockets.
 
 import struct
 import socket
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Literal
 
 from connection import message_types
 
@@ -124,7 +124,8 @@ def send_frame(
     Returns:
         True if successful
     """
-    # Create frame packet: 4-byte frame_id + 4 floats (x, y, theta, camera_angle) + frame data
+    # Create frame packet: 4-byte frame_id + 4 floats (x, y, theta,
+    # camera_angle) + frame data
     packet = struct.pack('!I', frame_id) + \
         struct.pack('!ffff', x, y, theta, camera_angle) + frame_data
     return send_message(sock, packet)
@@ -144,7 +145,7 @@ def send_disconnect_from_pi(sock: socket.socket) -> bool:
 
 
 def recv_frame(
-        sock: socket.socket) -> Optional[Tuple[bytes, int, float, float, float, float] | int]:
+        sock: socket.socket) -> Optional[Tuple[bytes, int, float, float, float, float] | Literal[0]]:
     """
     Receive a video frame with metadata and robot pose.
 

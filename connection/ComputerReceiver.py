@@ -169,7 +169,7 @@ class ComputerReceiver():
         failed_frames: int = 0
         while True:
             try:
-                self.profiler.start()
+                self.profiler.start_frame()
 
                 # Receive frame
                 result = protocol.recv_frame(self.video_client_socket)

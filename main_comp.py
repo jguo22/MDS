@@ -47,7 +47,7 @@ def main():
             camera_angle: float) -> None:
         # Update frame dimensions
         # save_image_processor.process(frame, frame_id, x, y, theta)
-        main_profiler.start()
+        main_profiler.start_frame()
         inputProcessor.process(frame, frame_id, x, y, theta)
         main_profiler.record("inputProcessor")
         robotHandler.handleFrame(frame, frame_id, x, y, theta)
