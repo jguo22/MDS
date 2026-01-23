@@ -261,7 +261,26 @@ class Nav:
 
         return x_rel, y_rel
 
-    def override_paths_world_xy(self, world_x, world_y):
+    def get_world_claw_position(self):
+        """
+        Get the position of the claw in world coordinates.
+        """
+        # Get robot's current world position
+        # NOTE: odometry uses ROS coordinates
+        # and get_heading uses theta=0 as forward
+        robot_x, robot_y = self.raven.get_odometry()
+
+        # Get claw offset in robot frame
+        claw_offset = 5.00  # mm
+
+        cos_angle = math.cos(self.angle)
+        sin_angle = math.sin(self.angle)
+
+        x_world = robot_x + claw_offset * cos_angle
+        y_world = robot_y + claw_offset * sin_angle
+
+        return x_world, y_world
+    def override_paths_world_xy(self, world_x, world_y, use_claw=False):
         """
         Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
         Args:
@@ -276,6 +295,9 @@ class Nav:
 
         # Calculate distance to target
         target_distance = math.sqrt(x**2 + y**2)
+        
+        if (use_claw):
+            target_distance -= 5.0  # claw offset
 
         # Create movement path: rotate, then forward
         movements = []

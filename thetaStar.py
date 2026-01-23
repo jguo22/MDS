@@ -270,37 +270,44 @@ class ThetaStarPlanner:
             self.obstacle_map[x_idx[valid], y_idx[valid]] = True
 
 
+ox, oy = [], []
+for i in range(-50, 50):
+    ox.append(i)
+    oy.append(-3.0)
+for i in range(-3, 97):
+    ox.append(-50.0)
+    oy.append(i)
+for i in range(-50, 50):
+    ox.append(i)
+    oy.append(97.0)
+for i in range(-3, 97):
+    ox.append(50.0)
+    oy.append(i)
+sx = 0.0  # [m]
+sy = 3.0  # [m]
+grid_size = 0.5  # [m]
+robot_radius = 5.0  # [m]
+
+left_cans_x, left_cans_y = -45, 45
+right_cans_x, right_cans_y = 45, 45
+red_zone_x, red_zone_y = 0, 0
+green_zone_x, green_zone_y = 0, 0
+yellow_zone_x, yellow_zone_y = 0, 0
+
 def main():
     print(__file__ + " start!!")
 
     # start and goal position
-    sx = 10.0  # [m]
-    sy = 10.0  # [m]
-    gx = 50.0  # [m]
-    gy = 50.0  # [m]
-    grid_size = 0.5  # [m]
-    robot_radius = 1.0  # [m]
+    gx = 40.0  # [m]
+    gy = 40.0  # [m]
 
-    # set obstacle positions
-    ox, oy = [], []
-    for i in range(-10, 60):
-        ox.append(i)
-        oy.append(-10.0)
-    for i in range(-10, 60):
-        ox.append(60.0)
-        oy.append(i)
-    for i in range(-10, 61):
-        ox.append(i)
-        oy.append(60.0)
-    for i in range(-10, 61):
-        ox.append(-10.0)
-        oy.append(i)
-    for i in range(-10, 40):
-        ox.append(20.0)
-        oy.append(i)
-    for i in range(0, 40):
-        ox.append(40.0)
-        oy.append(60.0 - i)
+    ox.append(20.0)
+    oy.append(10)
+
+    ox.append(15.0)
+    oy.append(15)
+    ox.append(15.0)
+    oy.append(25)
 
     if show_animation:
         plt.figure()

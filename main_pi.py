@@ -24,11 +24,36 @@ ox, oy = [], []
 # Can locations
 cx, cy = [], []
 # Zone locations
+left_cans_x, left_cans_y = -45, 45
+right_cans_x, right_cans_y = 45, 45
+goto_left_cans_x, goto_left_cans_y = -40, 45
+goto_right_cans_x, goto_right_cans_y = 40, 45
 red_zone_x, red_zone_y = 0, 0
 green_zone_x, green_zone_y = 0, 0
 yellow_zone_x, yellow_zone_y = 0, 0
 
 def main():
+    def gripClaw():
+        nav.raven.set_servo_position(Raven.ServoChannel.CH1, 90)
+    def releaseClaw():
+        nav.raven.set_servo_position(Raven.ServoChannel.CH1, -90)
+
+    def moveElevatorUp():
+        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 90)
+        time.sleep(1.2)
+        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 0)
+    def moveElevatorDown():
+        nav.raven.set_servo_position(Raven.ServoChannel.CH4, -90)
+        time.sleep(1.2)
+        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 0)
+
+
+    def gripCan():
+        moveElevatorDown()
+        getCanColor()
+        gripClaw()
+        time.sleep(0.5)
+        moveElevatorUp()
 
     def getCanColor():
         rotateCameraDown()
@@ -53,6 +78,27 @@ def main():
                 class_name = getClassName(classidx)
 
         print(class_name)
+
+    def releaseGrip():
+        nav.raven.set_servo_position(Raven.ServoChannel.CH1, -90)
+        if heldCanColor != "None":
+            claw_x, claw_y = nav.get_world_claw_position()
+            ox.append(claw_x)
+            oy.append(claw_y)
+        heldCanColor = "None"
+
+    def path_find(goal_x, goal_y):
+        theta_star = ThetaStarPlanner(ox, oy, grid_size, robot_radius)
+        robot_x, robot_y = nav.raven.get_odometry()
+        rx, ry = theta_star.planning(robot_x, robot_y, goal_x, goal_y)
+        for (x, y) in zip(rx, ry):
+            nav.add_paths_world_xy(x, y)
+
+    def goto_right_cans():
+        path_find(goto_right_cans_x, goto_right_cans_y)
+        nav.override_paths_world_xy(right_cans_x, right_cans_y, use_claw=True)
+        gripCan()
+
 
 
     # Set down to be looking directly down at held can
@@ -285,17 +331,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-def gripClaw(nav: Nav):
-    nav.raven.set_servo_position(Raven.ServoChannel.CH1, 90)
-def releaseClaw(nav: Nav):
-    nav.raven.set_servo_position(Raven.ServoChannel.CH1, -90)
-
-def moveElevatorUp(nav: Nav):
-    nav.raven.set_servo_position(Raven.ServoChannel.CH4, 90)
-    time.sleep(1.2)
-    nav.raven.set_servo_position(Raven.ServoChannel.CH4, 0)
-def moveElevatorDown(nav: Nav):
-    nav.raven.set_servo_position(Raven.ServoChannel.CH4, -90)
-    time.sleep(1.2)
-    nav.raven.set_servo_position(Raven.ServoChannel.CH4, 0)
