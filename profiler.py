@@ -14,9 +14,12 @@ class Profiler:
         self.timings: Dict[str, List[float]] = {}
         self.current_frame = 0
         self.profile = cProfile.Profile()
+        self._profile_enabled = False
 
     def start(self):
-        self.profile.enable()
+        if not self._profile_enabled:
+            self.profile.enable()
+            self._profile_enabled = True
         self.frame_start = time.time()
 
     def record(self, name: str):
