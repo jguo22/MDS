@@ -8,6 +8,7 @@ import traceback
 from connection import config, message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
+from servos import gripClaw, releaseGrip, moveGripperHeight
 
 
 def main():
@@ -33,8 +34,8 @@ def main():
     thread = threading.Thread(target=nav.startLoop, daemon=True)
     thread.start()
 
-    def command_callback(messageType: int, args: list[float]):
-        if messageType == message_types.ADD_MOVEMENT:
+    def command_callback(msg_type: int, args: list[float]):
+        if msg_type == message_types.ADD_MOVEMENT:
             assert (len(args) == 3)
             print(
                 f"ADD_MOVEMENT: left={
@@ -42,7 +43,8 @@ def main():
                     args[1]}, dist={
                     args[2]}")
             nav.addPath(NavMove(args[0], args[1], args[2], False))
-        elif messageType == message_types.OVERRIDE_MOVEMENTS:
+
+        elif msg_type == message_types.OVERRIDE_MOVEMENTS:
             assert (len(args) % 3 == 0)
             print(f"OVERRIDE_MOVEMENTS: {len(args) // 3} moves")
             moves = []
@@ -50,11 +52,24 @@ def main():
                 moves.append(
                     NavMove(args[3 * i], args[3 * i + 1], args[3 * i + 2], False))
             nav.overridePaths(moves)
-        elif messageType == message_types.SEND_WORLD_XY:
+
+        elif msg_type == message_types.SEND_WORLD_XY:
             assert (len(args) == 2)
             world_x, world_y = args[0], args[1]
             print(f"SEND_WORLD_XY: x={world_x}, y={world_y}")
             nav.override_paths_world_xy(world_x, world_y)
+
+        elif msg_type == message_types.GRIP_CAN:
+            assert (len(args) == 1)
+            height = args[0]
+            gripClaw()
+            moveGripperHeight(height)
+
+        elif msg_type == message_types.RELEASE_CAN:
+            assert (len(args) == 1)
+            height = args[0]
+            moveGripperHeight(height)
+            releaseGrip()
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     while True:

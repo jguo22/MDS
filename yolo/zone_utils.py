@@ -13,7 +13,7 @@ def getQuadCenter(quad):
     Calculates the center point of a quadrilateral.
 
     Args:
-        quad: Quadrilateral vertices as numpy array with shape (4, 1, 2)
+        quad: Quadrilateral vertices as numpy array with shape (4, 1, 2) or (4, 2)
               Format: [[x1, y1]], [[x2, y2]], [[x3, y3]], [[x4, y4]]
 
     Returns:
@@ -27,6 +27,32 @@ def getQuadCenter(quad):
     center_y = int(np.mean(points[:, 1]))
 
     return (center_x, center_y)
+
+
+def isPointInPoly(point, polygon):
+    """
+    Check if a point is inside a polygon.
+
+    Uses OpenCV's pointPolygonTest for accurate and efficient polygon containment check.
+
+    Args:
+        point: Point coordinates as tuple (x, y) in same units as quad
+        quad: Quadrilateral vertices as numpy array with shape (N, 1, 2) or (N, 2)
+              Format: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+
+    Returns:
+        bool: True if point is inside polygon (or on boundary), False otherwise
+    """
+    # Convert to format expected by pointPolygonTest: (N, 1, 2) with float32
+    contour = polygon.reshape(-1, 1, 2).astype(np.float32)
+
+    # pointPolygonTest returns:
+    # > 0: point is inside
+    # = 0: point is on edge
+    # < 0: point is outside
+    result = cv.pointPolygonTest(contour, point, measureDist=False)
+
+    return result >= 0
 
 
 def annotate_poly(image, polygon, color=(0, 0, 255)):
@@ -134,6 +160,7 @@ def getZones(result, image):
             if xy is None:
                 isValidQuad = False
                 break
+            transformed_vertices.append(xy)
         if not isValidQuad:
             continue
 

@@ -196,7 +196,7 @@ def send_command(
     """
     try:
         # Validate message type
-        if msg_type not in message_types.messageTypes:
+        if msg_type not in message_types.msg_types:
             print(f"Unknown message type: {msg_type}")
             return False
 
@@ -230,7 +230,7 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
         msg_type: int = struct.unpack('!B', data[:1])[0]
 
         # Validate message type
-        if msg_type not in message_types.messageTypes:
+        if msg_type not in message_types.msg_types:
             print(f"Unknown message type: {msg_type}")
             return None
 

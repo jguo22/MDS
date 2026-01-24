@@ -2,6 +2,10 @@ import time
 from RavenWrapper import RAVEN_WRAPPER, CAMERA_SERVO, ELEVATOR_SERVO, GRIPPER_SERVO
 
 
+def moveGripperHeight(height):
+    pass
+
+
 def gripClaw():
     RAVEN_WRAPPER.set_servo_position(GRIPPER_SERVO, 90)
 

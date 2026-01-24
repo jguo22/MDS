@@ -364,3 +364,43 @@ class ComputerReceiver():
             message_types.OVERRIDE_MOVEMENTS,
             movement_args
         )
+
+    def send_grip_can(self, height_mm: float) -> bool:
+        """
+        Send command to grip can and lift it to specified height.
+
+        Args:
+            height_mm: Height to lift gripper to in mm
+
+        Returns:
+            True if successful
+        """
+        if not self.command_client_socket:
+            return False
+
+        print(f'Sending grip can command: height={height_mm}mm')
+        return protocol.send_command(
+            self.command_client_socket,
+            message_types.GRIP_CAN,
+            [height_mm]
+        )
+
+    def send_release_can(self, height_mm: float) -> bool:
+        """
+        Send command to release can grip at specified height.
+
+        Args:
+            height_mm: Height to position gripper at before releasing in mm
+
+        Returns:
+            True if successful
+        """
+        if not self.command_client_socket:
+            return False
+
+        print(f'Sending release can command: height={height_mm}mm')
+        return protocol.send_command(
+            self.command_client_socket,
+            message_types.RELEASE_CAN,
+            [height_mm]
+        )
