@@ -58,7 +58,7 @@ class RavenWrapper():
             return self.raven.set_motor_target(motor_channel, value)
 
     # Odometry Methods
-    def get_odometry(self) -> Optional[Tuple[float, float]]:
+    def get_odometry(self) -> Tuple[float, float]:
         """Get robot position (x, y) in mm."""
         with self._lock:
             result = self.raven.get_odometry()

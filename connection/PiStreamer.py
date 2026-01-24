@@ -230,7 +230,6 @@ class PiStreamer():
                 # Get current robot pose
                 x, y = self.ravenWrapper.get_odometry()
                 theta = self.imu_wrapper.get_heading()
-                camera_angle = self.ravenWrapper.get_camera_angle()
                 self.profiler.record("get_pose")
 
                 # Send frame with pose data
@@ -238,8 +237,7 @@ class PiStreamer():
                         self.video_client_socket,
                         encoded.tobytes(),
                         self.frame_id,
-                        x, y, theta,
-                        camera_angle):
+                        x, y, theta):
                     print("Failed to send frame. Continuing...")
                     continue
                 self.profiler.record("send_frame")
