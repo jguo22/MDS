@@ -5,7 +5,8 @@ from RavenWrapper import RAVEN_WRAPPER
 from nav import Nav, NavMove
 import threading
 import traceback
-from connection import config, message_types
+import config
+from connection import message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
 from servos import gripClaw, releaseGrip, moveGripperHeight
