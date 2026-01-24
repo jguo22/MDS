@@ -1,25 +1,15 @@
 import math
 import time
 import threading
-from typing import Tuple
 from coordinates.relativeCoordinates import world_to_relative
-from IMUWrapper import IMUWrapper
-from RavenWrapper import RAVEN_WRAPPER, LEFT_MOTOR, RIGHT_MOTOR
-from config import CLAW_OFFSET, WHEEL_D, BASE_D
 from spatialmath import SE2
+from navHelpers import get_forward_mm, get_rotate
+from config import CLAW_OFFSET, TICK_ROTATION, NAV_FRAME_TIME, ANGLE_D, ANGLE_PROP, TURN_CONSTANT
+from RavenWrapper import RAVEN_WRAPPER, LEFT_MOTOR, RIGHT_MOTOR
+from IMUWrapper import IMUWrapper
+
 
 # Miguel's Navigation movement class
-TICK_ROTATION = 64 * 50
-# measurements in mm
-ANGLE_PROP = 5000
-ANGLE_D = 5000
-
-BASE_RATIO = WHEEL_D / BASE_D
-TURN_CONSTANT = BASE_RATIO * 2 * math.pi / TICK_ROTATION
-
-FRAME_TIME = 0.03  # 1/FPS
-
-
 class NavMove:
     def __init__(
             self,
@@ -77,9 +67,9 @@ class Nav:
             while True:
                 # get delta_time and sleep
                 delta_time = time.time() - start_time
-                if (delta_time < FRAME_TIME):
-                    time.sleep(FRAME_TIME - delta_time)
-                    delta_time = FRAME_TIME
+                if (delta_time < NAV_FRAME_TIME):
+                    time.sleep(NAV_FRAME_TIME - delta_time)
+                    delta_time = NAV_FRAME_TIME
                 start_time = time.time()
 
                 # print(f'x, y is {self.raven.get_odometry()}')
@@ -267,23 +257,3 @@ class Nav:
         y_world = robot_y + CLAW_OFFSET * sin_angle
 
         return x_world, y_world
-
-
-def get_forward_mm(distance_mm: float) -> Tuple[float, float, float]:
-    distance = distance_mm / (WHEEL_D * math.pi) * TICK_ROTATION
-    return (1, 1, distance)
-
-
-def get_rotate(theta: float) -> Tuple[float, float, float]:
-    # make into range -pi to pi
-    theta = theta % (2 * math.pi)
-    if theta > math.pi:
-        theta -= 2 * math.pi
-    if theta < -math.pi:
-        theta += 2 * math.pi
-
-    # CCW is positive angle
-    if theta >= 0:
-        return (-1, 1, TICK_ROTATION / BASE_RATIO * theta / (2 * math.pi))
-    else:
-        return (1, -1, TICK_ROTATION / BASE_RATIO * -theta / (2 * math.pi))

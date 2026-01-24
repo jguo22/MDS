@@ -1,7 +1,5 @@
 import cv2
-import matplotlib.pyplot as plt
-import supervision as sv
-from ultralytics import YOLO
+import numpy as np
 
 # model = YOLO("best.pt")
 
@@ -29,11 +27,9 @@ from ultralytics import YOLO
 # plt.show()
 
 
-import cv2
-import numpy as np
-
 def nothing(x):
     pass
+
 
 # Open camera (change index if needed)
 cap = cv2.VideoCapture(0)
@@ -63,6 +59,8 @@ IMAGE_WINDOW_NAME = "Original"
 cap = cv2.VideoCapture(0)  # Change to your appropriate camera
 
 # Mouse click event listener
+
+
 def mouse_event_listener(event, u, v, flags, param):
     # For left mouse click
     if event == cv2.EVENT_LBUTTONDOWN:
@@ -99,14 +97,11 @@ while True:
     # kernel_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
     # forbidden_mask = cv2.dilate(mask, kernel_dilate)
 
-
-
     cv2.imshow("Original", image)
     cv2.imshow("Mask", mask)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-
 
     hsv_frame = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
@@ -143,9 +138,6 @@ cap.release()
 cv2.destroyAllWindows()
 
 
-import cv2
-import numpy as np
-
 def detect_boundary_mask(bgr_img):
     hsv = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
 
@@ -159,7 +151,7 @@ def detect_boundary_mask(bgr_img):
 
 def clean_boundary_mask(mask):
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    kernel_open  = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
 
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open)
@@ -170,15 +162,18 @@ def clean_boundary_mask(mask):
 def inflate_boundary(mask, pixels=30):
     kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE,
-        (pixels*2+1, pixels*2+1)
+        (pixels * 2 + 1, pixels * 2 + 1)
     )
     inflated = cv2.dilate(mask, kernel)
     return inflated
+
 
 def debug_overlay(image, forbidden_mask):
     overlay = image.copy()
     overlay[forbidden_mask > 0] = (0, 0, 255)
     return cv2.addWeighted(image, 0.7, overlay, 0.3, 0)
+
+
 if __name__ == "__main__":
     test_image = cv2.imread("frame.jpg")
 

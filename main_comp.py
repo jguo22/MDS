@@ -1,13 +1,13 @@
 import time
 import argparse
 import threading
+from profiler import Profiler
 from RobotHandler import RobotHandler
-from connection import config
 from connection.ComputerReceiver import ComputerReceiver
 from connection.frame_processor.ClickProcessor import ClickAndKeyboardProcessor
 from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
 import numpy as np
-from profiler import Profiler
+import config
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
     computer_receiver = ComputerReceiver(
         args.host, args.video_port, args.coord_port)
     inputProcessor = ClickAndKeyboardProcessor(computer_receiver, window_name)
-    save_image_processor = SaveImageProcessor(2)
+    _save_image_processor = SaveImageProcessor(2)
     robotHandler = RobotHandler(computer_receiver)
 
     # Create main profiler for frame processing pipeline

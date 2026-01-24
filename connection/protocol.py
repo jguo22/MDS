@@ -5,9 +5,8 @@ Protocol utilities for reliable message passing over TCP sockets.
 import struct
 import socket
 from typing import Optional, Tuple, Literal
-
-import config
 from connection import message_types
+import config
 
 
 def close_socket(sock: Optional[socket.socket]) -> None:

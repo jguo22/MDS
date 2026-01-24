@@ -1,5 +1,4 @@
 import cv2  # OpenCV version 2
-import numpy as np
 
 IMAGE_WINDOW_NAME = "color"
 

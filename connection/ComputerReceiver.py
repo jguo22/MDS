@@ -19,10 +19,10 @@ import cv2
 import numpy as np
 import traceback
 import math
-import nav
 import config
-import protocol
-import message_types
+from . import protocol
+from . import message_types
+import nav
 from profiler import Profiler
 
 
