@@ -1,7 +1,6 @@
 from typing import Optional
 import cv2
 import numpy as np
-
 import config
 
 
@@ -35,7 +34,9 @@ class CameraCapture:
         else:
             index = int(self.source) if self.source.isdigit() else 0
 
-        self.cap = cv2.VideoCapture(index)
+        # self.cap = cv2.VideoCapture(index)
+        # self.cap = cv2.VideoCapture("/dev/videoblacktop")
+        self.cap = cv2.VideoCapture("/dev/videoblackbot")
         if not self.cap.isOpened():
             return False
 
