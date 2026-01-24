@@ -159,7 +159,9 @@ class PiStreamer():
             self.command_client_socket.connect(
                 (self.host, self.command_port))
             print(
-                f"Connected to command server at {self.host}:{self.command_port}")
+                f"Connected to command server at {
+                    self.host}:{
+                    self.command_port}")
 
             # Start command receiver thread
             self.running = True
@@ -205,12 +207,14 @@ class PiStreamer():
                         self.command_callback(msg_type, args)
                     except Exception as e:
                         print(
-                            f"Error in movement callback: {type(e).__name__}: {e}")
+                            f"Error in movement callback: {
+                                type(e).__name__}: {e}")
                         traceback.print_exc()
 
             except Exception as e:
                 print(
-                    f"Unexpected error in command receiver: {type(e).__name__}: {e}")
+                    f"Unexpected error in command receiver: {
+                        type(e).__name__}: {e}")
                 traceback.print_exc()
                 # don't shut down entire robot from just one frame of failure
                 continue
@@ -238,7 +242,9 @@ class PiStreamer():
 
         print("Streaming started. Press Ctrl+C to stop.")
         print(
-            f"Target FPS: {max_fps} (frame interval: {frame_interval*1000:.1f}ms)")
+            f"Target FPS: {max_fps} (frame interval: {
+                frame_interval *
+                1000:.1f}ms)")
 
         while self.running:
             try:
@@ -247,7 +253,9 @@ class PiStreamer():
 
                 # Capture frames from both cameras
                 frame_top = self.camera_top.read()
+                self.profiler.record("camera_read_top")
                 frame_bottom = self.camera_bottom.read()
+                self.profiler.record("camera_read_bot")
                 if frame_top is None or frame_bottom is None:
                     print("failed to read frame from cameras")
                     time.sleep(0.1)

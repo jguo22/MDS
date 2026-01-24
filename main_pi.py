@@ -14,14 +14,8 @@ from servos import gripClaw, releaseClaw, moveGripperHeight
 
 def main():
     parser = argparse.ArgumentParser(description="Raspberry Pi Video Streamer")
-    parser.add_argument(
-        "--camera-top",
-        default="videoblacktop",
-        help="Top camera source (default: videoblacktop)")
-    parser.add_argument(
-        "--camera-bottom",
-        default="videoblackbot",
-        help="Bottom camera source (default: videoblackbot)")
+    parser.add_argument("--camera-top", default="/dev/videoblacktop")
+    parser.add_argument("--camera-bottom", default="/dev/videoblackbot")
     args = parser.parse_args()
 
     # Create cameras (managed externally, persists across reconnections)
