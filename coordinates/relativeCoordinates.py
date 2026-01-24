@@ -136,7 +136,7 @@ def angle_of_segment(
 
 
 def get_movement_plan(
-    points: List[Union[Tuple[float, float], np.ndarray]],
+    points: List[Tuple[float, float]],
     start_pose: SE2
 ) -> List[Tuple[float, float]]:
     if not points:

@@ -1,5 +1,7 @@
 import time
 import argparse
+from IMUWrapper import IMUWrapper
+from RavenWrapper import RAVEN_WRAPPER
 from nav import Nav, NavMove
 import threading
 import traceback
@@ -25,7 +27,8 @@ def main():
         print(f"Failed to open camera: {args.camera}")
         return
 
-    nav = Nav()
+    imuWrapper = IMUWrapper()
+    nav = Nav(imuWrapper)
     # activate the navigation in another thread
     thread = threading.Thread(target=nav.startLoop, daemon=True)
     thread.start()
@@ -61,12 +64,11 @@ def main():
             # Create new streamer instance for this connection
             streamer = PiStreamer(
                 camera,
-                nav.ravenWrapper,
-                nav.imu_wrapper,
+                RAVEN_WRAPPER,
+                imuWrapper,
                 host=config.COMPUTER_IP,
                 video_port=config.VIDEO_PORT,
-                command_port=config.COMMAND_PORT
-            )
+                command_port=config.COMMAND_PORT)
 
             # Set up movement callback
             streamer.set_command_callback(command_callback)

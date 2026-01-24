@@ -1,23 +1,28 @@
 import time
 import math
 import numpy as np
-from enum import Enum
+from enum import Enum, auto
 from typing import Tuple, List
 from spatialmath import SE2
 from connection.ComputerReceiver import ComputerReceiver
 from nav import get_forward_mm, get_rotate
 from yolo.segment import segmentImage
-from yolo.zone_utils import getZones
+from yolo.zone_utils import getQuadCenter, getZones
 from yolo.can_utils import getCans
-from config import CENTER_BORDER_X, CAN_DIAMETER, BASE_D, FT_TO_MM, SCOOPER_LENGTH
+from config import CENTER_BORDER_X, CAN_DIAMETER, BASE_D, CLAW_OFFSET, FT_TO_MM, SCOOPER_LENGTH
 from coordinates.relativeCoordinates import get_movement_plan, world_to_relative
 from profiler import Profiler
+from thetaStar import ThetaStarPlanner
+from servos import gripClaw, releaseGrip
 
 
 class RobotState(Enum):
-    StartScan = 1
-    StartGather = 2
-    MoveToZone = 3
+    StartScan = auto()
+    StartGather = auto()
+    MidgameDecide = auto()
+    MidgameGoToCan = auto()
+    MidgameGrabbing = auto()
+    MidgameGoToZone = auto()
 
 
 GREEN_ZONE = 0
@@ -26,6 +31,10 @@ GOLDEN_ZONE = 2
 GREEN_ZONE_OPP = 3
 RED_ZONE_OPP = 4
 GOLDEN_ZONE_OPP = 5
+
+GREEN_CAN = 0
+RED_CAN = 1
+GOLDEN_CAN = 2
 
 
 class RobotHandler():
@@ -39,11 +48,22 @@ class RobotHandler():
         self.zones = [None, None, None, None, None, None]
 
         # Store planned path to cans
-        self.planned_path: List[Tuple[float, float]] = []
+        self.cans: List[Tuple[float, float]] = []
+        self.can_colors: List[int] = []
+
+        # x, y, stack size, color
+        self.stacked_cans = List[Tuple[float, float, int, int]]
+
         self.lastTimeSentPath = 0
+
+        self.waypoints: List[Tuple[float, float]] = []
 
         self.computer_receiver = computer_receiver
         self.isHandlingFrame = False
+
+        self.targetZone: int = -1
+
+        self.thetaStar = ThetaStarPlanner()
 
         # Profiler for performance monitoring
         self.profiler = Profiler()
@@ -56,74 +76,149 @@ class RobotHandler():
             self,
             frame: np.ndarray,
             frame_id: int,
-            x: float,
-            y: float,
+            robot_x: float,
+            robot_y: float,
             theta: float):
-        self.profiler.start_frame()
         self.isHandlingFrame = True
+        self.profiler.start_frame()
 
         result = segmentImage(frame)
         self.profiler.record("segmentImage")
 
-        getZones(result, frame)
-        self.profiler.record("getZones")
+        # scan and set any zones that haven't been found yet
+        self.scanAndSetZones(result, frame)
+        self.profiler.record("scanAndSetZones")
 
+        # Dispatch to appropriate state handler
         if self.state == RobotState.StartScan:
-            if self.startFrame == -1:
-                self.startFrame = frame_id
-
-                # ------------- PLAN PATH TO DETECTED CANS -------------
-                # Get all detected cans in image coordinates
-                can_locations_xy, _ = getCans(result, frame)
-                self.profiler.record("getCans")
-
-                # Filter cans that are on our side of the center border
-                filtered_cans = [
-                    (y * 8, x * 8) for x, y in can_locations_xy
-                    if x < (CENTER_BORDER_X + CAN_DIAMETER)
-                ]
-
-                # Sort cans by y-coordinate (positive to negative)
-                sorted_cans = sorted(filtered_cans, key=lambda p: -p[1])
-                print(sorted_cans)
-
-                # Store the planned path
-                self.planned_path = sorted_cans
-                # add green zone
-                self.planned_path.append((4 * FT_TO_MM, 0))
-                self.state = RobotState.StartGather
-                self.profiler.record("path_planning")
-
+            self.handleStartScan(frame_id, result, frame)
         elif self.state == RobotState.StartGather:
-            # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
-            if time.time() - self.lastTimeSentPath > 2:
-                self.lastTimeSentPath = time.time()
-
-                plan = get_movement_plan(self.planned_path, SE2(x, y, theta))
-
-                movement_args = []
-                for move in plan:
-                    dist, theta = move
-                    movement_args.extend(get_rotate(theta))
-                    movement_args.extend(get_forward_mm(dist))
-
-                self.computer_receiver.override_movement(movement_args)
-                self.profiler.record("send_movement")
-
-            while len(self.planned_path) > 0 and self.is_point_in_reach(
-                    self.planned_path[0], (x, y), theta):
-                self.planned_path.pop(0)
-            self.profiler.record("check_reached")
-
-        elif self.state == RobotState.MoveToZone:
-            pass
+            self.handleStartGather(robot_x, robot_y, theta)
+        elif self.state == RobotState.MidgameDecide:
+            self.handleMidgameDecide()
+        elif self.state == RobotState.MidgameGoToCan:
+            self.handleMidgameGoToCan(robot_x, robot_y, theta)
+        elif self.state == RobotState.MidgameGrabbing:
+            self.handleMidgameGrabbing(robot_x, robot_y, theta)
+        elif self.state == RobotState.MidgameGoToZone:
+            self.handleMidgameGoToZone(robot_x, robot_y, theta)
         else:
             print("ERROR: INVALID STATE")
 
-        self.isHandlingFrame = False
         self.profiler.end_frame()
+        self.isHandlingFrame = False
 
-    def getOurZones(self, result, image):
+    def handleStartScan(self, frame_id: int, result, frame: np.ndarray):
+        """Handle StartScan state: detect cans and plan initial path"""
+        if self.startFrame == -1:
+            self.startFrame = frame_id
+
+            # ------------- PLAN PATH TO DETECTED CANS -------------
+            # Get all detected cans in image coordinates
+            can_locations_xy, _ = getCans(result, frame)
+            self.profiler.record("getCans")
+
+            # Filter cans that are on our side of the center border
+            filtered_cans = [
+                (x, y) for x, y in can_locations_xy
+                if x < (CENTER_BORDER_X + CAN_DIAMETER)
+            ]
+
+            # Sort cans by y-coordinate (positive to negative)
+            sorted_cans = sorted(filtered_cans, key=lambda p: -p[1])
+            print(sorted_cans)
+
+            # Store the planned path
+            self.cans = sorted_cans
+            # add green zone
+            self.cans.append((4 * FT_TO_MM, 0))
+            self.profiler.record("path_planning")
+
+            self.state = RobotState.StartGather
+
+    def handleStartGather(self, robot_x: float, robot_y: float, theta: float):
+        """Handle StartGather state: send waypoints and check if cans reached"""
+        # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
+        if time.time() - self.lastTimeSentPath > 2:
+            self.lastTimeSentPath = time.time()
+
+            self.waypoints = self.cans
+            self.send_waypoints(robot_x, robot_y, theta)
+            self.profiler.record("send_movement")
+
+        while len(self.cans) > 0 and self.isPointInScooper(
+                self.cans[0], (robot_x, robot_y), theta):
+            self.cans.pop(0)
+        self.profiler.record("check_reached")
+
+    def handleMidgameDecide(self):
+        """Handle Midgame state: placeholder for midgame logic"""
+        pass
+
+    def handleMidgameGoToCan(
+            self,
+            robot_x: float,
+            robot_y: float,
+            theta: float):
+        """Handle MidgameGoToCan state: navigate to can and grab it"""
+        if len(self.cans) == 0:
+            self.state = RobotState.MidgameGrabbing
+            self.handleMidgameDecide()
+            return
+
+        # this allows for dynamic update of which can to go to
+        cx, cy = self.cans[0]
+        can_color = self.can_colors[0]
+        if self.isPointInScooper(self.cans[0], (robot_x, robot_y), theta):
+            # remove it from list cuz its gonna get moved
+            self.cans.pop(0)
+
+            # logic for grabbing it
+            self.state = RobotState.MidgameGrabbing
+            self.handleMidgameGrabbing(
+                robot_x, robot_y, theta, cx, cy, can_color)
+        else:
+            # move to can using theta*
+            rx, ry = self.thetaStar.planning(robot_x, robot_y, cx, cy)
+            self.waypoints = list(zip(rx, ry))
+            self.send_waypoints(SE2(robot_x, robot_y, theta))
+
+    def handleMidgameGrabbing(
+            self,
+            robot_x: float,
+            robot_y: float,
+            theta: float,
+            cx: float,
+            cy: float,
+            can_color: int):
+        # TODO: implement
+        # Select target zone based on can color
+        if can_color == GREEN_CAN:
+            self.targetZone = GREEN_ZONE
+        elif can_color == RED_CAN:
+            self.targetZone = RED_ZONE
+        elif can_color == GOLDEN_CAN:
+            self.targetZone = GOLDEN_ZONE
+
+        self.state = RobotState.MidgameGoToZone
+
+    def handleMidgameGoToZone(
+            self,
+            robot_x: float,
+            robot_y: float,
+            theta: float):
+        """Handle MidgameGoToZone state: navigate to zone and release can"""
+        # TODO: stacking
+        gx, gy = getQuadCenter(self.zones[self.targetZone])
+        rx, ry = self.thetaStar.planning(robot_x, robot_y, gx, gy)
+        self.waypoints = list(zip(rx, ry))
+
+        inZone = False
+        if inZone:
+            releaseGrip()
+            self.state = RobotState.MidgameDecide
+
+    def scanAndSetZones(self, result, image):
         """
         Detects and assigns the 6 scoring zones from YOLO results.
         Only updates zones that haven't been detected yet (are None).
@@ -170,7 +265,7 @@ class RobotHandler():
         all_detected = all(zone is not None for zone in self.zones)
         return all_detected
 
-    def is_point_in_reach(
+    def isPointInScooper(
         self,
         point: Tuple[float, float],
         robot_pos: Tuple[float, float],
@@ -214,3 +309,52 @@ class RobotHandler():
         )
 
         return in_rectangle
+
+    def isPointInGripper(
+        self,
+        point: Tuple[float, float],
+        robot_pose: SE2
+    ) -> bool:
+        """
+        Check if a point is within reach of the robot (circular radius OR forward rectangle).
+
+        Uses SE(2) transformation to convert to robot-relative coordinates, then checks:
+        1. Within circular radius: (BASE_D - CAN_DIAMETER) / 2
+        2. Within rectangle: SCOOPER_LENGTH forward, (BASE_D - CAN_DIAMETER) wide
+
+        Args:
+            point: (x, y) world coordinates in mm
+            robot_pos: (x, y) robot position in mm
+            robot_heading: Robot heading in radians
+
+        Returns:
+            bool: True if point is reachable
+        """
+        local_x, local_y = world_to_relative(point, robot_pose)
+
+        # Check 1: Would the can be fully in the robot?
+        # Handles measurement inaccuracy
+        distance = math.sqrt(local_x**2 + local_y**2)
+        if distance <= (BASE_D - CAN_DIAMETER) / 2:
+            return True
+
+        # Check 2: Is point within rectangle in front of robot?
+        rect_length = CLAW_OFFSET
+        rect_width = BASE_D - CAN_DIAMETER
+        in_rectangle = (
+            0 <= local_x <= rect_length and
+            -rect_width / 2 <= local_y <= rect_width / 2
+        )
+
+        return in_rectangle
+
+    def send_waypoints(self, robot_pose: SE2):
+        plan = get_movement_plan(self.waypoints, robot_pose)
+
+        movement_args = []
+        for move in plan:
+            dist, theta = move
+            movement_args.extend(get_rotate(theta))
+            movement_args.extend(get_forward_mm(dist))
+
+        self.computer_receiver.override_movement(movement_args)

@@ -27,6 +27,7 @@ def train_model():
 
     config = {
         # Path to your data.yaml
+        'task': 'segment',
         'data': str(SCRIPT_DIR / 'datasets/data1/data.yaml'),
         # Pretrained model
         'model': str(SCRIPT_DIR / 'yolo11n.pt'),

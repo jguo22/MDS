@@ -1,5 +1,6 @@
+import math
 import numpy as np
-
+from config import CAN_DIAMETER
 from .pixelTo3D import transform_uv_to_xy
 from .mask_utils import getSmoothRegionFromMask, yoloMaskToBinary
 
@@ -79,12 +80,17 @@ def getCans(result, image):
 
         # Transform to ground plane coordinates
         xy = transform_uv_to_xy(u, v)
-        # print(f"Can at pixel ({u}, {v}) -> xy: {xy}")
 
         if xy is None:
             continue
 
+        # this is the front center location
         x, y = xy
+        # get the center center location
+        theta = math.atan2(y, x)
+        x += CAN_DIAMETER / 2 * math.cos(theta)
+        y += CAN_DIAMETER / 2 * math.sin(theta)
+        # add the info
         can_locations_xy.append([x, y])
         class_names.append(class_name)
 

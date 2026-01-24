@@ -4,10 +4,14 @@ CLOSE = 0  # Close connection (no arguments)
 ADD_MOVEMENT = 1  # One movement command
 OVERRIDE_MOVEMENTS = 2  # List of movement commands
 SEND_WORLD_XY = 3  # World coordinate navigation: [world_x, world_y]
+GRIP_CAN = 4  # Grip can and lift (no arguments)
+RELEASE_CAN = 5  # Release can grip (no arguments)
 
 messageTypes = [
     CLOSE,
     ADD_MOVEMENT,
     OVERRIDE_MOVEMENTS,
-    SEND_WORLD_XY
+    SEND_WORLD_XY,
+    GRIP_CAN,
+    RELEASE_CAN
 ]

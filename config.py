@@ -6,19 +6,9 @@ BACK_BORDER_X = 0
 LEFT_BORDER_Y = 4 * FT_TO_MM
 RIGHT_BORDER_Y = - 4 * FT_TO_MM
 
-CAN_DIAMETER = 76.2
-
-CLASS_NAMES = [
-    'Boundary',
-    'Golden Can',
-    'Golden Zone',
-    'Green Can',
-    'Green Zone',
-    'Red Can',
-    'Red Zone',
-    'Robot'
-]
-
 WHEEL_D = 101.6
 BASE_D = 237.236
+
+CAN_DIAMETER = 76.2
 SCOOPER_LENGTH = 254
+CLAW_OFFSET = 5

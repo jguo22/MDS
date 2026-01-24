@@ -1,6 +1,5 @@
 import cv2 as cv
 from pathlib import Path
-import numpy as np
 from ultralytics.models.yolo import YOLO
 
 from .mask_utils import calculateQuadFromMask, fixSegmentation, yoloMaskToBinary
@@ -10,7 +9,9 @@ from .zone_utils import annotate_poly
 SCRIPT_DIR = Path(__file__).parent.absolute()
 
 MODEL = YOLO(str(SCRIPT_DIR / 'last.pt'))
-print(MODEL.names)
+labels = MODEL.names
+print(MODEL)
+print(labels)
 
 
 def wait_for_quit():
@@ -19,35 +20,16 @@ def wait_for_quit():
         raise
 
 
-def compute_iou(mask1, mask2):
-    """
-    Computes Intersection over Union between two binary masks.
-
-    Args:
-        mask1, mask2: Binary masks (H, W) with values 0 or 255
-
-    Returns:
-        IoU score (0.0 to 1.0)
-    """
-    intersection = cv.bitwise_and(mask1, mask2)
-    union = cv.bitwise_or(mask1, mask2)
-
-    intersection_area = np.count_nonzero(intersection)
-    union_area = np.count_nonzero(union)
-
-    if union_area == 0:
-        return 0.0
-
-    return intersection_area / union_area
+def segmentImage(image):
+    # model returns array of results
+    # here, we only have one image so its an array of size 1
+    result = MODEL(image)[0]
+    return result
 
 
-def click_hsv(event, x, y, flags, param):
-    """Mouse callback to print HSV values at clicked point"""
-    if event == cv.EVENT_LBUTTONDOWN:
-        image, hsv = param
-        h, s, v = hsv[y, x]
-        bgr = image[y, x]
-        print(f"Clicked ({x}, {y}): H={h}, S={s}, V={v} | BGR={bgr}")
+def getClassName(classidx: int):
+    classname = labels[classidx]
+    return classname
 
 
 def overlay_mask(image, mask, color=(0, 255, 0), alpha=0.5):
@@ -66,13 +48,6 @@ def overlay_mask(image, mask, color=(0, 255, 0), alpha=0.5):
     overlay = image.copy()
     overlay[mask > 0] = color
     result = cv.addWeighted(overlay, alpha, image, 1 - alpha, 0)
-    return result
-
-
-def segmentImage(image):
-    # model returns array of results
-    # here, we only have one image so its an array of size 1
-    result = MODEL(image, conf=0.25)[0]
     return result
 
 
