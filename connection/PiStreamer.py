@@ -37,7 +37,7 @@ from RavenWrapper import RavenWrapper
 from connection import message_types
 from profiler import Profiler
 
-from . import config
+import config
 from . import protocol
 from .CameraCapture import CameraCapture
 

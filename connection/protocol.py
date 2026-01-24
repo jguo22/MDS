@@ -6,9 +6,8 @@ import struct
 import socket
 from typing import Optional, Tuple, Literal
 
+import config
 from connection import message_types
-
-from . import config
 
 
 def close_socket(sock: Optional[socket.socket]) -> None:

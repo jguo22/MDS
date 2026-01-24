@@ -2,7 +2,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from . import config
+import config
 
 
 class CameraCapture:

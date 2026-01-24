@@ -20,8 +20,9 @@ import numpy as np
 import traceback
 import math
 import nav
-
-from . import config, protocol, message_types
+import config
+import protocol
+import message_types
 from profiler import Profiler
 
 
