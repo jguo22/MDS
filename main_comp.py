@@ -6,7 +6,7 @@ from RobotHandler import RobotHandler
 from connection.ComputerReceiver import ComputerReceiver
 from connection.frame_processor.ClickProcessor import ClickAndKeyboardProcessor
 from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
-import numpy as np
+from connection.frame_info import FrameInfo
 import config
 
 
@@ -26,31 +26,25 @@ def main():
                         help="Disable video display")
     args = parser.parse_args()
 
-    window_name = "Pi Camera"
+    window_name_top = "Top Camera"
+    window_name_bottom = "Bottom Camera"
 
     # ----------------- CREATE RECEIVER AND PROCESSORS -----------------
     computer_receiver = ComputerReceiver(
         args.host, args.video_port, args.coord_port)
-    inputProcessor = ClickAndKeyboardProcessor(computer_receiver, window_name)
+    inputProcessor = ClickAndKeyboardProcessor(computer_receiver, window_name_top)
     _save_image_processor = SaveImageProcessor(2)
     robotHandler = RobotHandler(computer_receiver)
 
     # Create main profiler for frame processing pipeline
     main_profiler = Profiler()
 
-    def process(
-            frame: np.ndarray,
-            frame_id: int,
-            x: float,
-            y: float,
-            theta: float,
-            camera_angle: float) -> None:
-        # Update frame dimensions
-        # save_image_processor.process(frame, frame_id, x, y, theta)
+    def process(frame_info: FrameInfo) -> None:
+        # Process frame using FrameInfo
         main_profiler.start_frame()
-        inputProcessor.process(frame, frame_id, x, y, theta)
+        inputProcessor.process(frame_info)
         main_profiler.record("inputProcessor")
-        robotHandler.handleFrame(frame, frame_id, x, y, theta)
+        robotHandler.handleFrame(frame_info)
         main_profiler.record("robotHandler")
         main_profiler.end_frame()
 
@@ -73,7 +67,8 @@ def main():
             try:
                 computer_receiver.receive_loop(
                     show_video=not args.no_display,
-                    window_name=window_name
+                    window_name_top=window_name_top,
+                    window_name_bottom=window_name_bottom
                 )
             except KeyboardInterrupt:
                 print("\nSaving profiler data before exit...")

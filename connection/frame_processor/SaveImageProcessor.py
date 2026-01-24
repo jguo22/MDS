@@ -1,7 +1,7 @@
 import os
 import time
 import cv2
-import numpy as np
+from connection.frame_info import FrameInfo
 
 from .FrameProcessor import FrameProcessor
 
@@ -30,40 +30,37 @@ class SaveImageProcessor(FrameProcessor):
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def process(
-            self,
-            frame: np.ndarray,
-            frame_id: int,
-            x: float,
-            y: float,
-            theta: float) -> None:
+    def process(self, frame_info: FrameInfo) -> None:
         """
         Process a frame, saving it to disk if cooldown has passed.
 
         Args:
-            frame: Input frame as a numpy array
-            frame_id: Frame identifier (unused in this implementation)
+            frame_info: FrameInfo object containing frames and metadata
 
         Returns:
             Always returns None
         """
-        print(frame.shape)
+        print(frame_info.frame_top.shape)
         current_time = time.time()
 
         # Check if cooldown has passed
         if current_time - self.last_save_time >= self.cooldown:
             # Generate filename with timestamp
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            filename = os.path.join(
+            filename_top = os.path.join(
                 self.output_dir,
-                f"frame_{timestamp}_{int(current_time*1000)}.jpg")
+                f"frame_top_{timestamp}_{int(current_time*1000)}.jpg")
+            filename_bottom = os.path.join(
+                self.output_dir,
+                f"frame_bottom_{timestamp}_{int(current_time*1000)}.jpg")
 
             try:
-                # Save the frame as a JPEG file
-                cv2.imwrite(filename, frame)
+                # Save both frames as JPEG files
+                cv2.imwrite(filename_top, frame_info.frame_top)
+                cv2.imwrite(filename_bottom, frame_info.frame_bottom)
                 self.last_save_time = current_time
-                print(f"Saved frame to {filename}")
+                print(f"Saved frames to {filename_top} and {filename_bottom}")
             except Exception as e:
-                print(f"Error saving frame: {e}")
+                print(f"Error saving frames: {e}")
 
         return None

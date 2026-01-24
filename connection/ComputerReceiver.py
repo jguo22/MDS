@@ -220,9 +220,14 @@ class ComputerReceiver():
                     if key == ord('q'):
                         break
                     elif key == ord('s'):
-                        cv2.imwrite(f"capture_top_{frame_info.frame_id}.jpg", frame_info.frame_top)
-                        cv2.imwrite(f"capture_bottom_{frame_info.frame_id}.jpg", frame_info.frame_bottom)
-                        print(f"Saved capture_top_{frame_info.frame_id}.jpg and capture_bottom_{frame_info.frame_id}.jpg")
+                        cv2.imwrite(
+                            f"capture_top_{frame_info.frame_id}.jpg",
+                            frame_info.frame_top)
+                        cv2.imwrite(
+                            f"capture_bottom_{frame_info.frame_id}.jpg",
+                            frame_info.frame_bottom)
+                        print(
+                            f"Saved capture_top_{frame_info.frame_id}.jpg and capture_bottom_{frame_info.frame_id}.jpg")
                     elif key == ord('p'):
                         print("Saving profiler data...")
                         self.profiler.save_profile()

@@ -1,14 +1,8 @@
-import numpy as np
 from abc import ABC, abstractmethod
+from connection.frame_info import FrameInfo
 
 
 class FrameProcessor(ABC):
     @abstractmethod
-    def process(
-            self,
-            frame: np.ndarray,
-            frame_id: int,
-            x: float,
-            y: float,
-            theta: float) -> None:
+    def process(self, frame_info: FrameInfo) -> None:
         pass

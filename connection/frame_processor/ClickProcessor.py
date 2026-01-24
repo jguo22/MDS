@@ -1,6 +1,6 @@
 import cv2
-import numpy as np
 from connection.ComputerReceiver import ComputerReceiver
+from connection.frame_info import FrameInfo
 from yolo.pixelTo3D import transform_uv_to_xy
 
 from .FrameProcessor import FrameProcessor
@@ -38,15 +38,9 @@ class ClickAndKeyboardProcessor(FrameProcessor):
                 x_scaled, y_scaled = xy
                 self.computerReceiver.send_xy(x_scaled, y_scaled)
 
-    def process(
-            self,
-            frame: np.ndarray,
-            frame_id: int,
-            x: float,
-            y: float,
-            theta: float):
-        # Update frame dimensions
-        self.frame_size = (frame.shape[1], frame.shape[0])
+    def process(self, frame_info: FrameInfo):
+        # Update frame dimensions using top camera frame
+        self.frame_size = (frame_info.frame_top.shape[1], frame_info.frame_top.shape[0])
         return None
 
     # Interactive input thread for manual movement commands

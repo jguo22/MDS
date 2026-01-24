@@ -5,6 +5,7 @@ from enum import Enum, auto
 from typing import Tuple, List
 from spatialmath import SE2
 from connection.ComputerReceiver import ComputerReceiver
+from connection.frame_info import FrameInfo
 from navHelpers import get_forward_mm, get_rotate
 from yolo.segment import segmentImage
 from yolo.zone_utils import getQuadCenter, getZones, isPointInPoly
@@ -76,15 +77,16 @@ class RobotHandler():
         self.startFrame = -1
         self.startTime = time.time()
 
-    def handleFrame(
-            self,
-            frame: np.ndarray,
-            frame_id: int,
-            robot_x: float,
-            robot_y: float,
-            theta: float):
+    def handleFrame(self, frame_info: FrameInfo):
         self.isHandlingFrame = True
         self.profiler.start_frame()
+
+        # Use top camera frame for vision processing
+        frame = frame_info.frame_top
+        frame_id = frame_info.frame_id
+        robot_x = frame_info.x
+        robot_y = frame_info.y
+        theta = frame_info.theta
 
         result = segmentImage(frame)
         self.profiler.record("segmentImage")
