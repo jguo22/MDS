@@ -176,6 +176,12 @@ class ComputerReceiver():
 
                 # Receive frame info
                 frame_info = protocol.recv_frame_info(self.video_client_socket)
+
+                # Check for graceful disconnect
+                if frame_info == 0:
+                    print("Pi disconnected gracefully")
+                    break
+
                 if frame_info is None:
                     failed_frames += 1
                     if (failed_frames & (failed_frames - 1) == 0):

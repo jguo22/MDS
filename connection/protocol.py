@@ -307,7 +307,7 @@ def send_frame_info(
         return False
 
 
-def recv_frame_info(sock: socket.socket) -> Optional[FrameInfo]:
+def recv_frame_info(sock: socket.socket) -> Optional[FrameInfo | Literal[0]]:
     """
     Receive a FrameInfo object with dual camera frames and robot state.
 
@@ -316,10 +316,16 @@ def recv_frame_info(sock: socket.socket) -> Optional[FrameInfo]:
 
     Returns:
         FrameInfo object or None if failed
+        Returns 0 if graceful disconnect signal received
     """
     data = recv_message(sock)
     if data is None:
         return None
+
+    # Check for graceful disconnect signal (single 0 byte)
+    if len(data) == 1 and data[0] == 0:
+        print("Received graceful disconnect from Pi")
+        return 0
 
     # Minimum size: 4 (frame_id) + 28 (7 floats) + 4 (top_len) + 4
     # (bottom_len) = 40 bytes
