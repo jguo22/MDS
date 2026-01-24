@@ -7,7 +7,7 @@ import config
 class CameraCapture:
     """Camera capture for USB cameras."""
 
-    def __init__(self, source: str = "usb0",
+    def __init__(self, source: str,
                  width: int = config.FRAME_WIDTH,
                  height: int = config.FRAME_HEIGHT):
         """
@@ -25,18 +25,7 @@ class CameraCapture:
 
     def open(self) -> bool:
         """Open the camera. Returns True if successful."""
-        return self._open_usb()
-
-    def _open_usb(self) -> bool:
-        """Open USB camera."""
-        if self.source.startswith("usb"):
-            index = int(self.source[3:])
-        else:
-            index = int(self.source) if self.source.isdigit() else 0
-
-        # self.cap = cv2.VideoCapture(index)
-        # self.cap = cv2.VideoCapture("/dev/videoblacktop")
-        self.cap = cv2.VideoCapture("/dev/videoblackbot")
+        self.cap = cv2.VideoCapture(self.source)
         if not self.cap.isOpened():
             return False
 

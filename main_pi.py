@@ -15,22 +15,36 @@ from servos import gripClaw, releaseClaw, moveGripperHeight
 def main():
     parser = argparse.ArgumentParser(description="Raspberry Pi Video Streamer")
     parser.add_argument(
-        "--camera",
-        default="usb0",
-        help="Camera source: usb0, usb1. (default: usb0)")
+        "--camera-top",
+        default="videoblacktop",
+        help="Top camera source (default: videoblacktop)")
+    parser.add_argument(
+        "--camera-bottom",
+        default="videoblackbot",
+        help="Bottom camera source (default: videoblackbot)")
     args = parser.parse_args()
 
-    # Create camera (managed externally, persists across reconnections)
-    camera = CameraCapture(
-        args.camera,
+    # Create cameras (managed externally, persists across reconnections)
+    camera_top = CameraCapture(
+        args.camera_top,
         config.FRAME_WIDTH,
         config.FRAME_HEIGHT)
-    if not camera.open():
-        print(f"Failed to open camera: {args.camera}")
+    if not camera_top.open():
+        print(f"Failed to open top camera: {args.camera_top}")
+        return
+
+    camera_bottom = CameraCapture(
+        args.camera_bottom,
+        config.FRAME_WIDTH,
+        config.FRAME_HEIGHT)
+    if not camera_bottom.open():
+        print(f"Failed to open bottom camera: {args.camera_bottom}")
+        camera_top.close()
         return
 
     imuWrapper = IMUWrapper()
     nav = Nav(imuWrapper)
+
     # activate the navigation in another thread
     thread = threading.Thread(target=nav.startLoop, daemon=True)
     thread.start()
@@ -79,7 +93,8 @@ def main():
 
             # Create new streamer instance for this connection
             streamer = PiStreamer(
-                camera,
+                camera_top,
+                camera_bottom,
                 RAVEN_WRAPPER,
                 imuWrapper,
                 host=config.COMPUTER_IP,
@@ -108,8 +123,9 @@ def main():
             print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
             time.sleep(config.RECONNECT_DELAY)
 
-    camera.close()
-    print("Camera closed")
+    camera_top.close()
+    camera_bottom.close()
+    print("Cameras closed")
 
 
 if __name__ == "__main__":
