@@ -39,10 +39,11 @@ class CameraCapture:
         if not self.cap.isOpened():
             return False
 
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-
         self.cap.set(cv2.CAP_PROP_FPS, config.FPS)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         # disable auto exposure and white balance to prevent messing up calibration
         # Set to manual exposure mode with 0.25 "magic number"
@@ -52,11 +53,10 @@ class CameraCapture:
         # Disable auto white balance
         self.cap.set(cv2.CAP_PROP_AUTO_WB, 0.0)
         # Set white balance temperature to 4200K
-        self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 4200)
+        self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, 3500)
         # Set Resolution
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.FRAME_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
-        # self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 
         print(f"Actual FPS: {self.cap.get(cv2.CAP_PROP_FPS)}")
         print(f"Actual Width: {self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)}")
