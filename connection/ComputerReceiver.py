@@ -16,12 +16,12 @@ import threading
 import time
 from typing import Callable, Optional
 import cv2
-import numpy as np
 import traceback
 import math
 import config
 from . import protocol
 from . import message_types
+from connection.frame_info import FrameInfo
 from profiler import Profiler
 import navHelpers
 
@@ -61,28 +61,28 @@ class ComputerReceiver():
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
 
-        # takes in frame, frame_id, x, y, theta, camera_angle
-        self.on_frame: Callable[[np.ndarray, int, float, float, float, float], None] = (
-            lambda frame, frame_id, x, y, theta, camera_angle: None)
+        # takes in FrameInfo
+        self.on_frame: Callable[[FrameInfo], None] = lambda _: None
         self._lock = threading.Lock()
 
         # Profiler for receive loop performance
         self.profiler = Profiler()
 
     def set_frame_callback(
-            self, callback: Callable[[np.ndarray, int, float, float, float, float], None]):
+            self, callback: Callable[[FrameInfo], None]):
         """
         Set callback for processing frames and generating movement commands.
         THIS BLOCKS THE RECEIVING FRAMES LOOP
 
         Args:
-            callback: Function(frame, frame_id, x, y, theta, camera_angle) -> None
-                - frame: Video frame as numpy array
-                - frame_id: Frame sequence number
-                - x: Robot x position in mm (world coordinates)
-                - y: Robot y position in mm (world coordinates)
-                - theta: Robot orientation in radians
-                - camera_angle: Camera servo angle in radians
+            callback: Function(frame_info) -> None
+                - frame_info: FrameInfo object containing:
+                    - frame_top: Top camera frame as numpy array
+                    - frame_bottom: Bottom camera frame as numpy array
+                    - frame_id: Frame sequence number
+                    - x, y, theta: Robot position and orientation
+                    - gripperHeight, gripperAngle, scooperAngle: Manipulator states
+                    - distanceSensed: Distance sensor reading
         """
         self.on_frame = callback
 
@@ -149,14 +149,16 @@ class ComputerReceiver():
             self.command_client_socket, message_types.CLOSE, [])
 
     def receive_loop(self, show_video: bool = True,
-                     window_name: str = "Pi Camera"):
+                     window_name_top: str = "Top Camera",
+                     window_name_bottom: str = "Bottom Camera"):
         """
         Main loop to receive and process frames.
         Runs until keyboard interrupt
 
         Args:
-            show_video: Whether to display video in window
-            window_name: OpenCV window name
+            show_video: Whether to display video in windows
+            window_name_top: OpenCV window name for top camera
+            window_name_bottom: OpenCV window name for bottom camera
         """
         if not self.video_client_socket:
             print("No video connection")
@@ -172,37 +174,23 @@ class ComputerReceiver():
             try:
                 self.profiler.start_frame()
 
-                # Receive frame
-                result = protocol.recv_frame(self.video_client_socket)
-                if result is None:
+                # Receive frame info
+                frame_info = protocol.recv_frame_info(self.video_client_socket)
+                if frame_info is None:
                     failed_frames += 1
                     if (failed_frames & (failed_frames - 1) == 0):
                         print(
                             f"Didn't Receive Frame (Connection Lost) {failed_frames}")
                     time.sleep(0.5)
                     continue
-                elif result == 0:
-                    # Graceful disconnect from Pi
-                    print("Pi disconnected gracefully")
-                    break
                 else:
                     failed_frames = 0
 
-                self.profiler.record("recv_frame")
+                self.profiler.record("recv_frame_info")
 
-                frame_data, frame_id, x, y, theta, camera_angle = result
-
-                # Decode JPEG
-                np_arr = np.frombuffer(frame_data, dtype=np.uint8)
-                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                self.profiler.record("decode_jpeg")
-
-                if frame is None:
-                    continue
-
-                # Process frame with callback and get movement command
+                # Process frame with callback
                 try:
-                    self.on_frame(frame, frame_id, x, y, theta, camera_angle)
+                    self.on_frame(frame_info)
                     self.profiler.record("frame_callback")
                 except Exception as e:
                     print("Error in frame callback")
@@ -219,11 +207,12 @@ class ComputerReceiver():
 
                     if show_video:
                         cv2.setWindowTitle(
-                            window_name, f"{window_name} - {fps:.1f} FPS")
+                            window_name_top, f"{window_name_top} - {fps:.1f} FPS")
 
-                # Display
+                # Display both frames
                 if show_video:
-                    cv2.imshow(window_name, frame)
+                    cv2.imshow(window_name_top, frame_info.frame_top)
+                    cv2.imshow(window_name_bottom, frame_info.frame_bottom)
                     self.profiler.record("imshow")
                     key = cv2.waitKey(1) & 0xFF
                     self.profiler.record("waitKey")
@@ -231,8 +220,9 @@ class ComputerReceiver():
                     if key == ord('q'):
                         break
                     elif key == ord('s'):
-                        cv2.imwrite(f"capture_{frame_id}.jpg", frame)
-                        print(f"Saved capture_{frame_id}.jpg")
+                        cv2.imwrite(f"capture_top_{frame_info.frame_id}.jpg", frame_info.frame_top)
+                        cv2.imwrite(f"capture_bottom_{frame_info.frame_id}.jpg", frame_info.frame_bottom)
+                        print(f"Saved capture_top_{frame_info.frame_id}.jpg and capture_bottom_{frame_info.frame_id}.jpg")
                     elif key == ord('p'):
                         print("Saving profiler data...")
                         self.profiler.save_profile()

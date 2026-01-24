@@ -10,7 +10,6 @@ SCRIPT_DIR = Path(__file__).parent.absolute()
 
 MODEL = YOLO(str(SCRIPT_DIR / 'last.pt'))
 labels = MODEL.names
-print(MODEL)
 print(labels)
 
 

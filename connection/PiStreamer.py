@@ -28,13 +28,13 @@ Run on the Raspberry Pi that will stream video and receive movement commands.
 import socket
 import threading
 import time
-import cv2
 from typing import Callable, Optional
 import traceback
 
 from IMUWrapper import IMUWrapper
 from RavenWrapper import RavenWrapper
 from connection import message_types
+from connection.frame_info import FrameInfo
 from profiler import Profiler
 
 import config
@@ -51,7 +51,8 @@ class PiStreamer():
     consisting of left/right motor coefficients and distance.
     """
 
-    def __init__(self, camera: CameraCapture,
+    def __init__(self, camera_top: CameraCapture,
+                 camera_bottom: CameraCapture,
                  ravenWrapper: RavenWrapper,
                  imuWrapper: IMUWrapper,
                  host: str = config.COMPUTER_IP,
@@ -61,7 +62,8 @@ class PiStreamer():
         Initialize the streamer for a single-use connection.
 
         Args:
-            camera: CameraCapture instance (managed externally)
+            camera_top: Top CameraCapture instance (managed externally)
+            camera_bottom: Bottom CameraCapture instance (managed externally)
             raven: Raven motor controller instance (for odometry)
             imu_wrapper: IMUWrapper instance (for heading)
             host: Computer IP address to connect to
@@ -69,7 +71,8 @@ class PiStreamer():
             command_port: Port for receiving commands
         """
 
-        self.camera = camera
+        self.camera_top = camera_top
+        self.camera_bottom = camera_bottom
         self.ravenWrapper = ravenWrapper
         self.imu_wrapper = imuWrapper
         self.host = host
@@ -80,6 +83,12 @@ class PiStreamer():
         self.command_client_socket: Optional[socket.socket] = None
         self.frame_id = 0
         self.running = False
+
+        # Sensor value getters (set these to get real sensor data)
+        self.get_gripper_height: Callable[[], float] = lambda: 0.0
+        self.get_gripper_angle: Callable[[], float] = lambda: 0.0
+        self.get_scooper_angle: Callable[[], float] = lambda: 0.0
+        self.get_distance_sensed: Callable[[], float] = lambda: 0.0
 
         # movement callback blocks the command receiving thread
         # takes in msg_type and args and does the command
@@ -98,9 +107,33 @@ class PiStreamer():
         NOTE: movement callback blocks the command receiver thread
 
         Args:
-            callback: Function(x, y, frame_id, extra) called on movement command receipt
+            callback: Function(msg_type, args) called on command receipt
         """
         self.command_callback = callback
+
+    def set_sensor_callbacks(
+            self,
+            get_gripper_height: Optional[Callable[[], float]] = None,
+            get_gripper_angle: Optional[Callable[[], float]] = None,
+            get_scooper_angle: Optional[Callable[[], float]] = None,
+            get_distance_sensed: Optional[Callable[[], float]] = None):
+        """
+        Set callbacks for sensor data retrieval.
+
+        Args:
+            get_gripper_height: Function returning gripper height in mm
+            get_gripper_angle: Function returning gripper angle in radians
+            get_scooper_angle: Function returning scooper angle in radians
+            get_distance_sensed: Function returning distance sensor reading in mm
+        """
+        if get_gripper_height is not None:
+            self.get_gripper_height = get_gripper_height
+        if get_gripper_angle is not None:
+            self.get_gripper_angle = get_gripper_angle
+        if get_scooper_angle is not None:
+            self.get_scooper_angle = get_scooper_angle
+        if get_distance_sensed is not None:
+            self.get_distance_sensed = get_distance_sensed
 
     def connect(self) -> bool:
         """
@@ -191,8 +224,11 @@ class PiStreamer():
         Args:
             max_fps: Maximum frames per second to stream (default: config.DEFAULT_MAX_FPS)
         """
-        if self.camera is None or not self.camera.is_open():
-            print("Cannot start streaming: camera not available")
+        if self.camera_top is None or not self.camera_top.is_open():
+            print("Cannot start streaming: top camera not available")
+            return
+        if self.camera_bottom is None or not self.camera_bottom.is_open():
+            print("Cannot start streaming: bottom camera not available")
             return
         if not self.video_client_socket:
             print("Not connected to video server")
@@ -209,35 +245,46 @@ class PiStreamer():
                 self.profiler.start_frame()
                 start_time = time.time()
 
-                # Capture frame
-                frame = self.camera.read()
-                if frame is None:
-                    print("failed to read frame from camera")
+                # Capture frames from both cameras
+                frame_top = self.camera_top.read()
+                frame_bottom = self.camera_bottom.read()
+                if frame_top is None or frame_bottom is None:
+                    print("failed to read frame from cameras")
                     time.sleep(0.1)
                     continue
                 self.profiler.record("camera_read")
-
-                # Encode as JPEG
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
-                                config.JPEG_QUALITY]
-                success, encoded = cv2.imencode(
-                    '.jpg', frame, encode_param)
-                if not success:
-                    print("Failed to encode frame")
-                    continue
-                self.profiler.record("jpeg_encode")
 
                 # Get current robot pose
                 x, y = self.ravenWrapper.get_odometry()
                 theta = self.imu_wrapper.get_heading()
                 self.profiler.record("get_pose")
 
-                # Send frame with pose data
-                if not protocol.send_frame(
+                # Get sensor data
+                gripper_height = self.get_gripper_height()
+                gripper_angle = self.get_gripper_angle()
+                scooper_angle = self.get_scooper_angle()
+                distance_sensed = self.get_distance_sensed()
+                self.profiler.record("get_sensors")
+
+                # Create FrameInfo object
+                frame_info = FrameInfo(
+                    frame_top=frame_top,
+                    frame_bottom=frame_bottom,
+                    frame_id=self.frame_id,
+                    x=x,
+                    y=y,
+                    theta=theta,
+                    gripperHeight=gripper_height,
+                    gripperAngle=gripper_angle,
+                    scooperAngle=scooper_angle,
+                    distanceSensed=distance_sensed
+                )
+
+                # Send frame info
+                if not protocol.send_frame_info(
                         self.video_client_socket,
-                        encoded.tobytes(),
-                        self.frame_id,
-                        x, y, theta):
+                        frame_info,
+                        config.JPEG_QUALITY):
                     print("Failed to send frame. Continuing...")
                     continue
                 self.profiler.record("send_frame")

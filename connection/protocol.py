@@ -6,7 +6,10 @@ import struct
 import socket
 from typing import Optional, Tuple, Literal
 from connection import message_types
+from connection.frame_info import FrameInfo
 import config
+import cv2
+import numpy as np
 
 
 def close_socket(sock: Optional[socket.socket]) -> None:
@@ -194,7 +197,7 @@ def send_command(
     """
     try:
         # Validate message type
-        if msg_type not in message_types.msg_types:
+        if msg_type not in message_types.messageTypes:
             print(f"Unknown message type: {msg_type}")
             return False
 
@@ -228,7 +231,7 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
         msg_type: int = struct.unpack('!B', data[:1])[0]
 
         # Validate message type
-        if msg_type not in message_types.msg_types:
+        if msg_type not in message_types.messageTypes:
             print(f"Unknown message type: {msg_type}")
             return None
 
@@ -241,4 +244,137 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
         return msg_type, args
     except struct.error as e:
         print(f"Failed to unpack command: {e}")
+        return None
+
+
+def send_frame_info(
+        sock: socket.socket,
+        frame_info: FrameInfo,
+        jpeg_quality: int = 80) -> bool:
+    """
+    Send a FrameInfo object with dual camera frames and robot state.
+
+    Args:
+        sock: Socket to send on
+        frame_info: FrameInfo object containing frames and state
+        jpeg_quality: JPEG compression quality (0-100)
+
+    Returns:
+        True if successful
+    """
+    try:
+        # Encode frames to JPEG
+        _, frame_top_encoded = cv2.imencode(
+            '.jpg',
+            frame_info.frame_top,
+            [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
+        )
+        _, frame_bottom_encoded = cv2.imencode(
+            '.jpg',
+            frame_info.frame_bottom,
+            [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
+        )
+
+        frame_top_bytes = frame_top_encoded.tobytes()
+        frame_bottom_bytes = frame_bottom_encoded.tobytes()
+
+        # Pack data:
+        # - frame_id (4 bytes)
+        # - 7 floats: x, y, theta, gripperHeight, gripperAngle, scooperAngle, distanceSensed (28 bytes)
+        # - frame_top length (4 bytes)
+        # - frame_top data (variable)
+        # - frame_bottom length (4 bytes)
+        # - frame_bottom data (variable)
+        packet = struct.pack('!I', frame_info.frame_id)
+        packet += struct.pack(
+            '!fffffff',
+            frame_info.x,
+            frame_info.y,
+            frame_info.theta,
+            frame_info.gripperHeight,
+            frame_info.gripperAngle,
+            frame_info.scooperAngle,
+            frame_info.distanceSensed
+        )
+        packet += struct.pack('!I', len(frame_top_bytes))
+        packet += frame_top_bytes
+        packet += struct.pack('!I', len(frame_bottom_bytes))
+        packet += frame_bottom_bytes
+
+        return send_message(sock, packet)
+    except (cv2.error, struct.error) as e:
+        print(f"Failed to send frame info: {e}")
+        return False
+
+
+def recv_frame_info(sock: socket.socket) -> Optional[FrameInfo]:
+    """
+    Receive a FrameInfo object with dual camera frames and robot state.
+
+    Args:
+        sock: Socket to receive from
+
+    Returns:
+        FrameInfo object or None if failed
+    """
+    data = recv_message(sock)
+    if data is None:
+        return None
+
+    # Minimum size: 4 (frame_id) + 28 (7 floats) + 4 (top_len) + 4
+    # (bottom_len) = 40 bytes
+    if len(data) < 40:
+        return None
+
+    try:
+        offset = 0
+
+        # Unpack frame_id
+        frame_id = struct.unpack('!I', data[offset:offset + 4])[0]
+        offset += 4
+
+        # Unpack 7 floats
+        x, y, theta, gripperHeight, gripperAngle, scooperAngle, distanceSensed = \
+            struct.unpack('!fffffff', data[offset:offset + 28])
+        offset += 28
+
+        # Unpack frame_top
+        frame_top_len = struct.unpack('!I', data[offset:offset + 4])[0]
+        offset += 4
+        frame_top_bytes = data[offset:offset + frame_top_len]
+        offset += frame_top_len
+
+        # Unpack frame_bottom
+        frame_bottom_len = struct.unpack('!I', data[offset:offset + 4])[0]
+        offset += 4
+        frame_bottom_bytes = data[offset:offset + frame_bottom_len]
+
+        # Decode JPEG frames
+        frame_top = cv2.imdecode(
+            np.frombuffer(frame_top_bytes, dtype=np.uint8),
+            cv2.IMREAD_COLOR
+        )
+        frame_bottom = cv2.imdecode(
+            np.frombuffer(frame_bottom_bytes, dtype=np.uint8),
+            cv2.IMREAD_COLOR
+        )
+
+        if frame_top is None or frame_bottom is None:
+            print("Failed to decode JPEG frames")
+            return None
+
+        return FrameInfo(
+            frame_top=frame_top,
+            frame_bottom=frame_bottom,
+            frame_id=frame_id,
+            x=x,
+            y=y,
+            theta=theta,
+            gripperHeight=gripperHeight,
+            gripperAngle=gripperAngle,
+            scooperAngle=scooperAngle,
+            distanceSensed=distanceSensed
+        )
+    except (struct.error, cv2.error) as e:
+        print(f"Failed to unpack frame info: {e}")
         return None
