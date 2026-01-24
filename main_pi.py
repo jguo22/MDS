@@ -23,14 +23,10 @@ robot_radius = 1.0  # [m]
 ox, oy = [], []
 # Can locations
 cx, cy = [], []
-# Zone locations
-left_cans_x, left_cans_y = -45, 45
-right_cans_x, right_cans_y = 45, 45
-goto_left_cans_x, goto_left_cans_y = -40, 45
-goto_right_cans_x, goto_right_cans_y = 40, 45
 red_zone_x, red_zone_y = 0, 0
 green_zone_x, green_zone_y = 0, 0
 yellow_zone_x, yellow_zone_y = 0, 0
+golden_x, golden_y = 0, 0
 
 def main():
     def gripClaw():
@@ -63,7 +59,7 @@ def main():
         image = camera.cap.read()[1]
         result = segmentImage(image)
         detections = result.boxes
-        lowest_y = 10000
+        lowest_y = 0
         class_name = "None"
         for detection in detections:
             print(detection.conf.item())
@@ -72,7 +68,7 @@ def main():
             xyxy_tensor = detection.xyxy.cpu()
             xyxy = xyxy_tensor.numpy().squeeze()
             xmin, ymin, xmax, ymax = xyxy.astype(int)
-            if ymax < lowest_y:
+            if ymax > lowest_y:
                 lowest_y = ymax
                 classidx = int(detection.cls.item())
                 class_name = getClassName(classidx)
@@ -94,10 +90,68 @@ def main():
         for (x, y) in zip(rx, ry):
             nav.add_paths_world_xy(x, y)
 
-    def goto_right_cans():
-        path_find(goto_right_cans_x, goto_right_cans_y)
-        nav.override_paths_world_xy(right_cans_x, right_cans_y, use_claw=True)
-        gripCan()
+    def store_can_locations():
+        rotateCameraUp()
+        image = camera.cap.read()[1]
+        result = segmentImage(image)
+        detections = result.boxes
+
+        for detection in detections:
+            if (detection.conf.item() < 0.6):
+                continue
+            xyxy_tensor = detection.xyxy.cpu()
+            xyxy = xyxy_tensor.numpy().squeeze()
+            xmin, ymin, xmax, ymax = xyxy.astype(int)
+            classidx = int(detection.cls.item())
+            class_name = getClassName(classidx)
+
+            if "Can" not in class_name:
+                continue
+            x, y = transform_uv_to_xy((xmin + xmax) / 2, ymax)
+
+            cx.append(x)
+            cy.append(y)
+
+            if class_name == "Golden Can":
+                golden_x = x
+                golden_y = y
+        transform_uv_to_xy(golden_x, golden_y) # TODO: move to golden pringle can
+        # Sort the cans from leftmost to rightmost
+        x_sorted, y_sorted = zip(*sorted(zip(cx, cy)))
+
+        cx = list(x_sorted)
+        cy = list(y_sorted)
+
+    def goto_golden_can():
+        nav.override_paths_world_xy(golden_x, golden_y)
+
+    def getCans():
+        i = cx.index(golden_x)
+        while i < len(cx):
+            # TODO: change these from override to add pathes
+            if (len(cx) >= i + 4):
+                nav.override_paths_world_xy(cx[i+4], cy[i+4])
+            else:
+                nav.override_paths_world_xy(cx[-1], cy[-1])
+            # Remove collected cans from list
+            del cx[i:i+6]
+            del cy[i:i+6]
+            # Deposit cans on our side
+            nav.addPath(NavMove(1.3, 0.7, 3000, False, True))
+            nav.addPath(NavMove(-1.3, -0.7, 3000, False, True))
+        # Collect cans from other side
+        nav.addPath(NavMove(-1, 1, 3000, False, True)) # TODO: turn 180 degrees COUNTERCLOCKWISE
+        while len(cx) > 0:
+            if len(cx) > 5:
+                nav.override_paths_world_xy(cx[-4], cy[-4])
+            else:
+                nav.override_paths_world_xy(cx[0], cy[0])
+            # Remove collected cans from list
+            del cx[-5:]
+            del cy[-5:]
+            # Deposit cans on our side
+            nav.addPath(NavMove(0.7, 1.3, 3000, False, True))
+            nav.addPath(NavMove(-0.7, -1.3, 3000, False, True))
 
 
 
