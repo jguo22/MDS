@@ -22,8 +22,8 @@ import math
 import config
 from . import protocol
 from . import message_types
-import nav
 from profiler import Profiler
+import navHelpers
 
 
 class ComputerReceiver():
@@ -309,8 +309,8 @@ class ComputerReceiver():
         # atan2(y, x) gives angle from forward axis (x) to target
         theta = math.atan2(y, x)
 
-        rotate = list(nav.get_rotate(theta))
-        forward = list(nav.get_forward_mm(distance))
+        rotate = list(navHelpers.get_rotate(theta))
+        forward = list(navHelpers.get_forward_mm(distance))
 
         print(
             f'sent movement x={x} y={y} theta={theta} distance={distance} rotate={rotate} forward={forward}')

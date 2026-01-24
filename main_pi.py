@@ -9,7 +9,7 @@ import config
 from connection import message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
-from servos import gripClaw, releaseGrip, moveGripperHeight
+from servos import gripClaw, releaseClaw, moveGripperHeight
 
 
 def main():
@@ -70,7 +70,7 @@ def main():
             assert (len(args) == 1)
             height = args[0]
             moveGripperHeight(height)
-            releaseGrip()
+            releaseClaw()
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     while True:

@@ -5,7 +5,7 @@ from enum import Enum, auto
 from typing import Tuple, List
 from spatialmath import SE2
 from connection.ComputerReceiver import ComputerReceiver
-from nav import get_forward_mm, get_rotate
+from navHelpers import get_forward_mm, get_rotate
 from yolo.segment import segmentImage
 from yolo.zone_utils import getQuadCenter, getZones, isPointInPoly
 from yolo.can_utils import getCans
