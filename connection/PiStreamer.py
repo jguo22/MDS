@@ -288,6 +288,7 @@ class PiStreamer():
                     distanceSensed=distance_sensed
                 )
 
+                self.profiler.record("send_frame0")
                 # Send frame info
                 if not protocol.send_frame_info(
                         self.video_client_socket,
@@ -304,9 +305,7 @@ class PiStreamer():
                 if elapsed < frame_interval:
                     sleep_time = frame_interval - elapsed
                     time.sleep(sleep_time)
-                    self.profiler.record("rate_limit_sleep")
-                else:
-                    self.profiler.record("rate_limit_sleep")
+                self.profiler.record("rate_limit_sleep")
 
                 self.profiler.end_frame()
             except KeyboardInterrupt:

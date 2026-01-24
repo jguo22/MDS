@@ -43,7 +43,7 @@ class CameraCapture:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         self.cap.set(cv2.CAP_PROP_FPS, config.FPS)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        # self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         # disable auto exposure and white balance to prevent messing up calibration
         # Set to manual exposure mode with 0.25 "magic number"
@@ -66,7 +66,8 @@ class CameraCapture:
         # Start background reading thread if enabled
         if self.threaded:
             self.running = True
-            self.thread = threading.Thread(target=self._read_thread, daemon=True)
+            self.thread = threading.Thread(
+                target=self._read_thread, daemon=True)
             self.thread.start()
             print(f"Started threaded reading for {self.source}")
 
