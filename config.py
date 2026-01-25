@@ -12,7 +12,8 @@ CAN_HEIGHT = 122.5  # Standard can height in mm
 SCOOPER_LENGTH = 254
 CLAW_OFFSET = 120
 
-# --------------------- NETWORKING ---------------------
+
+# --------------------- NAVIGATION ---------------------
 WHEEL_D = 101.6
 BASE_D = 237.236
 

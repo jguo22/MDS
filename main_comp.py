@@ -4,8 +4,8 @@ import threading
 from profiler import Profiler
 from RobotHandler import RobotHandler
 from connection.ComputerReceiver import ComputerReceiver
-from connection.frame_processor.ClickProcessor import ClickAndKeyboardProcessor
-from connection.frame_processor.SaveImageProcessor import SaveImageProcessor
+from InputProcessor import InputProcessor
+from connection.FrameSaver import FrameSaver
 from connection.frame_info import FrameInfo
 import config
 
@@ -32,8 +32,9 @@ def main():
     # ----------------- CREATE RECEIVER AND PROCESSORS -----------------
     computer_receiver = ComputerReceiver(
         args.host, args.video_port, args.coord_port)
-    inputProcessor = ClickAndKeyboardProcessor(computer_receiver, window_name_top)
-    _save_image_processor = SaveImageProcessor(2)
+    inputProcessor = InputProcessor(
+        computer_receiver, window_name_top)
+    _frame_saver = FrameSaver(2)
     robotHandler = RobotHandler(computer_receiver)
 
     # Create main profiler for frame processing pipeline

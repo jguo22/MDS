@@ -3,10 +3,8 @@ import time
 import cv2
 from connection.frame_info import FrameInfo
 
-from .FrameProcessor import FrameProcessor
 
-
-class SaveImageProcessor(FrameProcessor):
+class FrameSaver():
     """
     Frame processor that saves frames to disk with a cooldown period between saves.
     Images are saved in the 'images' directory with timestamps in their filenames.
@@ -30,7 +28,7 @@ class SaveImageProcessor(FrameProcessor):
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def process(self, frame_info: FrameInfo) -> None:
+    def saveFrame(self, frame_info: FrameInfo) -> None:
         """
         Process a frame, saving it to disk if cooldown has passed.
 

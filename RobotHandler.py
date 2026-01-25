@@ -1,5 +1,6 @@
 import time
 import math
+import cv2
 import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List
@@ -10,11 +11,12 @@ from navHelpers import get_forward_mm, get_rotate
 from yolo.segment import segmentImage
 from yolo.zone_utils import getQuadCenter, getZones, isPointInPoly
 from yolo.can_utils import getCans
-from config import CAN_HEIGHT, CENTER_BORDER_X, CAN_DIAMETER, BASE_D, CLAW_OFFSET, FT_TO_MM, SCOOPER_LENGTH
 from coordinates.relativeCoordinates import get_movement_plan, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStarPlanner
-from config import FPS
+from streamer import Streamer
+from config import FPS, CAN_HEIGHT, CENTER_BORDER_X, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH
+from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, CAN_CLASS_NAMES, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
 class RobotState(Enum):
@@ -27,23 +29,13 @@ class RobotState(Enum):
     MidgameGoToZone = auto()
 
 
-GREEN_ZONE = 0
-RED_ZONE = 1
-GOLDEN_ZONE = 2
-GREEN_ZONE_OPP = 3
-RED_ZONE_OPP = 4
-GOLDEN_ZONE_OPP = 5
-
-GREEN_CAN = 0
-RED_CAN = 1
-GOLDEN_CAN = 2
-
-
 class RobotHandler():
     def __init__(self, computer_receiver: ComputerReceiver):
         self.startFrame: int = -1
         self.startTime = time.time()
         self.state = RobotState.StartScan
+
+        self.started = False
 
         # four vertices of scoring zones in world coords
         # np.array([[x1, y1], [x2, y2], [x3, y3], [x4, y4]])
@@ -59,26 +51,48 @@ class RobotHandler():
         self.targetZone: int = -1
 
         # x, y, stack size, color
-        self.stacked_cans = List[Tuple[float, float, int, int]]
+        self.stacked_cans: List[Tuple[float, float, int, int]] = []
 
         # waypoints to send to pi for movement
         self.waypoints: List[Tuple[float, float]] = []
         self.lastTimeSentPath = 0
 
         self.computer_receiver = computer_receiver
-        self.isHandlingFrame = False
-
         self.thetaStar = ThetaStarPlanner()
-
-        # Profiler for performance monitoring
         self.profiler = Profiler()
+        self.telemetry = Streamer()
+
+        print(self.get_picklable_dict())
+        self.telemetry.set_data(self.get_picklable_dict())
+
+    def get_picklable_dict(self):
+        """Returns a dict with unpicklable objects removed and enums converted to strings."""
+
+        exclude = {
+            'computer_receiver',
+            'thetaStar',
+            'profiler',
+            'telemetry',
+        }
+
+        result = {}
+        for k, v in self.__dict__.items():
+            if k in exclude:
+                continue
+
+            # Convert enum to string name
+            if isinstance(v, Enum):
+                result[k] = v.name
+            else:
+                result[k] = v
+
+        return result
 
     def start(self):
         self.startFrame = -1
         self.startTime = time.time()
 
     def handleFrame(self, frame_info: FrameInfo):
-        self.isHandlingFrame = True
         self.profiler.start_frame()
 
         # Use top camera frame for vision processing
@@ -115,8 +129,24 @@ class RobotHandler():
 
         self.profiler.record("handleState")
 
+        self.telemetry.set_img(cv2.Mat(frame))
+        self.telemetry.update_odom_state(robot_x, robot_y, theta)
+        circles = []
+        for i in range(len(self.cans)):
+            cx, cy = self.cans[i]
+            color = self.can_colors[i]
+            if color == GREEN_CAN:
+                circles.append((cx, cy, "green"))
+            if color == RED_CAN:
+                circles.append((cx, cy, "red"))
+            if color == GOLDEN_CAN:
+                circles.append((cx, cy, "gold"))
+        self.telemetry.update_circles(circles)
+        self.telemetry.set_data(self.get_picklable_dict())
+
+        self.profiler.record("telemetry")
+
         self.profiler.end_frame()
-        self.isHandlingFrame = False
 
     # ------------------------ STATE FUNCTIONS .----------------------------
 
@@ -127,24 +157,14 @@ class RobotHandler():
 
             # ------------- PLAN PATH TO DETECTED CANS -------------
             # Get all detected cans in image coordinates
-            can_locations_xy, _ = getCans(result, frame)
-
-            # Filter cans that are on our side of the center border
-            filtered_cans = [
-                (x, y) for x, y in can_locations_xy
-                if x < (CENTER_BORDER_X + CAN_DIAMETER)
-            ]
-
-            # Sort cans by y-coordinate (positive to negative)
-            sorted_cans = sorted(filtered_cans, key=lambda p: -p[1])
-            print(sorted_cans)
+            can_locations_xy, can_colors = getCans(result, frame)
 
             # Store the planned path
-            self.cans = sorted_cans
-            # add green zone
-            self.cans.append((4 * FT_TO_MM, 0))
+            self.cans = can_locations_xy
+            self.can_colors = canNamesToNumbers(can_colors)
 
-            self.state = RobotState.StartGather
+            if self.started:
+                self.state = RobotState.StartGather
 
     def handleStartGather(self, robot_x: float, robot_y: float, theta: float):
         """Handle StartGather state: send waypoints and check if cans reached"""
@@ -291,19 +311,19 @@ class RobotHandler():
             center_x = np.mean(quad[:, 0])
             is_our_side = center_x < CENTER_BORDER_X
 
-            if name == 'Green Zone':
+            if name == ZONE_CLASS_NAMES[GREEN_ZONE]:
                 if is_our_side and self.zones[GREEN_ZONE] is None:
                     self.zones[GREEN_ZONE] = quad
                 elif not is_our_side and self.zones[GREEN_ZONE_OPP] is None:
                     self.zones[GREEN_ZONE_OPP] = quad
 
-            elif name == 'Red Zone':
+            elif name == ZONE_CLASS_NAMES[RED_ZONE]:
                 if is_our_side and self.zones[RED_ZONE] is None:
                     self.zones[RED_ZONE] = quad
                 elif not is_our_side and self.zones[RED_ZONE_OPP] is None:
                     self.zones[RED_ZONE_OPP] = quad
 
-            elif name == 'Golden Zone':
+            elif name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
                 if is_our_side and self.zones[GOLDEN_ZONE] is None:
                     self.zones[GOLDEN_ZONE] = quad
                 elif not is_our_side and self.zones[GOLDEN_ZONE_OPP] is None:

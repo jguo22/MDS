@@ -26,6 +26,10 @@ dev = [
     "pyright"
 ]
 
-[tool.setuptools]
-packages = ["connection", "yolo"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["yolo*", "connection*", "coordinates*", "calibration*"]
+exclude = ["runs*", "images*", "profiles*", "venv*", "*.egg-info", "raven"]
 
+[tool.setuptools]
+py-modules = []

@@ -4,6 +4,8 @@ Zone detection and quadrilateral utilities.
 import cv2 as cv
 import numpy as np
 
+from colors import ZONE_CLASS_NAMES
+
 from .pixelTo3D import transform_uv_to_xy
 from .mask_utils import fixSegmentation, calculateQuadFromMask
 
@@ -117,7 +119,7 @@ def getQuadrilateralsAndClasses(result, image):
             class_id = int(result.boxes.cls[i])
             class_name = result.names[class_id]
 
-            if (class_name in ['Green Zone', 'Golden Zone', 'Red Zone']):
+            if (class_name in ZONE_CLASS_NAMES):
                 quadrilaterals.append(quad)
                 class_names.append(class_name)
 
