@@ -25,8 +25,8 @@ def getQuadCenter(quad):
     points = quad.reshape(4, 2)
 
     # Calculate mean of all x and y coordinates
-    center_x = int(np.mean(points[:, 0]))
-    center_y = int(np.mean(points[:, 1]))
+    center_x = np.mean(points[:, 0])
+    center_y = np.mean(points[:, 1])
 
     return (center_x, center_y)
 

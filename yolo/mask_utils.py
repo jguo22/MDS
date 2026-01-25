@@ -283,3 +283,41 @@ def yoloMaskToBinary(mask_orig: Masks, image: np.ndarray):
         mask_resized, 127, 255, cv.THRESH_BINARY)
 
     return binary_mask
+
+
+def isMaskOnEdge(mask: np.ndarray, edge_threshold: int = 5) -> bool:
+    """
+    Check if a mask touches or is near the edge of the frame.
+
+    Useful for detecting objects that may be cut off by the frame boundary.
+
+    Args:
+        mask: Binary mask (H, W) with values 0 or 255
+        edge_threshold: Distance in pixels from edge to consider as "on edge" (default: 5)
+
+    Returns:
+        bool: True if mask has pixels within edge_threshold of any frame edge
+    """
+    if mask is None or mask.size == 0:
+        return False
+
+    height, width = mask.shape
+
+    # Check if any mask pixels exist near each edge
+    # Top edge
+    if np.any(mask[:edge_threshold, :] > 0):
+        return True
+
+    # Bottom edge
+    if np.any(mask[height - edge_threshold:, :] > 0):
+        return True
+
+    # Left edge
+    if np.any(mask[:, :edge_threshold] > 0):
+        return True
+
+    # Right edge
+    if np.any(mask[:, width - edge_threshold:] > 0):
+        return True
+
+    return False

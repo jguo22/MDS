@@ -6,6 +6,7 @@ OVERRIDE_MOVEMENTS = 2  # List of movement commands
 SEND_WORLD_XY = 3  # World coordinate navigation: [world_x, world_y]
 GRIP_CAN = 4  # Grip can and lift: [height_mm]
 RELEASE_CAN = 5  # Release can grip: [height_mm]
+SEND_GRIPPER_HEIGHT = 6  # Set gripper height: [height_mm]
 
 messageTypes = [
     CLOSE,
@@ -13,5 +14,6 @@ messageTypes = [
     OVERRIDE_MOVEMENTS,
     SEND_WORLD_XY,
     GRIP_CAN,
-    RELEASE_CAN
+    RELEASE_CAN,
+    SEND_GRIPPER_HEIGHT
 ]

@@ -80,6 +80,12 @@ def main():
             moveGripperHeight(height)
             releaseClaw()
 
+        elif msg_type == message_types.SEND_GRIPPER_HEIGHT:
+            assert (len(args) == 1)
+            height = args[0]
+            print(f"SEND_GRIPPER_HEIGHT: height={height}")
+            moveGripperHeight(height)
+
     # Reconnection loop - each connection uses a new PiStreamer instance
     while True:
         try:

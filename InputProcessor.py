@@ -2,17 +2,19 @@ import cv2
 from config import FRAME_HEIGHT, FRAME_WIDTH
 from connection.ComputerReceiver import ComputerReceiver
 from yolo.pixelTo3D import transform_uv_to_xy
+from RobotHandler import RobotHandler
 
 
 class InputProcessor():
     def __init__(
             self,
             computerReceiver: ComputerReceiver,
-            window_name: str = "Pi Camera"):
+            window_name: str,
+            robotHandler: RobotHandler):
         self.computerReceiver = computerReceiver
         self.window_name = window_name
+        self.robotHandler = robotHandler
         self.frame_size = (FRAME_WIDTH, FRAME_HEIGHT)  # (width, height)
-        # list of time of starting path, l_c, r_c, dist
 
         cv2.namedWindow(self.window_name)
         cv2.setMouseCallback(self.window_name, self._mouse_callback)
@@ -30,6 +32,7 @@ class InputProcessor():
         print("Commands:")
         print("  r x y    - Send relative coordinates (robot-relative)")
         print("  w x y    - Send world coordinates (absolute position)")
+        print("  start    - Start autonomous robot operation")
         print("  quit     - Exit\n")
         while True:
             try:
@@ -41,8 +44,16 @@ class InputProcessor():
 
                 parts = user_input.split()
 
+                # Start autonomous operation
+                if user_input.lower() == 'start':
+                    if self.robotHandler is not None:
+                        self.robotHandler.started = True
+                        print("  → Robot autonomous operation STARTED")
+                    else:
+                        print("  → Error: RobotHandler not available")
+
                 # Relative coordinates: r x y
-                if len(parts) == 3 and parts[0].lower() == 'r':
+                elif len(parts) == 3 and parts[0].lower() == 'r':
                     x = float(parts[1])
                     y = float(parts[2])
                     self.computerReceiver.send_xy(x, y)

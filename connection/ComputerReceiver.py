@@ -406,3 +406,23 @@ class ComputerReceiver():
             message_types.RELEASE_CAN,
             [height_mm]
         )
+
+    def send_gripper_height(self, height_mm: float) -> bool:
+        """
+        Send command to set gripper height.
+
+        Args:
+            height_mm: Height to set gripper to in mm
+
+        Returns:
+            True if successful
+        """
+        if not self.command_client_socket:
+            return False
+
+        print(f'Sending gripper height command: height={height_mm}mm')
+        return protocol.send_command(
+            self.command_client_socket,
+            message_types.SEND_GRIPPER_HEIGHT,
+            [height_mm]
+        )

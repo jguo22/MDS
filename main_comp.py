@@ -32,10 +32,10 @@ def main():
     # ----------------- CREATE RECEIVER AND PROCESSORS -----------------
     computer_receiver = ComputerReceiver(
         args.host, args.video_port, args.coord_port)
-    inputProcessor = InputProcessor(
-        computer_receiver, window_name_top)
-    _frame_saver = FrameSaver(2)
     robotHandler = RobotHandler(computer_receiver)
+    inputProcessor = InputProcessor(
+        computer_receiver, window_name_top, robotHandler)
+    frame_saver = FrameSaver(10)
 
     # Create main profiler for frame processing pipeline
     main_profiler = Profiler()
@@ -43,10 +43,10 @@ def main():
     def process(frame_info: FrameInfo) -> None:
         # Process frame using FrameInfo
         main_profiler.start_frame()
-        inputProcessor.process(frame_info)
-        main_profiler.record("inputProcessor")
         robotHandler.handleFrame(frame_info)
         main_profiler.record("robotHandler")
+        frame_saver.saveFrame(frame_info)
+        main_profiler.record("saveFrame")
         main_profiler.end_frame()
 
     # Set the frame callback to use our processor
