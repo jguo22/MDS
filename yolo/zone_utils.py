@@ -3,26 +3,28 @@ Zone detection and quadrilateral utilities.
 """
 import cv2 as cv
 import numpy as np
+from shapely.geometry import Polygon
 
-from colors import ZONE_CLASS_NAMES
+from colors import GOLDEN_ZONE, ZONE_CLASS_NAMES
+from config import BIG_ZONE_SIDE_LENGTH, SMALL_ZONE_SIDE_LENGTH
 
 from .pixelTo3D import transform_uv_to_xy
-from .mask_utils import fixSegmentation, calculateQuadFromMask
+from .mask_utils import fixSegmentation, calculateQuadFromMask, maskToConvexRegion
 
 
-def getQuadCenter(quad):
+def getSquareCenter(square):
     """
-    Calculates the center point of a quadrilateral.
+    Calculates the center point of a square.
 
     Args:
-        quad: Quadrilateral vertices as numpy array with shape (4, 1, 2) or (4, 2)
+        square: Square vertices as numpy array with shape (4, 1, 2) or (4, 2)
               Format: [[x1, y1]], [[x2, y2]], [[x3, y3]], [[x4, y4]]
 
     Returns:
         tuple: (center_x, center_y) as integers
     """
     # Reshape from (4, 1, 2) to (4, 2) for easier processing
-    points = quad.reshape(4, 2)
+    points = square.reshape(4, 2)
 
     # Calculate mean of all x and y coordinates
     center_x = np.mean(points[:, 0])
@@ -38,8 +40,8 @@ def isPointInPoly(point, polygon):
     Uses OpenCV's pointPolygonTest for accurate and efficient polygon containment check.
 
     Args:
-        point: Point coordinates as tuple (x, y) in same units as quad
-        quad: Quadrilateral vertices as numpy array with shape (N, 1, 2) or (N, 2)
+        point: Point coordinates as tuple (x, y) in same units as polygon
+        polygon: Polygon vertices as numpy array with shape (N, 1, 2) or (N, 2)
               Format: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
 
     Returns:
@@ -65,7 +67,7 @@ def annotate_poly(image, polygon, color=(0, 0, 255)):
         image: Image to annotate (numpy array)
               Shape: (H, W, 3) for BGR color image
         polygon: Polygon contour (N, 1, 2) numpy array
-        color: Color for quadrilateral (BGR tuple), default red (0, 0, 255)
+        color: Color for polygon (BGR tuple), default red (0, 0, 255)
 
     Returns:
         Annotated image
@@ -80,24 +82,117 @@ def annotate_poly(image, polygon, color=(0, 0, 255)):
     return image
 
 
-def getQuadrilateralsAndClasses(result, image):
+def approximateConvexHullWithSquare(convexHull, side_length):
     """
-    Extracts quadrilaterals and class names from YOLO segmentation results.
+    Approximates a region defined by a contour with a rotated square.
+
+    The square is centered at the geometric centroid and has the specified side length.
+    The square's orientation is determined by testing multiple angles and choosing the
+    one with maximum overlap (intersection area) with the original contour.
+
+    Args:
+        contour: Contour/polygon vertices as numpy array with shape (N, 1, 2) or (N, 2)
+                 where N is the number of vertices. Can be in any coordinate system (pixels, mm, etc.)
+        side_length: Side length of the square in the same units as the contour
+        num_angles: Number of angles to test (default: 36, tests every 5 degrees)
+
+    Returns:
+        numpy array of shape (4, 2) representing the square's corners in order.
+        Returns None if contour is empty or invalid.
+    """
+    if convexHull is None or len(convexHull) == 0:
+        return None
+
+    # Handle both (N, 1, 2) and (N, 2) shapes
+    if convexHull.ndim == 3:
+        convexHull = convexHull.reshape(-1, 2)
+
+    # Create shapely Polygon to compute geometric centroid
+    # and for overlap calculation
+    polygon = Polygon(convexHull)
+    centroid = polygon.centroid
+    center_x = centroid.x
+    center_y = centroid.y
+
+    # Calculate half side length
+    half_side = side_length / 2.0
+
+    # Create square vertices in local coordinates (centered at origin)
+    local_square = np.array([
+        [-half_side, -half_side],
+        [half_side, -half_side],
+        [half_side, half_side],
+        [-half_side, half_side],
+    ])
+
+    # Test multiple angles and find the one with best overlap
+    best_angle = 0
+    best_overlap = 0
+    # 0 to 90 degrees (squares have 4-fold symmetry)
+    num_angles = 36
+    angles_to_test = np.linspace(0, np.pi / 2, num_angles)
+
+    for angle_rad in angles_to_test:
+        # Create rotation matrix
+        cos_angle = np.cos(angle_rad)
+        sin_angle = np.sin(angle_rad)
+        rotation_matrix = np.array([
+            [cos_angle, -sin_angle],
+            [sin_angle, cos_angle]
+        ])
+
+        # Rotate and translate the square
+        rotated_square = local_square @ rotation_matrix.T
+        square_vertices = rotated_square + np.array([center_x, center_y])
+
+        square_polygon = Polygon(square_vertices)
+
+        # Calculate intersection area
+        intersection = polygon.intersection(square_polygon)
+        overlap_area = intersection.area
+
+        # Track the best angle
+        if overlap_area > best_overlap:
+            best_overlap = overlap_area
+            best_angle = angle_rad
+
+    # Create the final square with the best angle
+    cos_angle = np.cos(best_angle)
+    sin_angle = np.sin(best_angle)
+    rotation_matrix = np.array([
+        [cos_angle, -sin_angle],
+        [sin_angle, cos_angle]
+    ])
+
+    rotated_square = local_square @ rotation_matrix.T
+    square = rotated_square + np.array([center_x, center_y])
+
+    return square
+
+
+def getZones(result, image):
+    """
+    Extracts zones from YOLO results and approximates each as a square.
+
+    Processes zones directly without using getZones(), implementing the full pipeline
+    from YOLO results to square approximations in world coordinates.
 
     Args:
         result: YOLO result object from inference
         image: Original BGR image (used for fixSegmentation)
+        side_length: Side length of the approximating squares in mm
 
     Returns:
-        tuple: (quadrilaterals, class_names)
-            - quadrilaterals: List of numpy arrays (N, 1, 2) representing quad corners
-            - class_names: List of strings with class names for each quad
+        tuple: (squares_xy, class_names)
+            - squares_xy: List of numpy arrays (4, 2) with xy coordinates in mm
+                         Each array represents a square centered at the zone's centroid
+            - class_names: List of strings with class names for each square
     """
-    quadrilaterals = []
+    squares = []
     class_names = []
 
     if result.masks is None:
-        return quadrilaterals, class_names
+        return squares, class_names
 
     for i, mask_orig in enumerate(result.masks):
         # Convert mask to grayscale image
@@ -108,65 +203,26 @@ def getQuadrilateralsAndClasses(result, image):
         mask_resized = cv.resize(
             mask_uint8, (image.shape[1], image.shape[0]))
 
-        # Apply fixSegmentation to improve mask quality
-        tape_mask = fixSegmentation(image, mask_resized)
+        hull_uv = maskToConvexRegion(mask_resized)
+        hull_xy = [transform_uv_to_xy(*point) for point in hull_uv]
 
-        # Calculate quadrilateral from fixed mask
-        quad = calculateQuadFromMask(tape_mask)
+        # Get class name for this detection
+        class_id = int(result.boxes.cls[i])
+        class_name = result.names[class_id]
 
-        if quad is not None:
-            # Get class name for this detection
-            class_id = int(result.boxes.cls[i])
-            class_name = result.names[class_id]
-
-            if (class_name in ZONE_CLASS_NAMES):
-                quadrilaterals.append(quad)
-                class_names.append(class_name)
-
-    return quadrilaterals, class_names
-
-
-def getZones(result, image):
-    """
-    Extracts quadrilaterals from YOLO results and transforms to xy coordinates.
-
-    Args:
-        result: YOLO result object from inference
-        image: Original BGR image (used for fixSegmentation)
-
-    Returns:
-        tuple: (quads_xy, class_names)
-            - quads_xy: List of numpy arrays (4, 2) with xy coordinates in mm
-            - class_names: List of strings with class names
-    """
-
-    # Get quadrilaterals in pixel coordinates
-    quads_pixel, class_names = getQuadrilateralsAndClasses(result, image)
-
-    if len(quads_pixel) == 0:
-        return [], []
-
-    # Transform each vertex from pixel to xy coordinates
-    transformed_quads = []
-
-    for quad in quads_pixel:
-        # Reshape from (4, 1, 2) to (4, 2)
-        vertices = quad.reshape(4, 2)
-
-        # Transform each vertex
-        isValidQuad = True
-        transformed_vertices = []
-        for vertex in vertices:
-            u, v = vertex[0], vertex[1]  # pixel coordinates
-            xy = transform_uv_to_xy(u, v)  # ground plane coordinates (mm)
-            if xy is None:
-                isValidQuad = False
-                break
-            transformed_vertices.append(xy)
-        if not isValidQuad:
+        # if its not a zone, the continue to next mask
+        if class_name not in ZONE_CLASS_NAMES:
             continue
 
-        transformed_quad = np.array(transformed_vertices)
-        transformed_quads.append(transformed_quad)
+        if class_name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
+            square = approximateConvexHullWithSquare(
+                hull_xy, SMALL_ZONE_SIDE_LENGTH)
+        else:
+            square = approximateConvexHullWithSquare(
+                hull_xy, BIG_ZONE_SIDE_LENGTH)
 
-    return transformed_quads, class_names
+        if square is not None:
+            squares.append(square)
+            class_names.append(class_name)
+
+    return squares, class_names

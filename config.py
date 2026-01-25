@@ -13,6 +13,8 @@ ROBOT_DIAMETER = 250  # different from base_d, this is whole robot radius
 SCOOPER_LENGTH = 254
 CLAW_OFFSET = 120
 
+BIG_ZONE_SIDE_LENGTH = 16 / 12 * FT_TO_MM
+GOLDEN_ZONE_SIDE_LENGTH = 4 / 12 * FT_TO_MM
 
 # --------------------- NAVIGATION ---------------------
 WHEEL_D = 101.6

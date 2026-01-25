@@ -81,3 +81,36 @@ def transform_uv_to_xy(u, v):
         return None
 
     return x, y
+
+
+def transform_contour_to_xy(contour):
+    """
+    Transform an entire contour from pixel coordinates to world coordinates.
+
+    Args:
+        contour: OpenCV contour array of shape (N, 1, 2) or (N, 2) where each
+                 point is [u, v] in pixel coordinates
+
+    Returns:
+        numpy array of shape (M, 2) where each point is [x, y] in world coordinates (mm).
+        Points that are behind the camera (y < 0) are filtered out, so M <= N.
+        Returns None if no valid points remain after transformation.
+    """
+    # Handle both (N, 1, 2) and (N, 2) shapes
+    if contour.ndim == 3:
+        contour = contour.reshape(-1, 2)
+
+    transformed_points = []
+
+    for point in contour:
+        u, v = point[0], point[1]
+        result = transform_uv_to_xy(u, v)
+
+        if result is not None:
+            x, y = result
+            transformed_points.append([x, y])
+
+    if len(transformed_points) == 0:
+        return None
+
+    return np.array(transformed_points)
