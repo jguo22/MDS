@@ -9,6 +9,7 @@ import config
 from connection import message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
+from connection.DummyCameraCapture import DummyCameraCapture
 from servos import gripClaw, releaseClaw, moveGripperHeight
 
 
@@ -19,7 +20,8 @@ def main():
     args = parser.parse_args()
 
     # Create cameras (managed externally, persists across reconnections)
-    camera_top = CameraCapture(
+    # Using DummyCameraCapture for testing (replace with CameraCapture for real cameras)
+    camera_top = DummyCameraCapture(
         args.camera_top,
         config.FRAME_WIDTH,
         config.FRAME_HEIGHT)
@@ -27,7 +29,7 @@ def main():
         print(f"Failed to open top camera: {args.camera_top}")
         return
 
-    camera_bottom = CameraCapture(
+    camera_bottom = DummyCameraCapture(
         args.camera_bottom,
         config.FRAME_WIDTH,
         config.FRAME_HEIGHT)
