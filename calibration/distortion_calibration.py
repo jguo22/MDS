@@ -1,7 +1,6 @@
 import numpy as np
 import cv2 as cv
 import glob
-from pixelTo3D import pixel_to_camera_coords
 
 # Grid dimensions for chessboard calibration
 GRID_ROWS = 11  # Number of inner corners along height
@@ -119,22 +118,3 @@ for i in range(len(objpoints)):
     mean_error += error
 
 print("total error: {}".format(mean_error / len(objpoints)))
-
-
-# Example usage: Convert a pixel to 3D camera coordinates
-print("\n--- Example: Pixel to 3D Camera Coordinates ---")
-
-# Test with center pixel
-pixel_x, pixel_y = 320, 240
-print(f"Input pixel: ({pixel_x}, {pixel_y})")
-
-# Get ray direction only
-ray_dir = pixel_to_camera_coords(pixel_x, pixel_y, mtx, distortion)
-print(f"\nRay direction in camera coordinates: {ray_dir}")
-print(f"  [X={ray_dir[0]:.4f}, Y={ray_dir[1]:.4f}, Z={ray_dir[2]:.4f}]")
-
-print("\nNote: Without depth info, you only get the ray direction.")
-print("To find exact 3D position, you need:")
-print("  1. Known depth (from depth sensor, stereo vision, etc.)")
-print("  2. Known constraint (e.g., point lies on ground plane z=0)")
-print("  3. Known object size and use pose estimation")
