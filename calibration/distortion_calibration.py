@@ -1,4 +1,5 @@
 import numpy as np
+import shutil
 import cv2 as cv
 import glob
 
@@ -17,7 +18,7 @@ objp[:, :2] = np.mgrid[0:GRID_ROWS, 0:GRID_COLUMNS].T.reshape(-1, 2)
 objpoints = []  # 3d point in real world space
 imgpoints = []  # 2d points in image plane.
 
-images = glob.glob('images/*.jpg')
+images = glob.glob('calimages/frame_bottom*.jpg')
 
 for fname in images:
     img = cv.imread(fname)
@@ -33,15 +34,17 @@ for fname in images:
 
     # If found, add object points, image points (after refining them)
     if ret:
+        print(fname)
         objpoints.append(objp)
 
         corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
         imgpoints.append(corners2)
+        # shutil.move(fname, 'calimages/')
 
         # Draw and display the corners
         cv.drawChessboardCorners(img, (GRID_ROWS, GRID_COLUMNS), corners2, ret)
         cv.imshow('img', img)
-        cv.waitKey(500)
+        # cv.waitKey(500)
 
 cv.destroyAllWindows()
 
@@ -58,8 +61,8 @@ print(f'distortion: {distortion}')
 for image_index in range(len(images)):
     fname = images[image_index]
     img = cv.imread(fname)
-# refine camera matrix
-    img = cv.imread(images[0])
+    # refine camera matrix
+    img = cv.imread(images[image_index])
     h, w = img.shape[:2]
     newcameramtx, roi = cv.getOptimalNewCameraMatrix(
         mtx, distortion, (w, h), 1, (w, h))
@@ -71,6 +74,8 @@ for image_index in range(len(images)):
     x, y, w, h = roi
     dst = dst[y:y + h, x:x + w]
     cv.imwrite(f'calibration_results/calibresult{image_index}.png', dst)
+    print(f'calibration_results/calibresult{image_index}.png')
+    print(x, y, w, h)
 
 # reprojection error using reverse projection (2D -> 3D on z=0 plane)
 mean_error = 0

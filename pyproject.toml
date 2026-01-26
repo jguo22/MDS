@@ -16,7 +16,8 @@ dependencies = [
     "adafruit-circuitpython-bno08x",
     "pyserial",
 	"spatialmath-python",
-	"maslab-lib @ git+https://github.com/MASLAB/maslab-lib.git@main"
+	"maslab-lib @ git+https://github.com/MASLAB/maslab-lib.git@main",
+	"shapely"
 ]
 
 [project.optional-dependencies]
