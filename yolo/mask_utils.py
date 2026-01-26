@@ -100,6 +100,20 @@ def maskToConvexRegion(mask):
     return filled
 
 
+def maskToConvexHull(mask):
+    # Find all contours
+    contours, _ = cv.findContours(
+        mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    # Combine ALL contour points into single array
+    all_points = np.vstack(contours)
+
+    # Compute single convex hull around all points
+    hull = cv.convexHull(all_points)
+
+    return hull
+
+
 def getSmoothRegionFromMask(mask):
     """
     Erodes mask and returns convex hull region.

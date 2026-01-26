@@ -10,7 +10,7 @@ from connection.frame_info import FrameInfo
 from navHelpers import get_forward_mm, get_rotate
 import navHelpers
 from yolo.segment import segmentImage
-from yolo.zone_utils import getQuadCenter, getZones, isPointInPoly
+from yolo.zone_utils import getSquareCenter, getZones, isPointInPoly
 from yolo.can_utils import getCans
 from coordinates.relativeCoordinates import get_movement_plan, world_to_relative
 from profiler import Profiler
@@ -164,8 +164,7 @@ class RobotHandler():
         if time.time() - self.lastTimeSentPath > 2:
             self.lastTimeSentPath = time.time()
 
-            self.waypoints = self.cans
-            self.send_waypoints()
+            self.send_waypoints(self.cans)
 
         while len(self.cans) > 0 and self.isPointInScooper(*self.cans[0]):
             self.cans.pop(0)
@@ -259,7 +258,7 @@ class RobotHandler():
                 else:
                     print("WARNING: CAN STACK NOT IN ZONE")
         if goal is None:
-            goal = getQuadCenter(self.zones[self.targetZone])
+            goal = getSquareCenter(self.zones[self.targetZone])
 
         if self.isPointClose(*goal):
             self.handleMidgameStacking()
@@ -292,18 +291,12 @@ class RobotHandler():
         Args:
             result: YOLO result object from inference
             image: Original BGR image used for zone detection
-
-        Returns:
-            bool: True if all 6 zones have been detected, False otherwise
         """
         # Get zones sorted by distance (closest first)
-        quads_xy, class_names = getZones(result, image)
-
-        if len(quads_xy) == 0:
-            return all(zone is not None for zone in self.zones)
+        squares_xy, class_names = getZones(result, image)
 
         # Iterate through all detected zones
-        for quad, name in zip(quads_xy, class_names):
+        for quad, name in zip(squares_xy, class_names):
             # Calculate center x-coordinate to determine which side
             center_x = np.mean(quad[:, 0])
             is_our_side = center_x < CENTER_BORDER_X
@@ -325,10 +318,6 @@ class RobotHandler():
                     self.zones[GOLDEN_ZONE] = quad
                 elif not is_our_side and self.zones[GOLDEN_ZONE_OPP] is None:
                     self.zones[GOLDEN_ZONE_OPP] = quad
-
-        # Check if all zones have been detected
-        all_detected = all(zone is not None for zone in self.zones)
-        return all_detected
 
     def isPointInScooper(self, x: float, y: float) -> bool:
         """
