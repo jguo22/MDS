@@ -9,10 +9,10 @@ from connection.ComputerReceiver import ComputerReceiver
 from connection.frame_info import FrameInfo
 from navHelpers import get_forward_mm, get_rotate
 import navHelpers
-from yolo.segment import segmentImage
-from yolo.zone_utils import getSquareCenter, getZones, isPointInPoly
-from yolo.can_utils import getCans
-from coordinates.relativeCoordinates import get_movement_plan, world_to_relative
+from vision.segment import segmentImage
+from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
+from vision.can_utils import getCans
+from vision.relativeCoordinates import get_movement_plan, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStarPlanner
 from streamer import Streamer
@@ -101,7 +101,7 @@ class RobotHandler():
 
         # Dispatch to appropriate state handler
         if self.state == RobotState.StartScan:
-            self.handleStartScan(self.frame_id, result, self.frame_top)
+            self.handleStartScan(self.frame_id, result_top, self.frame_top)
         elif self.state == RobotState.StartGather:
             self.handleStartGather()
         elif self.state == RobotState.MidgameSearch:
@@ -305,31 +305,53 @@ class RobotHandler():
             image: Original BGR image used for zone detection
         """
         # Get zones sorted by distance (closest first)
-        squares_xy, class_names = getZones(result, image, is_top)
+        squares_xy, class_names, confidences = getZones(
+            result, image, is_top)
 
         # Iterate through all detected zones
-        for quad, name in zip(squares_xy, class_names):
-            # Calculate center x-coordinate to determine which side
-            center_x = np.mean(quad[:, 0])
-            is_our_side = center_x < CENTER_BORDER_X
-
+        for zone, name, conf in zip(squares_xy, class_names, confidences):
             if name == ZONE_CLASS_NAMES[GREEN_ZONE]:
-                if is_our_side and self.zones[GREEN_ZONE] is None:
-                    self.zones[GREEN_ZONE] = quad
-                elif not is_our_side and self.zones[GREEN_ZONE_OPP] is None:
-                    self.zones[GREEN_ZONE_OPP] = quad
+                self.updateZone(zone, conf, GREEN_ZONE, GREEN_ZONE_OPP)
 
             elif name == ZONE_CLASS_NAMES[RED_ZONE]:
-                if is_our_side and self.zones[RED_ZONE] is None:
-                    self.zones[RED_ZONE] = quad
-                elif not is_our_side and self.zones[RED_ZONE_OPP] is None:
-                    self.zones[RED_ZONE_OPP] = quad
+                self.updateZone(zone, conf, RED_ZONE, RED_ZONE_OPP)
 
             elif name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
-                if is_our_side and self.zones[GOLDEN_ZONE] is None:
-                    self.zones[GOLDEN_ZONE] = quad
-                elif not is_our_side and self.zones[GOLDEN_ZONE_OPP] is None:
-                    self.zones[GOLDEN_ZONE_OPP] = quad
+                self.updateZone(zone, conf, GOLDEN_ZONE, GOLDEN_ZONE_OPP)
+
+    def updateZone(self, zone, conf, our_zone_id, their_zone_id):
+        prev_zone = self.zones[our_zone_id]
+        prev_conf = self.zone_confidences[their_zone_id]
+        if prev_zone is None:
+            self.zones[our_zone_id] = zone
+            self.zone_confidences = conf
+        else:
+            if doPolygonsIntersect(prev_zone, zone):
+                # if they intersect, they're probably detecting the
+                # same zone and use the one thats better
+                if conf > self.zone_confidences:
+                    self.zones[our_zone_id] = zone
+                    self.zone_confidences = conf
+            else:
+                # TODO: figure out which zone is ours
+                # using actual logic
+                prev_x, prev_y = getSquareCenter(prev_zone)
+                prevDistSquared = prev_x * prev_x + prev_y * prev_y
+                curr_x, curr_y = getSquareCenter(zone)
+                currDistSquared = curr_x * curr_x + curr_y * curr_y
+                if currDistSquared < prevDistSquared:
+                    # current zone is our zone and other zone might be
+                    # others
+                    if prev_conf > self.zone_confidences[their_zone_id]:
+                        self.zones[their_zone_id] = prev_zone
+                        self.zone_confidences[their_zone_id] = prev_conf
+                    self.zones[our_zone_id] = zone
+                    self.zone_confidences[our_zone_id] = conf
+                else:
+                    # current zone might be theirs
+                    if conf > self.zone_confidences[their_zone_id]:
+                        self.zones[their_zone_id] = zone
+                        self.zone_confidences[their_zone_id] = conf
 
     def isPointInScooper(self, x: float, y: float) -> bool:
         """

@@ -1,7 +1,7 @@
 import math
 import time
 import threading
-from coordinates.relativeCoordinates import world_to_relative
+from vision.relativeCoordinates import world_to_relative
 from spatialmath import SE2
 from navHelpers import get_forward_mm, get_rotate
 from config import CLAW_OFFSET, TICK_ROTATION, NAV_FRAME_TIME, ANGLE_D, ANGLE_PROP, TURN_CONSTANT

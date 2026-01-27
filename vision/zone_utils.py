@@ -59,6 +59,70 @@ def isPointInPoly(point, polygon):
     return result >= 0
 
 
+def doPolygonsIntersect(poly1, poly2) -> bool:
+    """
+    Check if two polygons intersect.
+
+    Uses Shapely's intersection test to determine if two polygons overlap.
+    Handles various input formats including numpy arrays and existing Shapely Polygons.
+
+    Args:
+        poly1: First polygon as:
+               - Numpy array with shape (N, 2) or (N, 1, 2)
+               - Shapely Polygon object
+        poly2: Second polygon (same format options as poly1)
+
+    Returns:
+        bool: True if polygons intersect (share any area or touch), False otherwise.
+              Returns False if either input is None or invalid.
+
+    Examples:
+        >>> import numpy as np
+        >>> p1 = np.array([[0,0], [100,0], [100,100], [0,100]])
+        >>> p2 = np.array([[50,50], [150,50], [150,150], [50,150]])
+        >>> doPolygonsIntersect(p1, p2)
+        True
+        >>> p3 = np.array([[200,200], [300,200], [300,300], [200,300]])
+        >>> doPolygonsIntersect(p1, p3)
+        False
+    """
+    try:
+        # Convert poly1 to Shapely Polygon
+        if isinstance(poly1, Polygon):
+            shapely_poly1 = poly1
+        elif isinstance(poly1, np.ndarray):
+            # Handle both (N, 1, 2) and (N, 2) shapes
+            if poly1.ndim == 3:
+                poly1 = poly1.reshape(-1, 2)
+            shapely_poly1 = Polygon(poly1)
+        else:
+            # Invalid input type
+            return False
+
+        # Convert poly2 to Shapely Polygon
+        if isinstance(poly2, Polygon):
+            shapely_poly2 = poly2
+        elif isinstance(poly2, np.ndarray):
+            # Handle both (N, 1, 2) and (N, 2) shapes
+            if poly2.ndim == 3:
+                poly2 = poly2.reshape(-1, 2)
+            shapely_poly2 = Polygon(poly2)
+        else:
+            # Invalid input type
+            return False
+
+        # Check if polygons are valid
+        if not shapely_poly1.is_valid or not shapely_poly2.is_valid:
+            return False
+
+        # Check for intersection
+        return shapely_poly1.intersects(shapely_poly2)
+
+    except (ValueError, TypeError, AttributeError):
+        # Return False for any errors (invalid inputs, empty arrays, etc.)
+        return False
+
+
 def annotate_poly(image, polygon, color=(0, 0, 255)):
     """
     Draws polygon on image with corner points.
@@ -97,11 +161,13 @@ def approximateConvexHullWithSquare(convexHull, side_length):
         num_angles: Number of angles to test (default: 36, tests every 5 degrees)
 
     Returns:
-        numpy array of shape (4, 2) representing the square's corners in order.
-        Returns None if contour is empty, invalid, or if shapely operations fail.
+        tuple: (square, iou)
+            - square: numpy array of shape (4, 2) representing the square's corners
+            - iou: float representing intersection area / hull area (0.0 to 1.0)
+        Returns (None, 0.0) if contour is empty, invalid, or if shapely operations fail.
     """
     if convexHull is None or len(convexHull) == 0:
-        return None
+        return None, 0.0
 
     try:
         # Handle both (N, 1, 2) and (N, 2) shapes
@@ -115,7 +181,7 @@ def approximateConvexHullWithSquare(convexHull, side_length):
         # Skip invalid polygons instead of trying to fix them
         # (buffer(0) can change shape significantly)
         if not polygon.is_valid:
-            return None
+            return None, 0.0
 
         centroid = polygon.centroid
         center_x = centroid.x
@@ -174,11 +240,15 @@ def approximateConvexHullWithSquare(convexHull, side_length):
         rotated_square = local_square @ rotation_matrix.T
         square = rotated_square + np.array([center_x, center_y])
 
-        return square
+        # Calculate IoU between convex hull and square
+        square_polygon = Polygon(square)
+        iou = best_overlap / polygon.area if polygon.area > 0 else 0.0
+
+        return square, iou
 
     except Exception:
         # Return None if any shapely or numpy operations fail
-        return None
+        return None, 0.0
 
 
 def getZones(result, image, is_top=True):
@@ -205,7 +275,7 @@ def getZones(result, image, is_top=True):
     confidence_scores = []
 
     if result.masks is None:
-        return squares, class_names
+        return squares, class_names, confidence_scores
 
     for i, mask_orig in enumerate(result.masks):
         # Get class name for this detection
@@ -254,14 +324,15 @@ def getZones(result, image, is_top=True):
 
         # Approximate with square based on zone type
         if class_name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
-            square = approximateConvexHullWithSquare(
+            square, iou = approximateConvexHullWithSquare(
                 hull_xy, SMALL_ZONE_SIDE_LENGTH)
         else:
-            square = approximateConvexHullWithSquare(
+            square, iou = approximateConvexHullWithSquare(
                 hull_xy, BIG_ZONE_SIDE_LENGTH)
 
         if square is not None:
             squares.append(square)
             class_names.append(class_name)
+            confidence_scores.append(iou)
 
-    return squares, class_names
+    return squares, class_names, confidence_scores

@@ -1,7 +1,7 @@
 import cv2
 from config import FRAME_HEIGHT, FRAME_WIDTH
 from connection.ComputerReceiver import ComputerReceiver
-from yolo.pixelTo3D import transform_uv_to_xy
+from vision.pixelTo3D import transform_uv_to_xy
 from RobotHandler import RobotHandler
 
 
