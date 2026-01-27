@@ -140,7 +140,7 @@ def main():
         description='Test latency between Pi and computer')
     parser.add_argument('--mode', choices=['server', 'client'], required=True,
                         help='Run as server (computer) or client (Pi)')
-    parser.add_argument('--host', type=str, default='192.168.1.101',
+    parser.add_argument('--host', type=str, default=config.COMPUTER_IP,
                         help='Server IP address (client mode only)')
     parser.add_argument('--port', type=int, default=COMMAND_PORT,
                         help=f'Port to use (default: {COMMAND_PORT})')
