@@ -20,7 +20,8 @@ def main():
     args = parser.parse_args()
 
     # Create cameras (managed externally, persists across reconnections)
-    # Using DummyCameraCapture for testing (replace with CameraCapture for real cameras)
+    # Using DummyCameraCapture for testing (replace with CameraCapture for
+    # real cameras)
     camera_top = DummyCameraCapture(
         args.camera_top,
         config.FRAME_WIDTH,
@@ -89,7 +90,8 @@ def main():
             moveGripperHeight(height)
 
     # Reconnection loop - each connection uses a new PiStreamer instance
-    while True:
+    running = False
+    while running:
         try:
             print(f"\nConnecting to {config.COMPUTER_IP}...")
 
@@ -114,16 +116,17 @@ def main():
                 print("Stream ended")
             else:
                 print("Connection failed")
-        except KeyboardInterrupt:
-            print("\nShutting down...")
-            break
         except Exception as e:
             print(e)
             traceback.print_exc()
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+            running = False
         finally:
             # Brief pause before reconnecting
-            print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
-            time.sleep(config.RECONNECT_DELAY)
+            if running:
+                print(f"Reconnecting in {config.RECONNECT_DELAY}s...")
+                time.sleep(config.RECONNECT_DELAY)
 
     camera_top.close()
     camera_bottom.close()
