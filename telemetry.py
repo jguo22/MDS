@@ -22,8 +22,7 @@ while True:
 
     # stream data and odometry
     stream.set_data(curr_data)
-    scaling = 0.001
-    stream.update_odom_state(pos[0] * scaling, pos[1] * scaling, pos[2])
+    stream.update_odom_state(pos[0], pos[1], pos[2])
     stream.update_circles(
         [
             (0.40, 0.20, "red"),
