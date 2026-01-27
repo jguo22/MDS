@@ -46,7 +46,7 @@ COMMAND_PORT = 9001  # Port for command data
 # when i put 854, it sent 864 instead
 FRAME_WIDTH = 864
 FRAME_HEIGHT = 480
-JPEG_QUALITY = 80  # 0-100, higher = better quality but more bandwidth
+JPEG_QUALITY = 50  # 0-100, higher = better quality but more bandwidth
 FPS = 30.0  # Default maximum frames per second for streaming
 
 # Protocol settings

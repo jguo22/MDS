@@ -24,7 +24,10 @@ COMMAND_PORT = config.COMMAND_PORT
 VIDEO_PORT = config.VIDEO_PORT
 
 
-def test_latency_server(port: int = COMMAND_PORT, num_tests: int = 100, use_images: bool = False):
+def test_latency_server(
+        port: int = COMMAND_PORT,
+        num_tests: int = 100,
+        use_images: bool = False):
     """
     Run latency test as server (computer side).
     Receives timestamps (or frames) and sends back small acknowledgments.
@@ -62,7 +65,9 @@ def test_latency_server(port: int = COMMAND_PORT, num_tests: int = 100, use_imag
 
                 # Send small ACK instead of echoing the frame
                 # Send back just the frame_id as acknowledgment
-                if not protocol.send_command(client_sock, message_types.ADD_MOVEMENT, [float(frame_id), 0.0, 0.0]):
+                if not protocol.send_command(
+                    client_sock, message_types.ADD_MOVEMENT, [
+                        float(frame_id), 0.0, 0.0]):
                     print("Failed to send ACK")
                     break
             else:
@@ -115,13 +120,17 @@ def test_latency_client(
     if use_images:
         print(f"Generating {image_size}x{image_size} test image...")
         # Create random color image
-        test_image = np.random.randint(0, 256, (image_size, image_size, 3), dtype=np.uint8)
+        test_image = np.random.randint(
+            0, 256, (image_size, image_size, 3), dtype=np.uint8)
 
         # Encode to JPEG
-        _, encoded = cv2.imencode('.jpg', test_image, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
+        _, encoded = cv2.imencode(
+            '.jpg', test_image, [
+                cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
         frame_data = encoded.tobytes()
         data_size_kb = len(frame_data) / 1024
-        print(f"Test image size: {data_size_kb:.1f} KB (JPEG quality: {jpeg_quality})")
+        print(
+            f"Test image size: {data_size_kb:.1f} KB (JPEG quality: {jpeg_quality})")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(5.0)
@@ -139,7 +148,8 @@ def test_latency_client(
             if use_images:
                 # Send frame with timestamp as frame_id
                 frame_id = i
-                if not protocol.send_frame(sock, frame_data, frame_id, 0.0, 0.0, 0.0, 0.0):
+                if not protocol.send_frame(
+                        sock, frame_data, frame_id, 0.0, 0.0, 0.0, 0.0):
                     print("Failed to send frame")
                     break
 
@@ -154,7 +164,8 @@ def test_latency_client(
                 # Verify we got the right frame_id back
                 _, args = result
                 if len(args) > 0 and int(args[0]) != frame_id:
-                    print(f"Warning: Expected frame_id {frame_id}, got {int(args[0])}")
+                    print(
+                        f"Warning: Expected frame_id {frame_id}, got {int(args[0])}")
 
                 data_sizes.append(len(frame_data))
             else:
@@ -204,7 +215,8 @@ def test_latency_client(
                 print(f"Std Dev:         {statistics.stdev(latencies):.2f}ms")
 
             if use_images:
-                # For images: measure is send time + small ACK time (mostly one-way)
+                # For images: measure is send time + small ACK time (mostly
+                # one-way)
                 print(f"Interpretation:  ~One-way send latency + small ACK")
                 # Calculate throughput based on actual time
                 avg_latency_s = statistics.mean(latencies) / 1000
@@ -212,7 +224,8 @@ def test_latency_client(
                 print(f"Throughput:      {throughput_mbps:.2f} Mbps")
             else:
                 # For commands: full round-trip echo
-                print(f"One-way (est):   {statistics.mean(latencies) / 2:.2f}ms")
+                print(
+                    f"One-way (est):   {statistics.mean(latencies) / 2:.2f}ms")
 
             print("=" * 50)
 
@@ -228,14 +241,23 @@ def main():
                         help='Run as server (computer) or client (Pi)')
     parser.add_argument('--host', type=str, default=config.COMPUTER_IP,
                         help='Server IP address (client mode only)')
-    parser.add_argument('--port', type=int, default=None,
-                        help=f'Port to use (default: COMMAND_PORT for small messages, VIDEO_PORT for images)')
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=None,
+        help=f'Port to use (default: COMMAND_PORT for small messages, VIDEO_PORT for images)')
     parser.add_argument('--num-tests', type=int, default=100,
                         help='Number of ping-pong tests (default: 100)')
-    parser.add_argument('--image-size', type=int, default=0,
-                        help='Image size for testing (e.g., 1000 for 1000x1000). 0 = use small messages (default)')
-    parser.add_argument('--jpeg-quality', type=int, default=80,
-                        help='JPEG quality for image compression (0-100, default: 80)')
+    parser.add_argument(
+        '--image-size',
+        type=int,
+        default=0,
+        help='Image size for testing (e.g., 1000 for 1000x1000). 0 = use small messages (default)')
+    parser.add_argument(
+        '--jpeg-quality',
+        type=int,
+        default=config.JPEG_QUALITY,
+        help='JPEG quality for image compression (0-100, default: 80)')
 
     args = parser.parse_args()
 
@@ -254,7 +276,12 @@ def main():
         if args.mode == 'server':
             test_latency_server(args.port, args.num_tests, use_images)
         else:
-            test_latency_client(args.host, args.port, args.num_tests, args.image_size, args.jpeg_quality)
+            test_latency_client(
+                args.host,
+                args.port,
+                args.num_tests,
+                args.image_size,
+                args.jpeg_quality)
     except KeyboardInterrupt:
         print("\nTest interrupted by user")
     except Exception as e:
