@@ -118,11 +118,14 @@ class RobotHandler():
         self.profiler.record("handleState")
 
         self.telemetry.set_img(cv2.Mat(self.frame_top))
+        scaling = 0.001
         self.telemetry.update_odom_state(
-            frame_info.x, frame_info.y, frame_info.theta)
+            frame_info.x * scaling, frame_info.y * scaling, frame_info.theta)
         circles = []
         for i in range(len(self.cans)):
             cx, cy = self.cans[i]
+            cx *= scaling
+            cy *= scaling
             color = self.can_colors[i]
             if color == GREEN_CAN:
                 circles.append((cx, cy, "green"))
@@ -148,15 +151,16 @@ class RobotHandler():
             self.startFrame = frame_id
 
             # # Get all detected cans in image coordinates
-            # can_locations_xy, can_colors = getCans(result, frame)
-            #
-            # # Store the planned path
-            # self.cans = can_locations_xy
-            # self.can_colors = canNamesToNumbers(can_colors)
+            can_locations_xy, can_colors = getCans(result, frame)
 
-            self.cans = [(1000, 0), (1000, -100), (1000, -200),
-                         (1000, -300), (1000, -1000), (0, -1000),
-                         (500, 500), (0, 0)]
+            # Store the planned path
+            self.cans = can_locations_xy
+            self.can_colors = canNamesToNumbers(can_colors)
+
+            # self.cans = [(1000, 0), (1000, -100), (1000, -200),
+            #              (1000, -300), (1000, -1000), (0, -1000),
+            #              (500, 500), (0, 0)]
+            self.cans = [(1000, 0)]
             self.can_colors = [GREEN_CAN] * len(self.cans)
 
         if self.started:
@@ -166,7 +170,7 @@ class RobotHandler():
         """Handle StartGather state: send waypoints and check if cans reached"""
         self.state = RobotState.StartGather
         # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
-        if time.time() - self.lastTimeSentPath > 2:
+        if time.time() - self.lastTimeSentPath > 100:
             self.lastTimeSentPath = time.time()
 
             self.send_waypoints(self.cans)
@@ -464,5 +468,10 @@ class RobotHandler():
                 result[k] = v.name
             else:
                 result[k] = v
+
+        result['robot_pose'] = [
+            self.robot_pose.x,
+            self.robot_pose.y,
+            self.robot_pose.theta()]
 
         return result
