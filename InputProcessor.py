@@ -24,7 +24,7 @@ class InputProcessor():
             xy = transform_uv_to_xy(x, y)
             if xy is not None:
                 x_scaled, y_scaled = xy
-                self.computerReceiver.send_xy(x_scaled, y_scaled)
+                # self.computerReceiver.send_xy(x_scaled, y_scaled)
 
     # Interactive input thread for manual movement commands
     def handleKeyboardMovementsLoop(self):

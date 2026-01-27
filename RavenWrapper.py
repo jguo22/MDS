@@ -1,14 +1,16 @@
 import threading
 from typing import Optional, Tuple
 from raven import Raven
+import time
 from config import WHEEL_D, BASE_D
 
 LEFT_MOTOR = Raven.MotorChannel.CH2
 RIGHT_MOTOR = Raven.MotorChannel.CH3
 
-CAMERA_SERVO = Raven.ServoChannel.CH2
-GRIPPER_SERVO = Raven.ServoChannel.CH1
-ELEVATOR_SERVO = Raven.ServoChannel.CH4
+RIGHT_ARM_CHANNEL = Raven.ServoChannel.CH1
+LEFT_ARM_CHANNEL = Raven.ServoChannel.CH2
+ELEVATOR_SERVO = Raven.ServoChannel.CH3
+GRIPPER_SERVO = Raven.ServoChannel.CH4
 
 
 class RavenWrapper():
@@ -96,6 +98,78 @@ class RavenWrapper():
         with self._lock:
             return self.raven.set_servo_position(
                 servo_channel, degree, min_us, max_us, retry)
+
+    def lower_left_arm(self):
+        """Lower left arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                LEFT_ARM_CHANNEL, -90, 930, 1910)
+
+    def raise_left_arm(self):
+        """Raise left arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                LEFT_ARM_CHANNEL, 90, 930, 1910)
+
+    def lower_right_arm(self):
+        """Lower right arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                RIGHT_ARM_CHANNEL, 90, 1000, 1970)
+
+    def raise_right_arm(self):
+        """Raise right arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                RIGHT_ARM_CHANNEL, -90, 1000, 1970)
+
+    def lower_arms(self):
+        with self._lock:
+            result1 = self.raven.set_servo_position(
+                RIGHT_ARM_CHANNEL, 90, 1000, 1970)
+            result2 = self.raven.set_servo_position(
+                LEFT_ARM_CHANNEL, -90, 930, 1910)
+            return (result1 and result2)
+
+    def raise_arms(self):
+        with self._lock:
+            result1 = self.raven.set_servo_position(
+                RIGHT_ARM_CHANNEL, -90, 1000, 1970)
+            result2 = self.raven.set_servo_position(
+                LEFT_ARM_CHANNEL, 90, 930, 1910)
+            return (result1 and result2)
+
+    # Gripper Methods
+    def open_gripper(self):
+        """Open gripper."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                GRIPPER_SERVO, 0)
+
+    def close_gripper(self):
+        """Close gripper."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                GRIPPER_SERVO, 67)
+
+    # Elevator Methods
+    def raise_elevator(self):
+        """Raise elevator."""
+        with self._lock:
+            self.raven.set_servo_position(
+                ELEVATOR_SERVO, 90)
+            time.sleep(1.2)
+            self.raven.set_servo_position(
+                ELEVATOR_SERVO, 0)
+
+    def lower_elevator(self):
+        """Lower elevator."""
+        with self._lock:
+            self.raven.set_servo_position(
+                ELEVATOR_SERVO, -90)
+            time.sleep(1.2)
+            self.raven.set_servo_position(
+                ELEVATOR_SERVO, 0)
 
 
 RAVEN_WRAPPER = RavenWrapper()

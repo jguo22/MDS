@@ -98,7 +98,7 @@ def test_latency_client(
         port: int = COMMAND_PORT,
         num_tests: int = 100,
         image_size: int = 0,
-        jpeg_quality: int = 80):
+        jpeg_quality: int = config.JPEG_QUALITY):
     """
     Run latency test as client (Pi side).
     Sends timestamps and measures round-trip time.
