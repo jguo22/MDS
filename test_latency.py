@@ -27,16 +27,16 @@ VIDEO_PORT = config.VIDEO_PORT
 def test_latency_server(port: int = COMMAND_PORT, num_tests: int = 100, use_images: bool = False):
     """
     Run latency test as server (computer side).
-    Receives timestamps (or frames) and echoes them back.
+    Receives timestamps (or frames) and sends back small acknowledgments.
 
     Args:
         port: Port to listen on
         num_tests: Number of ping-pong exchanges
-        use_images: If True, test with large image frames
+        use_images: If True, receive large frames but send small ACKs
     """
     print(f"Starting latency test server on port {port}...")
     if use_images:
-        print("Image mode: Will echo back received frames")
+        print("Image mode: Will receive frames and send small ACKs")
     else:
         print("Command mode: Will echo back small messages")
 
@@ -58,11 +58,12 @@ def test_latency_server(port: int = COMMAND_PORT, num_tests: int = 100, use_imag
                     print("Connection lost")
                     break
 
-                frame_data, frame_id, x, y, theta, camera_angle = result
+                _, frame_id, _, _, _, _ = result
 
-                # Echo back the frame
-                if not protocol.send_frame(client_sock, frame_data, frame_id, x, y, theta, camera_angle):
-                    print("Failed to send response")
+                # Send small ACK instead of echoing the frame
+                # Send back just the frame_id as acknowledgment
+                if not protocol.send_command(client_sock, message_types.ADD_MOVEMENT, [float(frame_id), 0.0, 0.0]):
+                    print("Failed to send ACK")
                     break
             else:
                 # Receive command
@@ -142,13 +143,18 @@ def test_latency_client(
                     print("Failed to send frame")
                     break
 
-                # Wait for echo
-                result = protocol.recv_frame(sock)
+                # Wait for small ACK (not full frame echo)
+                result = protocol.recv_command(sock)
                 recv_time = time.perf_counter()
 
-                if result is None or result == 0:
-                    print("Failed to receive frame echo")
+                if result is None:
+                    print("Failed to receive ACK")
                     break
+
+                # Verify we got the right frame_id back
+                _, args = result
+                if len(args) > 0 and int(args[0]) != frame_id:
+                    print(f"Warning: Expected frame_id {frame_id}, got {int(args[0])}")
 
                 data_sizes.append(len(frame_data))
             else:
@@ -186,22 +192,27 @@ def test_latency_client(
                 print(f"Test mode:       Image ({image_size}x{image_size})")
                 print(f"Data size:       {data_size_kb:.1f} KB per frame")
                 print(f"JPEG quality:    {jpeg_quality}")
+                print(f"Note:            Server sends small ACK, not full frame echo")
             else:
-                print(f"Test mode:       Command messages")
+                print(f"Test mode:       Command messages (full echo)")
             print(f"Tests completed: {len(latencies)}/{num_tests}")
-            print(f"Min RTT:         {min(latencies):.2f}ms")
-            print(f"Max RTT:         {max(latencies):.2f}ms")
-            print(f"Mean RTT:        {statistics.mean(latencies):.2f}ms")
-            print(f"Median RTT:      {statistics.median(latencies):.2f}ms")
+            print(f"Min:             {min(latencies):.2f}ms")
+            print(f"Max:             {max(latencies):.2f}ms")
+            print(f"Mean:            {statistics.mean(latencies):.2f}ms")
+            print(f"Median:          {statistics.median(latencies):.2f}ms")
             if len(latencies) > 1:
                 print(f"Std Dev:         {statistics.stdev(latencies):.2f}ms")
-            print(f"One-way (est):   {statistics.mean(latencies) / 2:.2f}ms")
 
             if use_images:
-                # Calculate throughput
+                # For images: measure is send time + small ACK time (mostly one-way)
+                print(f"Interpretation:  ~One-way send latency + small ACK")
+                # Calculate throughput based on actual time
                 avg_latency_s = statistics.mean(latencies) / 1000
-                throughput_mbps = (data_size_kb * 8 / 1024) / avg_latency_s * 2  # *2 for round-trip
-                print(f"Throughput:      {throughput_mbps:.2f} Mbps (round-trip)")
+                throughput_mbps = (data_size_kb * 8 / 1024) / avg_latency_s
+                print(f"Throughput:      {throughput_mbps:.2f} Mbps")
+            else:
+                # For commands: full round-trip echo
+                print(f"One-way (est):   {statistics.mean(latencies) / 2:.2f}ms")
 
             print("=" * 50)
 
