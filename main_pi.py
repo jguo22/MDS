@@ -90,7 +90,7 @@ def main():
             moveGripperHeight(height)
 
     # Reconnection loop - each connection uses a new PiStreamer instance
-    running = False
+    running = True
     while running:
         try:
             print(f"\nConnecting to {config.COMPUTER_IP}...")
