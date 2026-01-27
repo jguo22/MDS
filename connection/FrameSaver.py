@@ -38,7 +38,6 @@ class FrameSaver():
         Returns:
             Always returns None
         """
-        print(frame_info.frame_top.shape)
         current_time = time.time()
 
         # Check if cooldown has passed

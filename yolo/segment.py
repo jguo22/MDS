@@ -22,7 +22,7 @@ def wait_for_quit():
 def segmentImage(image):
     # model returns array of results
     # here, we only have one image so its an array of size 1
-    result = MODEL(image)[0]
+    result = MODEL(image, verbose=False)[0]
     return result
 
 

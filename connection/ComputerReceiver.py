@@ -66,7 +66,7 @@ class ComputerReceiver():
         self._lock = threading.Lock()
 
         # Profiler for receive loop performance
-        self.profiler = Profiler()
+        self.profiler = Profiler(verbose=False)
 
     def set_frame_callback(
             self, callback: Callable[[FrameInfo], None]):

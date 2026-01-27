@@ -38,14 +38,14 @@ def main():
     frame_saver = FrameSaver(1, "calibration")
 
     # Create main profiler for frame processing pipeline
-    main_profiler = Profiler()
+    main_profiler = Profiler(False)
 
     def process(frame_info: FrameInfo) -> None:
         # Process frame using FrameInfo
         main_profiler.start_frame()
-        # robotHandler.handleFrame(frame_info)
+        robotHandler.handleFrame(frame_info)
         main_profiler.record("robotHandler")
-        frame_saver.saveFrame(frame_info)
+        # frame_saver.saveFrame(frame_info)
         main_profiler.record("saveFrame")
         main_profiler.end_frame()
 

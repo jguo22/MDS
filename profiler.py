@@ -10,11 +10,12 @@ PROFILE_DIR = os.path.join(SCRIPT_DIR, "profiles")
 
 
 class Profiler:
-    def __init__(self):
+    def __init__(self, verbose: bool = True):
         self.timings: Dict[str, List[float]] = {}
         self.current_frame = 0
         self.profile = cProfile.Profile()
         self._profile_enabled = False
+        self.verbose = verbose
 
     def start_frame(self):
         if not self._profile_enabled:
@@ -31,7 +32,7 @@ class Profiler:
 
     def end_frame(self):
         self.current_frame += 1
-        if self.current_frame % 10 == 0:  # Print stats every 10 frames
+        if self.verbose and self.current_frame % 10 == 0:  # Print stats every 10 frames
             self.print_stats()
 
     def print_stats(self):

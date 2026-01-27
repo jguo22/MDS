@@ -62,7 +62,7 @@ class RobotHandler():
 
         self.computer_receiver = computer_receiver
         self.thetaStar = ThetaStarPlanner()
-        self.profiler = Profiler()
+        self.profiler = Profiler(False)
         self.telemetry = Streamer()
 
         # information from current frame
@@ -72,7 +72,6 @@ class RobotHandler():
         self.robot_pose = SE2(0, 0, 0)
         self.distanceSensed = 0
 
-        print(self.get_picklable_dict())
         self.telemetry.set_data(self.get_picklable_dict())
 
     def start(self):
@@ -132,7 +131,9 @@ class RobotHandler():
             if color == GOLDEN_CAN:
                 circles.append((cx, cy, "gold"))
         self.telemetry.update_circles(circles)
-        self.telemetry.set_data(self.get_picklable_dict())
+
+        data = self.get_picklable_dict()
+        self.telemetry.set_data(data)
 
         self.profiler.record("telemetry")
 
@@ -444,6 +445,9 @@ class RobotHandler():
             'thetaStar',
             'profiler',
             'telemetry',
+            'frame_bottom',
+            'frame_top',
+            'robot_pose'
         }
 
         result = {}
