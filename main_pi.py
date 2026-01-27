@@ -10,7 +10,6 @@ from connection import message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
 from connection.DummyCameraCapture import DummyCameraCapture
-from servos import gripClaw, releaseClaw, moveGripperHeight
 
 
 def main():
@@ -74,20 +73,20 @@ def main():
         elif msg_type == message_types.GRIP_CAN:
             assert (len(args) == 1)
             height = args[0]
-            gripClaw()
-            moveGripperHeight(height)
+            RAVEN_WRAPPER.close_gripper()
+            RAVEN_WRAPPER.raise_elevator()
 
         elif msg_type == message_types.RELEASE_CAN:
             assert (len(args) == 1)
             height = args[0]
-            moveGripperHeight(height)
-            releaseClaw()
+            RAVEN_WRAPPER.lower_elevator()
+            RAVEN_WRAPPER.open_gripper()
 
         elif msg_type == message_types.SEND_GRIPPER_HEIGHT:
             assert (len(args) == 1)
             height = args[0]
             print(f"SEND_GRIPPER_HEIGHT: height={height}")
-            moveGripperHeight(height)
+            RAVEN_WRAPPER.raise_elevator()
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True

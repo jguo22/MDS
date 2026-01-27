@@ -29,7 +29,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["yolo*", "connection*", "coordinates*", "calibration*"]
+include = ["vision*", "connection*"]
 exclude = ["runs*", "images*", "profiles*", "venv*", "*.egg-info", "raven"]
 
 [tool.setuptools]

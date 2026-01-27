@@ -47,7 +47,7 @@ class RobotHandler():
         self.can_colors: List[int] = []
         # x, y, stack size, color
         self.stacked_cans: List[Tuple[float, float, int, int]] = []
-        self.border_locations: List[Tuple[float, float]] = []
+        self.borders: List[Tuple[int, int]] = []
 
         # VARIABLES FOR CURRENT STATE
         # can_x, can_y, can_color
@@ -324,14 +324,14 @@ class RobotHandler():
         prev_conf = self.zone_confidences[their_zone_id]
         if prev_zone is None:
             self.zones[our_zone_id] = zone
-            self.zone_confidences = conf
+            self.zone_confidences[our_zone_id] = conf
         else:
             if doPolygonsIntersect(prev_zone, zone):
                 # if they intersect, they're probably detecting the
                 # same zone and use the one thats better
-                if conf > self.zone_confidences:
+                if conf > self.zone_confidences[our_zone_id]:
                     self.zones[our_zone_id] = zone
-                    self.zone_confidences = conf
+                    self.zone_confidences[our_zone_id] = conf
             else:
                 # TODO: figure out which zone is ours
                 # using actual logic

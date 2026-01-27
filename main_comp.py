@@ -35,7 +35,7 @@ def main():
     robotHandler = RobotHandler(computer_receiver)
     inputProcessor = InputProcessor(
         computer_receiver, window_name_top, robotHandler)
-    frame_saver = FrameSaver(1, "calibration")
+    frame_saver = FrameSaver(1, "images")
 
     # Create main profiler for frame processing pipeline
     main_profiler = Profiler(False)
@@ -44,8 +44,8 @@ def main():
         # Process frame using FrameInfo
         main_profiler.start_frame()
         robotHandler.handleFrame(frame_info)
-        main_profiler.record("robotHandler")
-        # frame_saver.saveFrame(frame_info)
+        # main_profiler.record("robotHandler")
+        frame_saver.saveFrame(frame_info)
         main_profiler.record("saveFrame")
         main_profiler.end_frame()
 
