@@ -2,6 +2,7 @@ import threading
 from typing import Optional, Tuple
 from raven import Raven
 from config import WHEEL_D, BASE_D
+import time
 
 LEFT_MOTOR = Raven.MotorChannel.CH2
 RIGHT_MOTOR = Raven.MotorChannel.CH3
@@ -106,6 +107,59 @@ class RavenWrapper():
             self._camera_angle = angle
             degree = math.degrees(angle)
             return self.raven.set_servo_position(CAMERA_SERVO, degree)
+
+    # Arm Methods
+    def lower_left_arm(self) -> bool:
+        """Lower left arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                Raven.ServoChannel.CH2, -90, 930, 1910)
+    def raise_left_arm(self) -> bool:
+        """Raise left arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                Raven.ServoChannel.CH2, 90, 930, 1910)
+    def lower_right_arm(self) -> bool:
+        """Lower right arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                Raven.ServoChannel.CH1, 90, 1000, 1970)
+    def raise_right_arm(self) -> bool:
+        """Raise right arm."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                Raven.ServoChannel.CH1, -90, 1000, 1970)
+
+    # Gripper Methods
+    def open_gripper(self) -> bool:
+        """Open gripper."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                Raven.ServoChannel.CH4, 0)
+    def close_gripper(self) -> bool:
+        """Close gripper."""
+        with self._lock:
+            return self.raven.set_servo_position(
+                Raven.ServoChannel.CH4, 67)
+
+    # Elevator Methods
+    def raise_elevator(self):
+        """Raise elevator."""
+        with self._lock:
+            self.raven.set_servo_position(
+                Raven.ServoChannel.CH3, 90)
+            time.sleep(1.2)
+            self.raven.set_servo_position(
+                Raven.ServoChannel.CH3, 0)
+    def lower_elevator(self):
+        """Lower elevator."""
+        with self._lock:
+            self.raven.set_servo_position(
+                Raven.ServoChannel.CH3, -90)
+            time.sleep(1.2)
+            self.raven.set_servo_position(
+                Raven.ServoChannel.CH3, 0)
+
 
 
 ravenWrapper = RavenWrapper()
