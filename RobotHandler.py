@@ -157,9 +157,10 @@ class RobotHandler():
             self.cans = can_locations_xy
             self.can_colors = canNamesToNumbers(can_colors)
 
-            self.cans = [(1000, 0), (1000, -100), (1000, -200),
-                         (1000, -300), (1000, -1000), (0, -1000),
-                         (500, 500), (0, 0)]
+            # self.cans = [(1000, 0), (1000, -100), (1000, -200),
+            #              (1000, -300), (1000, -1000), (0, -1000),
+            #              (500, 500), (0, 0)]
+            self.cans = [(1000, 0)]
             self.can_colors = [GREEN_CAN] * len(self.cans)
 
         if self.started:
