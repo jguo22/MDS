@@ -1,47 +1,26 @@
-from RavenWrapper import RAVEN_WRAPPER, RavenWrapper
-from raven import Raven
-import time
+import cv2 as cv
+from pathlib import Path
+from ultralytics.models.yolo import YOLO
+from yolo.segment import segmentImage
+from yolo.zone_utils import getZones
 
+SCRIPT_DIR = Path(__file__).parent.absolute()
+image_path = str(SCRIPT_DIR / "test.jpg")
+print(f"Loading image: {image_path}")
 
-def main():
-    for channel in [
-            Raven.ServoChannel.CH1,
-            Raven.ServoChannel.CH2,
-            Raven.ServoChannel.CH3,
-            Raven.ServoChannel.CH4
-    ]:
-        print(RAVEN_WRAPPER.raven.get_servo_position(channel))
+image = cv.imread(image_path)
+if image is None:
+    raise Exception("no image")
 
-    # try:
-    #     setElevatorSpeed(90)
-    #     time.sleep(1)
-    #     setElevatorSpeed(0)
-    # except BaseException as e:
-    #     print(e)
-    #     setElevatorSpeed(0)
-    RAVEN_WRAPPER.set_servo_position(
-        Raven.ServoChannel.CH1, 10, min_us=500, max_us=2500)
+print("Running segmentation...")
+result = segmentImage(image)
 
+# Display original segmentation
+annotated_frame = result.plot(boxes=False)
+cv.imshow("Original Segmentation", annotated_frame)
 
-def setLeftScooperUp():
-    RAVEN_WRAPPER.set_servo_position(
-        Raven.ServoChannel.CH2, 40, min_us=500, max_us=2500)
+squares_xy, class_names = getZones(result, image)
 
-
-def setLeftScooperDown():
-    RAVEN_WRAPPER.set_servo_position(
-        Raven.ServoChannel.CH2, -50, min_us=500, max_us=2500)
-
-
-def setElevatorSpeed(speed):
-    RAVEN_WRAPPER.set_servo_position(
-        Raven.ServoChannel.CH3, speed, min_us=500, max_us=2500)
-
-
-# CHANNEL 1:
-# CHANNEL 2: left scooper up at 40, down at -50, min_us=500, max_us=2500
-# CHANNEL 3: elevator, continuous, positive is up
-# CHANNEL 4: claw
-
-if __name__ == "__main__":
-    main()
+print(squares_xy)
+print(class_names)
+cv.waitKey(0)

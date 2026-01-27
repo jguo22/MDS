@@ -3,9 +3,6 @@ import math
 # measurements are in mm
 FT_TO_MM = 304.8
 
-# TODO: find a new way to figure out at the beginning which zones are ours
-CENTER_BORDER_X = 8 * FT_TO_MM
-
 CAN_DIAMETER = 76.2
 CAN_HEIGHT = 122.5  # Standard can height in mm
 
@@ -13,7 +10,7 @@ ROBOT_DIAMETER = 250  # different from base_d, this is whole robot radius
 SCOOPER_LENGTH = 254
 CLAW_OFFSET = 120
 
-BIG_ZONE_SIDE_LENGTH = 16 / 12 * FT_TO_MM
+BIG_ZONE_SIDE_LENGTH = 20 / 12 * FT_TO_MM
 SMALL_ZONE_SIDE_LENGTH = 4 / 12 * FT_TO_MM
 
 # --------------------- NAVIGATION ---------------------

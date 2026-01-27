@@ -181,7 +181,7 @@ def approximateConvexHullWithSquare(convexHull, side_length):
         return None
 
 
-def getZones(result, image):
+def getZones(result, image, is_top=True):
     """
     Extracts zones from YOLO results and approximates each as a square.
 
@@ -194,13 +194,15 @@ def getZones(result, image):
         side_length: Side length of the approximating squares in mm
 
     Returns:
-        tuple: (squares_xy, class_names)
+        tuple: (squares_xy, class_names, confidence_scores)
             - squares_xy: List of numpy arrays (4, 2) with xy coordinates in mm
                          Each array represents a square centered at the zone's centroid
             - class_names: List of strings with class names for each square
+            - confidence_scores: List of floats representing IoU between hull and square in xy coordinates
     """
     squares = []
     class_names = []
+    confidence_scores = []
 
     if result.masks is None:
         return squares, class_names
@@ -238,7 +240,7 @@ def getZones(result, image):
         valid_hull = True
         for point in hull_uv_reshaped:
             u, v = point[0], point[1]
-            xy = transform_uv_to_xy(u, v)
+            xy = transform_uv_to_xy(u, v, is_top)
             if xy is None:
                 valid_hull = False
                 break

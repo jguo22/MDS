@@ -40,7 +40,7 @@ def getBottomCenterPixel(mask):
     return (center_x, max_y)
 
 
-def getCans(result, image):
+def getCans(result, image, is_top=True):
     """
     Extracts can locations from YOLO results and transforms to xy coordinates.
 
@@ -80,7 +80,7 @@ def getCans(result, image):
         u, v = bottom_center  # pixel coordinates
 
         # Transform to ground plane coordinates
-        xy = transform_uv_to_xy(u, v)
+        xy = transform_uv_to_xy(u, v, is_top)
 
         if xy is None:
             continue

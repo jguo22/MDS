@@ -233,7 +233,6 @@ python3 yolo/yolo_detect.py --model yolo/last.pt --source usb0 --thresh 0.25 --r
 
 **Field Config** (`config.py`):
 ```python
-CENTER_BORDER_X = 2133.6  # Our side: x < CENTER_BORDER_X
 BACK_BORDER_X = -304.8 | LEFT_BORDER_Y = 1219.2 | RIGHT_BORDER_Y = -1219.2
 CAN_DIAMETER = 76.2
 ```
@@ -250,9 +249,8 @@ CAN_DIAMETER = 76.2
 
 **Key Methods:**
 - `handleFrame(frame, frame_id)`: Runs `segmentImage()` → `getZones()` → state logic
-- `getOurZones()`: Assigns 6 zones using `center_x < CENTER_BORDER_X`
+- `getOurZones()`: Assigns 6 zones 
 
-**Can Planning:** Filter our side (`x < CENTER_BORDER_X + CAN_DIAMETER`), sort by y-coord (sweep pattern)
 
 ```python
 handler = RobotHandler(computer_receiver)

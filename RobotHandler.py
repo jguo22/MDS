@@ -16,7 +16,7 @@ from coordinates.relativeCoordinates import get_movement_plan, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStarPlanner
 from streamer import Streamer
-from config import FPS, CAN_HEIGHT, CENTER_BORDER_X, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH
+from config import FPS, CAN_HEIGHT, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -41,11 +41,13 @@ class RobotHandler():
         # four vertices of scoring zones in world coords
         # np.array([[x1, y1], [x2, y2], [x3, y3], [x4, y4]])
         self.zones = [None, None, None, None, None, None]
+        self.zone_confidences = [0, 0, 0, 0, 0, 0]
         # Store planned path to cans
         self.cans: List[Tuple[float, float]] = []
         self.can_colors: List[int] = []
         # x, y, stack size, color
         self.stacked_cans: List[Tuple[float, float, int, int]] = []
+        self.border_locations: List[Tuple[float, float]] = []
 
         # VARIABLES FOR CURRENT STATE
         # can_x, can_y, can_color
@@ -88,11 +90,13 @@ class RobotHandler():
         self.robot_pose = SE2(frame_info.x, frame_info.y, frame_info.theta)
         self.distanceSensed = frame_info.distanceSensed
 
-        result = segmentImage(self.frame_top)
+        result_top = segmentImage(self.frame_top)
+        result_bottom = segmentImage(self.frame_bottom)
         self.profiler.record("segmentImage")
 
         # scan and set any zones that haven't been found yet
-        self.scanAndSetZones(result, self.frame_top)
+        self.scanAndSetZones(result_top, self.frame_top, True)
+        self.scanAndSetZones(result_bottom, self.frame_bottom, False)
         self.profiler.record("scanAndSetZones")
 
         # Dispatch to appropriate state handler
@@ -291,18 +295,17 @@ class RobotHandler():
 
     # ------------------------ HELPER FUNCTIONS .----------------------------
 
-    def scanAndSetZones(self, result, image):
+    def scanAndSetZones(self, result, image, is_top):
         """
         Detects and assigns the 6 scoring zones from YOLO results.
         Only updates zones that haven't been detected yet (are None).
-        Uses x-coordinate to determine ours vs opponent: x < CENTER_BORDER_X is ours.
 
         Args:
             result: YOLO result object from inference
             image: Original BGR image used for zone detection
         """
         # Get zones sorted by distance (closest first)
-        squares_xy, class_names = getZones(result, image)
+        squares_xy, class_names = getZones(result, image, is_top)
 
         # Iterate through all detected zones
         for quad, name in zip(squares_xy, class_names):
