@@ -326,4 +326,5 @@ class PiStreamer():
         self.video_client_socket = None
         protocol.close_socket(self.command_client_socket)
         self.command_client_socket = None
+        self.profiler.save_profile()
         print("PiStreamer stopped")
