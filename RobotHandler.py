@@ -147,16 +147,20 @@ class RobotHandler():
         if self.startFrame == -1:
             self.startFrame = frame_id
 
-            # ------------- PLAN PATH TO DETECTED CANS -------------
-            # Get all detected cans in image coordinates
-            can_locations_xy, can_colors = getCans(result, frame)
+            # # Get all detected cans in image coordinates
+            # can_locations_xy, can_colors = getCans(result, frame)
+            #
+            # # Store the planned path
+            # self.cans = can_locations_xy
+            # self.can_colors = canNamesToNumbers(can_colors)
 
-            # Store the planned path
-            self.cans = can_locations_xy
-            self.can_colors = canNamesToNumbers(can_colors)
+            self.cans = [(1000, 0), (1000, -100), (1000, -200),
+                         (1000, -300), (1000, -1000), (0, -1000),
+                         (500, 500), (0, 0)]
+            self.can_colors = [GREEN_CAN] * len(self.cans)
 
-            if self.started:
-                self.state = RobotState.StartGather
+        if self.started:
+            self.state = RobotState.StartGather
 
     def handleStartGather(self):
         """Handle StartGather state: send waypoints and check if cans reached"""
