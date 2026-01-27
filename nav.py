@@ -2,59 +2,40 @@ import math
 import time
 import threading
 from typing import Tuple
-from raven import Raven
+from coordinates.relativeCoordinates import world_to_relative
+from RavenWrapper import ravenWrapper, LEFT_MOTOR, RIGHT_MOTOR
+from config import WHEEL_D, BASE_D
+from spatialmath import SE2
 
-
-# Miguel and ours Navigation movement class
-LEFT_MOTOR = Raven.MotorChannel.CH2
-RIGHT_MOTOR = Raven.MotorChannel.CH3
+# Miguel's Navigation movement class
 TICK_ROTATION = 64 * 50
-WHEEL_D = 101.6
-BASE_D = 237.236
+# measurements in mm
 ANGLE_PROP = 5000
 ANGLE_D = 5000
 
 BASE_RATIO = WHEEL_D / BASE_D
 TURN_CONSTANT = BASE_RATIO * 2 * math.pi / TICK_ROTATION
 
-FRAME_TIME = 0.05  # 1/FPS
+FRAME_TIME = 0.03  # 1/FPS
 
 
 class NavMove:
-    def __init__(self, left: float, right: float, dist: float, smooth: bool, correct_angle: bool):
+    def __init__(self, left: float, right: float, dist: float, smooth: bool, correct_angle = True):
         self.left = left
         self.right = right
         self.dist = dist
         self.smooth = smooth
         self.correct_angle = correct_angle
-        self.lookingDown = False
-
-    def __repr__(self):
-        """
-        Human Readable Print
-        """
-        return f"Nav Move: \n l_c={self.left} \n r_c={self.right} \n distance={self.dist} \n smooth={self.smooth}"
-
 
 class Nav:
     def __init__(self):
         # I put it here so that it doesn't run on computer
         # IMU SETUP MUST BE BEFORE RAVEN SETUP
-        import board
-        import busio
-        from adafruit_bno08x.i2c import BNO08X_I2C
-        from adafruit_bno08x import BNO_REPORT_ROTATION_VECTOR
+        from IMUWrapper import IMUWrapper
+        self.imu_wrapper = IMUWrapper()
 
-        # Let IMU Setup
-        i2c = busio.I2C(board.SCL, board.SDA, frequency=800000)
-        self.bno = BNO08X_I2C(i2c)
-        self.bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
-        for i in range(5):
-            print(self.bno.quaternion)
-            time.sleep(0.02)
-
-        self.max_velocity = 2.8 * TICK_ROTATION  # ticks/s
-        self.acceleration = 3.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
+        self.max_velocity = 3.0 * TICK_ROTATION  # ticks/s
+        self.acceleration = 5.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
 
         self.moves: list[NavMove] = []
         self._lock = threading.Lock()
@@ -62,8 +43,8 @@ class Nav:
         self.correct_angle = True
 
         # for imu
-        self.last_angle = 0
-        self.angle = 0
+        self.last_angle = 0  # doesn't accumulate
+        self.angle = 0  # accumulates
         self.diff_angle = 0
 
         # for path
@@ -78,34 +59,30 @@ class Nav:
         self.last_speed = 0
         self.current_distance = 0
 
+        self.ravenWrapper = ravenWrapper
+
         self._updateAngle()
         self.start_angle = self.angle
-
-        self.raven = Raven()
-
-        for motor in [LEFT_MOTOR, RIGHT_MOTOR]:
-            self.raven.set_motor_encoder(motor, 0)
-            self.raven.set_motor_max_current(motor, 5)
-            self.raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
-            self.raven.set_motor_target(motor, 0)
-
-        self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
-        self.raven.set_motor_pid(LEFT_MOTOR, p_gain=20, i_gain=5, d_gain=0.1)
-        # self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=5, i_gain=0, d_gain=0.5)
-        # self.raven.set_motor_pid(LEFT_MOTOR, p_gain=5, i_gain=0, d_gain=0.5)
 
     def startLoop(self):
         # ONLY RUN ONE LOOP
         start_time = time.time()
-        while True:
-            # get delta_time and sleep
-            delta_time = time.time() - start_time
-            if (delta_time < FRAME_TIME):
-                time.sleep(FRAME_TIME - delta_time)
-                delta_time = FRAME_TIME
-            start_time = time.time()
+        try:
+            while True:
+                # get delta_time and sleep
+                delta_time = time.time() - start_time
+                if (delta_time < FRAME_TIME):
+                    time.sleep(FRAME_TIME - delta_time)
+                    delta_time = FRAME_TIME
+                start_time = time.time()
 
-            self._updatePath(delta_time)
+                # print(f'x, y is {self.raven.get_odometry()}')
+                # print(f'angle is {self.raven.get_angle()}')
+
+                self._updatePath(delta_time)
+        except KeyboardInterrupt:
+            self.imu_wrapper.hard_reset()
+            print("keyboard interrupt")
 
     def addPath(self, nav_move: NavMove):
         # append is thread safe, but use the lock so that you don't edit it
@@ -133,19 +110,23 @@ class Nav:
         self.right_coef = nav_move.right
         self._updateAngle()
         self.start_angle = self.angle
-        self.start_left = self.raven.get_motor_encoder(LEFT_MOTOR)
-        self.start_right = self.raven.get_motor_encoder(RIGHT_MOTOR)
+        self.start_left = self.ravenWrapper.get_motor_encoder(LEFT_MOTOR)
+        self.start_right = self.ravenWrapper.get_motor_encoder(RIGHT_MOTOR)
 
     def _updateAngle(self):
-        quat_i, quat_j, quat_k, quat_real = self.bno.quaternion
-        current_angle = self.find_heading(quat_real, quat_i, quat_j, quat_k)
+        current_angle = self.imu_wrapper.get_heading()  # -pi to pi
+
+        # set angle for odometry
+        self.ravenWrapper.set_angle(current_angle)
+
         self.diff_angle = current_angle - self.last_angle
         if self.diff_angle > math.pi:
             self.diff_angle -= 2 * math.pi
         elif self.diff_angle < -math.pi:
             self.diff_angle += 2 * math.pi
-        self.angle += self.diff_angle
-        self.last_angle = current_angle
+        # diff angle is the change clamped to range of -pi to pi
+        self.angle += self.diff_angle  # accumulates
+        self.last_angle = current_angle  # range of -pi to pi
 
     def _updatePath(self, dt):
         with self._lock:
@@ -178,13 +159,8 @@ class Nav:
                 2.0 * TURN_CONSTANT * self.current_distance
 
             self._updateAngle()
-
-            # print(self.correct_angle)
-
             if self.correct_angle:
                 angle_error = (self.angle - self.start_angle) - target_angle
-                # if (self.moving):
-                #     print(f'angle error: {angle_error}')
 
                 self.start_left -= angle_error * ANGLE_PROP * dt - self.diff_angle * ANGLE_D * dt
                 self.start_right -= angle_error * ANGLE_PROP * \
@@ -194,8 +170,8 @@ class Nav:
                 (self.current_distance * self.left_coef)
             target_right = self.start_right + \
                 (self.current_distance * self.right_coef)
-            self.raven.set_motor_target(LEFT_MOTOR, target_left)
-            self.raven.set_motor_target(RIGHT_MOTOR, target_right)
+            self.ravenWrapper.set_motor_target(LEFT_MOTOR, target_left)
+            self.ravenWrapper.set_motor_target(RIGHT_MOTOR, target_right)
 
             # move on to next thing if its done
             if distance_left <= 0:
@@ -213,53 +189,54 @@ class Nav:
                     self.start_left = target_left
                     self.start_right = target_right
 
-    def find_heading(self, dqw, dqx, dqy, dqz):
-        # normalize quaternion
-        norm = math.sqrt(dqw * dqw + dqx * dqx + dqy * dqy + dqz * dqz)
-        if (norm == 0.0):
-            return self.angle
-        dqw = dqw / norm
-        dqx = dqx / norm
-        dqy = dqy / norm
-        dqz = dqz / norm
-
-        ysqr = dqy * dqy
-
-        t3 = +2.0 * (dqw * dqz + dqx * dqy)
-        t4 = +1.0 - 2.0 * (ysqr + dqz * dqz)
-        yaw_raw = math.atan2(t3, t4)
-        return yaw_raw
-
     def get_relative_position(self, world_x: float,
                               world_y: float) -> tuple[float, float]:
         """
         Convert world coordinates to robot-relative coordinates.
+
         Args:
             world_x: Target x position in world frame (mm)
             world_y: Target y position in world frame (mm)
+
         Returns:
             (x_rel, y_rel): Position relative to robot
                 x_rel: Forward distance (positive = ahead)
                 y_rel: Lateral distance (positive = left)
         """
-        # Get robot's current world position
-        # NOTE: odometry uses ROS coordinates
-        # and get_heading uses theta=0 as forward
-        robot_x, robot_y = self.raven.get_odometry()
+        # Get robot's current world position and orientation
+        robot_x, robot_y = self.ravenWrapper.get_odometry()
+        robot_theta = self.angle
 
-        # Translate: vector from robot to target in world frame
-        dx_world = world_x - robot_x
-        dy_world = world_y - robot_y
+        # Use the centralized coordinate transformation function
+        return world_to_relative(
+            (world_x, world_y), SE2(robot_x, robot_y, robot_theta))
 
-        # Rotate: transform to robot's local frame
-        # Rotation by -angle (inverse rotation)
-        cos_angle = math.cos(self.angle)
-        sin_angle = math.sin(self.angle)
+    def override_paths_world_xy(self, world_x, world_y):
+        """
+        Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
 
-        x_rel = dx_world * cos_angle + dy_world * sin_angle
-        y_rel = -dx_world * sin_angle + dy_world * cos_angle
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+        """
+        x, y = self.get_relative_position(world_x, world_y)
 
-        return x_rel, y_rel
+        # Calculate angle to rotate to face the target
+        # atan2(y, x) gives the angle from robot's forward axis to the target
+        target_angle = math.atan2(y, x)
+
+        # Calculate distance to target
+        target_distance = math.sqrt(x**2 + y**2)
+
+        # Create movement path: rotate, then forward
+        movements = []
+
+        movements.append(NavMove(*get_rotate(target_angle), False))
+
+        movements.append(NavMove(*get_forward_mm(target_distance), False))
+
+        # Override current path with new movements
+        self.overridePaths(movements)
 
     def get_world_claw_position(self):
         """
@@ -280,45 +257,22 @@ class Nav:
         y_world = robot_y + claw_offset * sin_angle
 
         return x_world, y_world
-    def override_paths_world_xy(self, world_x, world_y, use_claw=False):
-        """
-        Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
-        Args:
-            world_x: Target x position in world frame (mm)
-            world_y: Target y position in world frame (mm)
-        """
-        x, y = self.get_relative_position(world_x, world_y)
-
-        # Calculate angle to rotate to face the target
-        # atan2(y, x) gives the angle from robot's forward axis to the target
-        target_angle = math.atan2(y, x)
-
-        # Calculate distance to target
-        target_distance = math.sqrt(x**2 + y**2)
-        
-        if (use_claw):
-            target_distance -= 5.0  # claw offset
-
-        # Create movement path: rotate, then forward
-        movements = []
-
-        # Only add rotation if angle is significant (> 0.01 radians ≈ 0.57
-        # degrees)
-        if abs(target_angle) > 0.01:
-            movements.append(NavMove(*get_rotate(target_angle), smooth=True))
-
-        # Only add forward movement if distance is significant (> 1 mm)
-        if target_distance > 1.0:
-            movements.append(
-                NavMove(*get_forward_mm(target_distance), smooth=False))
-
-        # Override current path with new movements
-        self.overridePaths(movements)
 
 def get_forward_mm(distance_mm: float) -> Tuple[float, float, float]:
     distance = distance_mm / (WHEEL_D * math.pi) * TICK_ROTATION
     return (1, 1, distance)
 
 
-def get_rotate():
-    return TICK_ROTATION / BASE_RATIO
+def get_rotate(theta: float) -> Tuple[float, float, float]:
+    # make into range -pi to pi
+    theta = theta % (2 * math.pi)
+    if theta > math.pi:
+        theta -= 2 * math.pi
+    if theta < -math.pi:
+        theta += 2 * math.pi
+
+    # CCW is positive angle
+    if theta >= 0:
+        return (-1, 1, TICK_ROTATION / BASE_RATIO * theta / (2 * math.pi))
+    else:
+        return (1, -1, TICK_ROTATION / BASE_RATIO * -theta / (2 * math.pi))

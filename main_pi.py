@@ -11,7 +11,10 @@ from yolo.segment import getQuadrilateralsAndClasses, segmentImage, getClassName
 from pixelTo3D import transform_uv_to_xy
 import numpy as np
 from thetaStar import ThetaStarPlanner
+from coordinates.relativeCoordinates import relative_to_world
 
+from thetaStar import addCan, addBorder
+import math
 
 RobotState = "Finding Can"
 heldCanColor = "None"
@@ -27,6 +30,10 @@ red_zone_x, red_zone_y = 0, 0
 green_zone_x, green_zone_y = 0, 0
 yellow_zone_x, yellow_zone_y = 0, 0
 golden_x, golden_y = 0, 0
+
+# locations of collected cans
+ccx = []
+ccy = []
 
 def main():
     def gripClaw():
@@ -52,7 +59,6 @@ def main():
         moveElevatorUp()
 
     def getCanColor():
-        rotateCameraDown()
         print("a")
         time.sleep(0.1)
         print("b")
@@ -89,9 +95,10 @@ def main():
         rx, ry = theta_star.planning(robot_x, robot_y, goal_x, goal_y)
         for (x, y) in zip(rx, ry):
             nav.add_paths_world_xy(x, y)
+        # TODO: make the last path have the claw go to the x y, not the robot 0 0
 
     def store_can_locations():
-        rotateCameraUp()
+        global cx, cy, golden_x, golden_y
         image = camera.cap.read()[1]
         result = segmentImage(image)
         detections = result.boxes
@@ -107,7 +114,7 @@ def main():
 
             if "Can" not in class_name:
                 continue
-            x, y = transform_uv_to_xy((xmin + xmax) / 2, ymax)
+            x, y = relative_to_world(transform_uv_to_xy((xmin + xmax) / 2, ymax)) # TODO: properly convert relative to world
 
             cx.append(x)
             cy.append(y)
@@ -115,7 +122,7 @@ def main():
             if class_name == "Golden Can":
                 golden_x = x
                 golden_y = y
-        transform_uv_to_xy(golden_x, golden_y) # TODO: move to golden pringle can
+        # TODO: move to golden pringle can
         # Sort the cans from leftmost to rightmost
         x_sorted, y_sorted = zip(*sorted(zip(cx, cy)))
 
@@ -138,9 +145,12 @@ def main():
             del cy[i:i+6]
             # Deposit cans on our side
             nav.addPath(NavMove(1.3, 0.7, 3000, False, True))
+            # TODO: STORE all can LOCATIONs from down facing camera
+            ccx.append(nav.ravenWrapper.get_odometry()[0])
+            ccy.append(nav.ravenWrapper.get_odometry()[1])
             nav.addPath(NavMove(-1.3, -0.7, 3000, False, True))
         # Collect cans from other side
-        nav.addPath(NavMove(-1, 1, 3000, False, True)) # TODO: turn 180 degrees COUNTERCLOCKWISE
+        nav.addPath(NavMove(*get_rotate(math.pi), False, False))
         while len(cx) > 0:
             if len(cx) > 5:
                 nav.override_paths_world_xy(cx[-4], cy[-4])
@@ -151,17 +161,55 @@ def main():
             del cy[-5:]
             # Deposit cans on our side
             nav.addPath(NavMove(0.7, 1.3, 3000, False, True))
+            # TODO: STORE all can LOCATIONs from down facing camera
+            ccx.append(nav.ravenWrapper.get_odometry()[0])
+            ccy.append(nav.ravenWrapper.get_odometry()[1])
             nav.addPath(NavMove(-0.7, -1.3, 3000, False, True))
+    # All the cans have been collected on our side
+    def go_to_closest_can():
+        # Find closest can
+        x, y = nav.ravenWrapper.get_odometry()
+        min_distance = float('inf')
+        for i in range(len(ccx)):
+            can_x = ccx[i]
+            can_y = ccy[i]
+            distance = ((can_x - x)**2 + (can_y - y)**2)**0.5
+            if distance < min_distance:
+                min_distance = distance
+                closest_can_x = can_x
+                closest_can_y = can_y
+        path_find(closest_can_x, closest_can_y)
 
+    # Use camera to grab closest can
+    def grab_closest_can():
+        # TODO: Use down facing camera to get image of cans
+        # TODO: get closest can, rotate towards it
+        distance = nav.get_distance_mm()
+        nav.addPath(NavMove(1, 1, distance, False, True))
+        gripCan()
+        # TODO: Remove can from collected cans list
 
+    # Ran at the start of the game
+    def store_zone_locations():
+        # TODO: use camera to find and store zone locations
+        return
 
-    # Set down to be looking directly down at held can
-    def rotateCameraDown():
-        nav.raven.set_servo_position(Raven.ServoChannel.CH4, -90)
-    def rotateCameraUp():
-        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 30)
-
-
+    # Run when having a held can
+    def score_held_can():
+        if heldCanColor == "Red":
+            goal_x = red_zone_x
+            goal_y = red_zone_y
+        elif heldCanColor == "Green":
+            goal_x = green_zone_x
+            goal_y = green_zone_y
+        elif heldCanColor == "Yellow":
+            goal_x = yellow_zone_x
+            goal_y = yellow_zone_y
+        else:
+            return
+        path_find(goal_x, goal_y)
+        # Add can to obstacle list
+        addCan(goal_x, goal_y)
     parser = argparse.ArgumentParser(description="Raspberry Pi Video Streamer")
     parser.add_argument(
         "--camera",
@@ -174,11 +222,13 @@ def main():
         args.camera,
         config.FRAME_WIDTH,
         config.FRAME_HEIGHT)
-    if not camera.open():
-        print(f"Failed to open camera: {args.camera}")
-        return
+    # if not camera.open():
+    #     print(f"Failed to open camera: {args.camera}")
+    #     return
 
     nav = Nav()
+
+
 
     if False:
         segmentImage(camera.cap.read()[1])
@@ -257,9 +307,6 @@ def main():
 
     # TODO: Set zone locations
 
-
-    rotateCameraDown()
-    getCanColor()
 # Smooth = False
     # nav.addPath(NavMove(1.005, .995, get_forward_mm(2100)[2], False, True))
     # nav.addPath(NavMove(1.3, 0.7, get_rotate() / 2 - 200, False, True))

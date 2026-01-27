@@ -12,6 +12,8 @@ import math
 import heapq
 import numpy as np
 import matplotlib.pyplot as plt
+from coordinates.relativeCoordinates import relative_to_world
+from spatialmath import SE2
 
 show_animation = True
 use_theta_star = True
@@ -272,28 +274,42 @@ class ThetaStarPlanner:
 
 ox, oy = [], []
 # Max boundaries so theta star works
-for i in range(-100, 100):
+for i in range(-200, 200):
     ox.append(i)
-    oy.append(-25)
-for i in range(-25, 125):
-    ox.append(100.0)
+    oy.append(-200)
+for i in range(-200, 200):
+    ox.append(200.0)
     oy.append(i)
-for i in range(-100, 100):
+for i in range(-200, 200):
     ox.append(i)
-    oy.append(125.0)
-for i in range(-25, 125):
-    ox.append(-100.0)
+    oy.append(200.0)
+for i in range(-200, 200):
+    ox.append(-200.0)
     oy.append(i)
 sx = 0.0  # [m]
 sy = 3.0  # [m]
 grid_size = 0.5  # [m]
-robot_radius = 5.0  # [m]
+robot_radius = 1.0  # [m]
 
 left_cans_x, left_cans_y = -45, 45
 right_cans_x, right_cans_y = 45, 45
 red_zone_x, red_zone_y = 0, 0
 green_zone_x, green_zone_y = 0, 0
 yellow_zone_x, yellow_zone_y = 0, 0
+
+def addCan(world_x, world_y):
+    radius = 5
+    for i in range(-radius, radius):
+        for j in range(-radius, radius):
+            if i * i + j * j <= radius * radius:
+                ox.append(world_x + i)
+                oy.append(world_y + j)
+def addBorder(world_x, world_y):
+    ox.append(world_x)
+    oy.append(world_y)
+
+from blueBorder import get_boundaries
+from pixelTo3D import transform_uv_to_xy
 
 def main():
     print(__file__ + " start!!")
@@ -302,13 +318,12 @@ def main():
     gx = 40.0  # [m]
     gy = 40.0  # [m]
 
-    ox.append(20.0)
-    oy.append(10)
+    pixel_array = get_boundaries(None) # TODO: pass actual image
+    for px in pixel_array:
+        x, y = relative_to_world(transform_uv_to_xy(px[0], px[1]), SE2(0,0,0))
+        print(x, y)
+        addBorder(x, y)
 
-    ox.append(15.0)
-    oy.append(15)
-    ox.append(15.0)
-    oy.append(25)
 
     if show_animation:
         plt.figure()

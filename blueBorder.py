@@ -2,6 +2,7 @@ import cv2
 import matplotlib.pyplot as plt
 import supervision as sv
 from ultralytics import YOLO
+from pixelTo3D import transform_uv_to_xy
 
 # model = YOLO("best.pt")
 
@@ -177,17 +178,40 @@ def debug_overlay(image, forbidden_mask):
     overlay = image.copy()
     overlay[forbidden_mask > 0] = (0, 0, 255)
     return cv2.addWeighted(image, 0.7, overlay, 0.3, 0)
+
+# TODO: THIS DOES NOT WORK
+# Returns a list of (x, y) pixel coordinates representing the blue boundary
+def get_boundaries(image):
+    test_image = cv2.imread("frame_20260121_140339_1769022219440_jpg.rf.219fbb29e72244d748994ff7a81f3e72.jpg")
+    boundary_mask = detect_boundary_mask(test_image)
+    boundary_mask = clean_boundary_mask(boundary_mask)
+    ys, xs = np.where(boundary_mask > 0)
+
+    pixels = list(zip(xs, ys))
+    pixel_array = np.array(pixels)
+    # return boundary_mask
+    return pixel_array
+
 if __name__ == "__main__":
-    test_image = cv2.imread("frame_20260123_130812_1769191692037.jpg")
+    test_image = cv2.imread("frame_20260121_140339_1769022219440_jpg.rf.219fbb29e72244d748994ff7a81f3e72.jpg")
 
     boundary_mask = detect_boundary_mask(test_image)
     boundary_mask = clean_boundary_mask(boundary_mask)
-    forbidden_mask = inflate_boundary(boundary_mask, pixels=30)
+    # forbidden_mask = inflate_boundary(boundary_mask, pixels=30)
 
-    debug_image = debug_overlay(test_image, forbidden_mask)
+    debug_image = debug_overlay(test_image, boundary_mask)
 
     cv2.imshow("Boundary Mask", boundary_mask)
-    cv2.imshow("Forbidden Mask", forbidden_mask)
+    # cv2.imshow("Forbidden Mask", forbidden_mask)
     cv2.imshow("Debug Overlay", debug_image)
+    ys, xs = np.where(boundary_mask > 0)
+
+    pixels = list(zip(xs, ys))
+    pixel_array = np.array(pixels)
+
+
+
+    print(f"Detected {len(pixels)} boundary pixels.")
+
     cv2.waitKey(0)
     cv2.destroyAllWindows()
