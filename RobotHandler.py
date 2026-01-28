@@ -64,7 +64,7 @@ class RobotHandler():
 
         self.robot_commander = robot_commander
         self.thetaStar = ThetaStarPlanner()
-        self.profiler = Profiler(False)
+        self.profiler = Profiler(True)
         self.telemetry = Streamer()
 
         # information from current frame

@@ -90,7 +90,9 @@ def run_local_mode(camera_top, camera_bottom, robot_commander,
                 time.sleep(sleep_time)
             else:
                 print(
-                    f"Warning: Frame processing took {elapsed:.3f}s (target: {frame_interval:.3f}s)")
+                    f"Warning: Frame processing took {
+                        elapsed:.3f}s (target: {
+                        frame_interval:.3f}s)")
 
             # Print FPS every second
             current_time = time.time()
@@ -125,7 +127,10 @@ def run_network_mode(camera_top, camera_bottom, robot_commander, imu_wrapper):
         if msg_type == message_types.ADD_MOVEMENT:
             assert (len(args) == 3)
             print(
-                f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
+                f"ADD_MOVEMENT: left={
+                    args[0]}, right={
+                    args[1]}, dist={
+                    args[2]}")
             robot_commander.add_movement(args[0], args[1], args[2])
 
         elif msg_type == message_types.OVERRIDE_MOVEMENTS:
@@ -263,7 +268,8 @@ def main():
     print("DirectRobotCommander initialized")
 
     # Branch based on mode
-    if args.local:
+    if args.local == "True":
+        print("local")
         run_local_mode(
             camera_top,
             camera_bottom,
@@ -272,6 +278,7 @@ def main():
             distance_sensor,
             args.fps)
     else:
+        print("network")
         run_network_mode(
             camera_top,
             camera_bottom,
