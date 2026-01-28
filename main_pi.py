@@ -91,8 +91,8 @@ def run_local_mode(camera_top, camera_bottom, robot_commander,
             else:
                 print(
                     f"Warning: Frame processing took {
-                        elapsed:.3f}s (target: {
-                        frame_interval:.3f}s)")
+                        elapsed: .3f}s(target: {
+                            frame_interval: .3f}s)")
 
             # Print FPS every second
             current_time = time.time()
@@ -124,48 +124,45 @@ def run_network_mode(camera_top, camera_bottom, robot_commander, imu_wrapper):
 
     def command_callback(msg_type: int, args: list[float]):
         """Route network commands to DirectRobotCommander."""
-        if msg_type == message_types.ADD_MOVEMENT:
-            assert (len(args) == 3)
-            print(
-                f"ADD_MOVEMENT: left={
-                    args[0]}, right={
-                    args[1]}, dist={
-                    args[2]}")
-            robot_commander.add_movement(args[0], args[1], args[2])
-
-        elif msg_type == message_types.OVERRIDE_MOVEMENTS:
+        if msg_type == message_types.OVERRIDE_MOVEMENTS:
             assert (len(args) % 3 == 0)
             print(f"OVERRIDE_MOVEMENTS: {len(args) // 3} moves")
             robot_commander.override_movement(args)
 
-        elif msg_type == message_types.SEND_WORLD_XY:
+        elif msg_type == message_types.OVERRIDE_WAYPOINTS:
+            assert (len(args) % 2 == 0)
+            print(f"OVERRIDE_WAYPOINTS: {len(args) // 2 - 1} waypoints")
+            robot_commander.override_waypoints(args)
+
+        elif msg_type == message_types.OVERRIDE_RELATIVE_XY:
+            assert (len(args) == 2)
+            x, y = args[0], args[1]
+            print(f"OVERRIDE_RELATIVE_XY: x={x}, y={y}")
+            robot_commander.override_relative_xy(x, y)
+
+        elif msg_type == message_types.OVERRIDE_WORLD_XY:
             assert (len(args) == 2)
             world_x, world_y = args[0], args[1]
-            print(f"SEND_WORLD_XY: x={world_x}, y={world_y}")
-            robot_commander.send_world_xy(world_x, world_y)
+            print(f"OVERRIDE_WORLD_XY: x={world_x}, y={world_y}")
+            robot_commander.override_world_xy(world_x, world_y)
 
-        elif msg_type == message_types.GRIP_CAN:
-            assert (len(args) == 1)
-            height = args[0]
-            robot_commander.send_grip_can(height)
+        elif msg_type == message_types.PICKUP_CAN:
+            assert (len(args) == 0)
+            print("PICKUP_CAN")
+            robot_commander.pickup_can()
 
         elif msg_type == message_types.RELEASE_CAN:
-            assert (len(args) == 1)
-            height = args[0]
-            robot_commander.send_release_can(height)
-
-        elif msg_type == message_types.SEND_GRIPPER_HEIGHT:
-            assert (len(args) == 1)
-            height = args[0]
-            print(f"SEND_GRIPPER_HEIGHT: height={height}")
-            robot_commander.send_gripper_height(height)
+            assert (len(args) == 0)
+            print("RELEASE_CAN")
+            robot_commander.release_can()
 
         elif msg_type == message_types.EARLY_GAME:
             assert (len(args) == 6)
             golden = (args[0], args[1])
             left = (args[2], args[3])
             right = (args[4], args[5])
-            robot_commander.send_early_game(golden, left, right)
+            print(f"EARLY_GAME: golden={golden}, left={left}, right={right}")
+            robot_commander.early_game(golden, left, right)
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True
@@ -264,7 +261,7 @@ def main():
     print("Cameras initialized")
 
     # Create direct robot commander for command execution
-    robot_commander = DirectRobotCommander(nav, distance_sensor)
+    robot_commander = DirectRobotCommander(nav, distance_sensor, imu_wrapper)
     print("DirectRobotCommander initialized")
 
     # Branch based on mode
