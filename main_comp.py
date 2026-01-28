@@ -8,7 +8,7 @@ from connection.ComputerReceiver import ComputerReceiver
 from InputProcessor import InputProcessor
 from connection.FrameSaver import FrameSaver
 from connection.frame_info import FrameInfo
-from vision.zone_utils import visualize_xy_locations, getSquareCenter
+from vision.zone_utils import visualize_xy_locations, getSquareCenter, visualize_convex_hulls
 from vision.relativeCoordinates import world_to_relative
 import config
 
@@ -60,6 +60,13 @@ def main():
                     line_width=2,
                     labels=True
                 )
+                # Overlay convex hulls in cyan
+                frame_info.frame_top = visualize_convex_hulls(
+                    frame_info.frame_top,
+                    robotHandler.result_top,
+                    color=(255, 255, 0),  # Cyan
+                    thickness=2
+                )
 
         if robotHandler.result_bottom is not None:
             if robotHandler.result_bottom.masks is not None and len(robotHandler.result_bottom.masks) > 0:
@@ -70,6 +77,13 @@ def main():
                     conf=True,
                     line_width=2,
                     labels=True
+                )
+                # Overlay convex hulls in cyan
+                frame_info.frame_bottom = visualize_convex_hulls(
+                    frame_info.frame_bottom,
+                    robotHandler.result_bottom,
+                    color=(255, 255, 0),  # Cyan
+                    thickness=2
                 )
 
         main_profiler.record("segmentation_viz")

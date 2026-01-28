@@ -96,72 +96,39 @@ class RobotHandler():
         self.distanceSensed = frame_info.distanceSensed
 
         result_top = segmentImage(self.frame_top)
-        result_bottom = segmentImage(self.frame_bottom)
+        # result_bottom = segmentImage(self.frame_bottom)
 
         # Store results for visualization
         self.result_top = result_top
-        self.result_bottom = result_bottom
+        # self.result_bottom = result_bottom
 
         self.profiler.record("segmentImage")
 
-        # scan and set any zones that haven't been found yet
-        self.scanAndSetZones(result_bottom, self.frame_bottom, False)
-
-        # Collect all new detections from both cameras
-        all_new_locations = []
-        all_new_colors = []
-
         for result, frame, is_top in [
-                (result_top, self.frame_top, True),
-                (result_bottom, self.frame_bottom, False)]:
+            (result_top, self.frame_top, True),
+            # (result_bottom, self.frame_bottom, False)
+        ]:
             self.scanAndSetZones(result, frame, is_top)
-            locations, colors = getCans(result, frame, is_top)
+            locations, colors = getCans(result, frame)
             locations = [
                 relative_to_world(
                     location,
                     self.robot_pose) for location in locations]
 
-            all_new_locations.extend(locations)
-            all_new_colors.extend(colors)
+            for i in range(len(self.cans)):
+                not_repeat = True
+                for j in range(len(locations)):
+                    if distance(
+                            self.cans[i],
+                            locations[j]) < CAN_DIAMETER:
+                        not_repeat = False
+                        break
+                if not_repeat:
+                    locations.append(self.cans[i])
+                    colors.append(self.can_colors[i])
 
-        # Merge new detections with existing cans
-        # Only keep existing cans if they're still visible in current frame
-        merged_locations = []
-        merged_colors = []
-
-        # Track which new detections have been matched
-        matched_new = [False] * len(all_new_locations)
-
-        # For each existing can, check if it's still visible
-        for i in range(len(self.cans)):
-            old_can = self.cans[i]
-            old_color = self.can_colors[i]
-
-            # Check if any new detection is close to this old can
-            found_match = False
-            for j in range(len(all_new_locations)):
-                if matched_new[j]:
-                    continue
-
-                if distance(old_can, all_new_locations[j]) < CAN_DIAMETER:
-                    # Can is still visible, keep it (use new position for accuracy)
-                    merged_locations.append(all_new_locations[j])
-                    merged_colors.append(all_new_colors[j])
-                    matched_new[j] = True
-                    found_match = True
-                    break
-
-            # If no match found, can is no longer visible - don't add it back
-            # (it was either picked up, moved, or was a false positive)
-
-        # Add any new detections that weren't matched to existing cans
-        for j in range(len(all_new_locations)):
-            if not matched_new[j]:
-                merged_locations.append(all_new_locations[j])
-                merged_colors.append(all_new_colors[j])
-
-        self.cans = merged_locations
-        self.can_colors = merged_colors
+            self.cans = locations
+            self.can_colors = colors
 
         self.profiler.record("scanAndSetZones")
 

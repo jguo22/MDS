@@ -257,9 +257,8 @@ def getZones(result, image, is_top=True):
     """
     Extracts zones from YOLO results and approximates each as a square.
 
-    Uses a more robust approach: transform only the center point, estimate orientation
-    from pixel space, then reconstruct the square using known dimensions.
-    This reduces error accumulation from homography at distance.
+    Transforms convex hull to world space and fits squares using known dimensions.
+    This approach eliminates perspective distortion effects on square fitting.
 
     Args:
         result: YOLO result object from inference
@@ -309,74 +308,111 @@ def getZones(result, image, is_top=True):
         # Reshape from (N, 1, 2) to (N, 2)
         hull_uv_reshaped = hull_uv.reshape(-1, 2)
 
-        # Transform hull points from pixel to world coordinates
+        # Transform all hull points to world coordinates
         hull_xy = []
-        valid_hull = True
         for point in hull_uv_reshaped:
             u, v = point[0], point[1]
             xy = transform_uv_to_xy(u, v, is_top)
             if xy is None:
-                valid_hull = False
-                break
+                continue
             hull_xy.append(xy)
 
-        # move on to next mask if this isn't a valid hull
-        if not valid_hull or len(hull_xy) < 4:
+        # Need at least 3 valid points to form a convex hull
+        if len(hull_xy) < 3:
             continue
 
-        hull_xy = np.array(hull_xy)
+        # Convert to numpy array for convex hull in world space
+        hull_xy_array = np.array(hull_xy)
 
-        # Get side length based on zone type
+        # Determine side length based on zone type
+        # Golden Zone is the big zone (20 inches), Green/Red are small (4
+        # inches)
         if class_name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
-            side_length = SMALL_ZONE_SIDE_LENGTH
-        else:
             side_length = BIG_ZONE_SIDE_LENGTH
+        else:
+            side_length = SMALL_ZONE_SIDE_LENGTH
 
-        # Use PCA to find orientation in world space
-        # Calculate center
-        center = np.mean(hull_xy, axis=0)
+        # Debug: Print hull size and side length
+        hull_extent_x = np.max(
+            hull_xy_array[:, 0]) - np.min(hull_xy_array[:, 0])
+        hull_extent_y = np.max(
+            hull_xy_array[:, 1]) - np.min(hull_xy_array[:, 1])
+        print(f"Zone {class_name}: hull points={len(hull_xy)}, extent=({hull_extent_x:.1f}, {hull_extent_y:.1f})mm, target_size={side_length:.1f}mm")
 
-        # Center the points
-        centered_points = hull_xy - center
+        # Fit a square in world space using the transformed convex hull
+        square, iou = approximateConvexHullWithSquare(
+            hull_xy_array, side_length)
 
-        # Perform PCA to find principal axes
-        cov_matrix = np.cov(centered_points.T)
-        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+        # Skip if square fitting failed
+        if square is None:
+            print(f"  -> Square fitting failed")
+            continue
 
-        # Sort eigenvectors by eigenvalues (largest first)
-        idx = eigenvalues.argsort()[::-1]
-        eigenvectors = eigenvectors[:, idx]
-
-        # First eigenvector is the primary orientation
-        angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0])
-
-        # Reconstruct square using exact dimensions
-        half_side = side_length / 2.0
-        local_square = np.array([
-            [-half_side, -half_side],
-            [half_side, -half_side],
-            [half_side, half_side],
-            [-half_side, half_side],
-        ])
-
-        # Rotate square by PCA angle
-        cos_angle = np.cos(angle)
-        sin_angle = np.sin(angle)
-        rotation_matrix = np.array([
-            [cos_angle, -sin_angle],
-            [sin_angle, cos_angle]
-        ])
-
-        rotated_square = local_square @ rotation_matrix.T
-
-        # Translate to center position
-        square = rotated_square + center
+        print(f"  -> Square fitted with IoU={iou:.2f}")
 
         squares.append(square)
         class_names.append(class_name)
         confidence_scores.append(confidence)
 
     return squares, class_names, confidence_scores
+
+
+def visualize_convex_hulls(
+    image: np.ndarray,
+    result,
+    color: tuple = (255, 255, 0),
+    thickness: int = 2
+) -> np.ndarray:
+    """
+    Visualize convex hulls of all segmentation masks on the image.
+
+    Args:
+        image: Image to draw on (BGR format, numpy array)
+        result: YOLO result object with masks
+        color: BGR color tuple for drawing hulls (default: cyan)
+        thickness: Line thickness for hull outline (default: 2)
+
+    Returns:
+        Image with convex hulls drawn
+    """
+    output_image = image.copy()
+
+    if result.masks is None:
+        return output_image
+
+    for i, mask_orig in enumerate(result.masks):
+        # Get class name
+        class_id = int(result.boxes.cls[i])
+        class_name = result.names[class_id]
+
+        # Convert mask to grayscale image
+        mask_array = mask_orig.data[0].cpu().numpy()
+        mask_uint8 = (mask_array * 255).astype(np.uint8)
+
+        # Resize mask to match original image size
+        mask_resized = cv.resize(
+            mask_uint8, (image.shape[1], image.shape[0]))
+
+        # Get convex hull
+        try:
+            hull = maskToConvexHull(mask_resized)
+            if hull is None or len(hull) == 0:
+                continue
+        except Exception:
+            continue
+
+        # Draw convex hull
+        cv.drawContours(output_image, [hull], 0, color, thickness)
+
+        # Optionally draw corner points
+        hull_reshaped = hull.reshape(-1, 2) if hull.ndim == 3 else hull
+        for point in hull_reshaped:
+            cv.circle(
+                output_image, (int(
+                    point[0]), int(
+                    point[1])), 3, color, -1)
+
+    return output_image
 
 
 def visualize_xy_locations(
