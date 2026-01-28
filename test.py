@@ -1,30 +1,14 @@
-from DirectRobotCommander import DirectRobotCommander
-from IMUWrapper import IMUWrapper
-from nav import Nav, NavMove
-from distanceSensorWrapper import DistanceSensorWrapper
-import time
-from navHelpers import get_forward_mm
-from threading import Thread
-
-imu = IMUWrapper()
-nav = Nav(imu)
-Thread(target=nav.startLoop).start()
-ds = DistanceSensorWrapper()
-directCommander = DirectRobotCommander(nav, ds, imu)
+from thetaStar import ThetaStar
 
 
-def approach_can_with_ds() -> bool:
-    # Approach can with distance sensor
+thetaStar = ThetaStar()
 
-    while ds.get_distance() > 100:
-        if ds.get_distance() > 800:
-            return False
-        nav.overridePaths(
-            [NavMove(*get_forward_mm(ds.get_distance() - 85))])
-        time.sleep(1.2)
-    return True
-
-
-directCommander.pickup_can()
-approach_can_with_ds()
-directCommander.release_can()
+sx, sy = 0, 0
+gx, gy = 1000, 90
+thetaStar.set_start(sx, sy)
+thetaStar.set_goal(gx, gy)
+print("theta*")
+print(sx, sy)
+print(gx, gy)
+print(thetaStar.ox)
+rx, ry = thetaStar.path_find()

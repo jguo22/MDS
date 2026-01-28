@@ -541,14 +541,12 @@ class RobotHandler():
         return in_rectangle
 
     def send_waypoints(self, waypoints: List[Tuple[float, float]]):
-        x = float(self.robot_pose.x)
-        y = float(self.robot_pose.y)
-        args = [x, y]
-        for point in waypoints:
-            args.append(point[0])
-            args.append(point[1])
-
-        self.robot_commander.override_waypoints(args)
+        x, y, theta = unpackPose(self.robot_pose)
+        command_args = [x, y]
+        for x, y in waypoints:
+            command_args.append(x)
+            command_args.append(y)
+        self.robot_commander.override_waypoints(command_args)
 
     def thetaStarAndSend(self, x: float, y: float):
         robot_x = self.robot_pose.x
@@ -556,9 +554,11 @@ class RobotHandler():
 
         self.thetaStar.set_start(robot_x, robot_y)
         self.thetaStar.set_goal(x, y)
-        rx, ry = self.thetaStar.path_find()
+        waypoints = self.thetaStar.path_find()
 
-        waypoints = list(zip(rx, ry))
+        print("theta*")
+        print(x, y)
+        print(waypoints)
         self.send_waypoints(waypoints)
 
     def updateTelemetry(self):
