@@ -98,7 +98,7 @@ class PiStreamer():
         self._command_receiver_thread: Optional[threading.Thread] = None
 
         # Profiler for stream performance
-        self.profiler = Profiler()
+        self.profiler = Profiler(False)
 
     def set_command_callback(
             self, callback: Callable[[int, list[float]], None]):

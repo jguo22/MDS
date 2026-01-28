@@ -72,7 +72,7 @@ class ComputerReceiver:
         self.frames_skipped = 0
 
         # Profiler for receive loop performance
-        self.profiler = Profiler(verbose=False)
+        self.profiler = Profiler(False)
 
     def set_frame_callback(
             self, callback: Callable[[FrameInfo], None]):
@@ -112,7 +112,9 @@ class ComputerReceiver:
             self.command_server_socket.bind((self.host, self.command_port))
             self.command_server_socket.listen(1)
             print(
-                f"Movement command server listening on {self.host}:{self.command_port}")
+                f"Movement command server listening on {
+                    self.host}:{
+                    self.command_port}")
 
             return True
         except socket.error as e:
@@ -130,12 +132,14 @@ class ComputerReceiver:
             # Accept video connection
             self.video_client_socket, _ = self.video_server_socket.accept()
             print(
-                f"Video connection from {self.video_client_socket.getpeername()}")
+                f"Video connection from {
+                    self.video_client_socket.getpeername()}")
 
             # Accept movement command connection
             self.command_client_socket, _ = self.command_server_socket.accept()
             print(
-                f"Movement command connection from {self.command_client_socket.getpeername()}")
+                f"Movement command connection from {
+                    self.command_client_socket.getpeername()}")
 
             # Update commander's socket
             self.commander.set_socket(self.command_client_socket)
@@ -291,7 +295,9 @@ class ComputerReceiver:
                                 f"capture_bottom_{frame_info.frame_id}.jpg",
                                 frame_info.frame_bottom)
                             print(
-                                f"Saved capture_top_{frame_info.frame_id}.jpg and capture_bottom_{frame_info.frame_id}.jpg")
+                                f"Saved capture_top_{
+                                    frame_info.frame_id}.jpg and capture_bottom_{
+                                    frame_info.frame_id}.jpg")
                         elif key == ord('p'):
                             print("Saving profiler data...")
                             self.profiler.save_profile()
@@ -309,7 +315,8 @@ class ComputerReceiver:
                     raise KeyboardInterrupt
                 except Exception as e:
                     print(
-                        f"Unexpected error in receive video loop: {type(e).__name__}: {e}")
+                        f"Unexpected error in receive video loop: {
+                            type(e).__name__}: {e}")
                     traceback.print_exc()
         finally:
             # Ensure thread is stopped

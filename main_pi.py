@@ -10,111 +10,7 @@ import config
 from connection import message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
-from connection.frame_info import FrameInfo
 from DirectRobotCommander import DirectRobotCommander
-from RobotHandler import RobotHandler
-
-
-def run_local_mode(camera_top, camera_bottom, robot_commander,
-                   imu_wrapper, distance_sensor, fps):
-    """Run autonomous mode - process frames locally with RobotHandler."""
-    print("\n=== RUNNING IN LOCAL AUTONOMOUS MODE ===")
-    print("Processing frames locally without network connection\n")
-
-    # Create robot handler
-    robot_handler = RobotHandler(robot_commander)
-    robot_handler.start()
-    print("RobotHandler initialized")
-
-    # Main processing loop
-    print(f"Starting autonomous operation at {fps} FPS. Press Ctrl+C to stop.")
-    frame_id = 0
-    running = True
-    frame_interval = 1.0 / fps
-    last_fps_print_time = time.time()
-    fps_frame_count = 0
-
-    try:
-        while running:
-            loop_start = time.time()
-
-            # Capture frames
-            frame_top = camera_top.read()
-            frame_bottom = camera_bottom.read()
-
-            if frame_top is None or frame_bottom is None:
-                print("Failed to capture frames")
-                time.sleep(0.1)
-                continue
-
-            # Get robot state
-            x, y = RAVEN_WRAPPER.get_odometry()
-            theta = imu_wrapper.get_heading()
-
-            # Get manipulator states (defaults if not available)
-            gripper_height = 0.0
-            gripper_angle = 0.0
-            scooper_angle = 0.0
-
-            # Get distance sensor reading
-            distance_sensed = distance_sensor.get_distance()
-
-            # Create frame info
-            frame_info = FrameInfo(
-                frame_top=frame_top,
-                frame_bottom=frame_bottom,
-                frame_id=frame_id,
-                x=x,
-                y=y,
-                theta=theta,
-                gripperHeight=gripper_height,
-                gripperAngle=gripper_angle,
-                scooperAngle=scooper_angle,
-                distanceSensed=distance_sensed
-            )
-
-            # Process frame with robot handler
-            try:
-                robot_handler.handleFrame(frame_info)
-            except Exception as e:
-                print(f"Error in handleFrame: {e}")
-                traceback.print_exc()
-
-            # Frame rate control
-            frame_id += 1
-            fps_frame_count += 1
-            elapsed = time.time() - loop_start
-            sleep_time = frame_interval - elapsed
-
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-            else:
-                print(
-                    f"Warning: Frame processing took {
-                        elapsed:.3f}s (target: {
-                        frame_interval:.3f}s)")
-
-            # Print FPS every second
-            current_time = time.time()
-            time_since_last_print = current_time - last_fps_print_time
-            if time_since_last_print >= 1.0:
-                actual_fps = fps_frame_count / time_since_last_print
-                print(f"Frame {frame_id}, FPS: {actual_fps:.1f}")
-                last_fps_print_time = current_time
-                fps_frame_count = 0
-
-    except KeyboardInterrupt:
-        print("\n\nShutdown requested by user")
-        running = False
-    except Exception as e:
-        print(f"\nUnexpected error: {e}")
-        traceback.print_exc()
-        running = False
-    finally:
-        print("\nCleaning up...")
-        camera_top.close()
-        camera_bottom.close()
-        print("Cameras closed")
 
 
 def run_network_mode(camera_top, camera_bottom, robot_commander, imu_wrapper):
@@ -264,26 +160,16 @@ def main():
     print("Cameras initialized")
 
     # Create direct robot commander for command execution
-    robot_commander = DirectRobotCommander(nav, distance_sensor)
+    robot_commander = DirectRobotCommander(nav, distance_sensor, IMUWrapper())
     print("DirectRobotCommander initialized")
 
     # Branch based on mode
-    if args.local == "True":
-        print("local")
-        run_local_mode(
-            camera_top,
-            camera_bottom,
-            robot_commander,
-            imu_wrapper,
-            distance_sensor,
-            args.fps)
-    else:
-        print("network")
-        run_network_mode(
-            camera_top,
-            camera_bottom,
-            robot_commander,
-            imu_wrapper)
+    print("network")
+    run_network_mode(
+        camera_top,
+        camera_bottom,
+        robot_commander,
+        imu_wrapper)
 
 
 if __name__ == "__main__":
