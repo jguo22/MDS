@@ -15,6 +15,7 @@ APPROACH_CAN_DS = 9  # Approach can using distance sensor (no arguments)
 # Stack can: [temp_pos_x, temp_pos_y, stack_pos_x, stack_pos_y, stacked_cans]
 STACK = 10
 WAIT_MOVEMENT_FINISHED = 11  # Wait for movement to complete (no arguments)
+RESET_GRIPPER = 12  # Reset gripper servo (no arguments)
 
 messageTypes = [
     CLOSE,
@@ -28,5 +29,6 @@ messageTypes = [
     OVERRIDE_WORLD_XY,
     APPROACH_CAN_DS,
     STACK,
-    WAIT_MOVEMENT_FINISHED
+    WAIT_MOVEMENT_FINISHED,
+    RESET_GRIPPER
 ]

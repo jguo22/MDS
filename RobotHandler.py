@@ -188,6 +188,7 @@ class RobotHandler():
         self.state = RobotState.StartScan
         if self.startFrame == -1:
             self.startFrame = frame_id
+            self.robot_commander.reset_gripper()
 
         if self.started:
             self.state = RobotState.StartGather

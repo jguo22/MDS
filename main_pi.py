@@ -71,6 +71,10 @@ def run_network_mode(
             assert (len(args) == 0)
             robot_commander.waitFinishedMoving()
 
+        elif msg_type == message_types.RESET_GRIPPER:
+            assert (len(args) == 0)
+            robot_commander.reset_gripper()
+
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True
     while running:

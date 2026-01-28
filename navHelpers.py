@@ -71,29 +71,3 @@ def get_arc(dx: float, dy: float) -> Tuple[float, float, float]:
     distance_ticks = arc_length_mm / (WHEEL_D * math.pi) * TICK_ROTATION
 
     return (left_coef, right_coef, distance_ticks)
-
-# def get_arc(dx, dy):
-#     # Calculate distance to travel in arc for center of bot
-#     c_r = (dx * dx + dy * dy) / (2 * abs(dx))
-#     c_theta = math.atan(dy / (c_r - dx))
-#     c_d = c_r * c_theta
-#
-#     # Calculate l_c
-#     l_dx = dx + (BASE_D / 2)
-#     l_dy = dy + (BASE_D / 2)
-#
-#     l_r = (l_dx * l_dx + l_dy * l_dy) / (2 * abs(l_dx))
-#     l_theta = math.atan(l_dy / (l_r - l_dx))
-#     l_d = l_r * l_theta
-#     l_c = l_d / c_d
-#
-#     # Calculate r_c
-#     r_dx = dx - (BASE_D / 2)
-#     r_dy = dy - (BASE_D / 2)
-#
-#     r_r = (r_dx * r_dx + r_dy * r_dy) / (2 * abs(r_dx))
-#     r_theta = math.atan(r_dy / (r_r - r_dx))
-#     r_d = r_r * r_theta
-#     r_c = r_d / c_d
-#
-#     return l_c, r_c, mm_to_ticks(c_d)

@@ -233,18 +233,20 @@ class DirectRobotCommander(IRobotCommander):
             True if successfully approached can, False if no can detected
         """
         try:
-            while self.distance_sensor.get_distance() > 100:
-                distance = self.distance_sensor.get_distance()
-                if distance > 800:
-                    return False
+            for i in range(3):
+                if self.distance_sensor.get_distance() > 100:
+                    distance = self.distance_sensor.get_distance()
+                    if distance > 800:
+                        return False
 
-                # Move forward by (current_distance - 85mm)
-                move_distance = distance - 85
-                self.nav.overridePaths(
-                    [NavMove(*get_forward_mm(move_distance), smooth=False)])
-                time.sleep(1.2)
-
-            return True
+                    # Move forward by (current_distance - 85mm)
+                    move_distance = distance - 85
+                    self.nav.overridePaths(
+                        [NavMove(*get_forward_mm(move_distance), smooth=False)])
+                    time.sleep(1.2)
+                else:
+                    return True
+            return False
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -323,6 +325,22 @@ class DirectRobotCommander(IRobotCommander):
             return True
         except Exception as e:
             print(f"Error in waitMovementFinished: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def reset_gripper(self) -> bool:
+        """
+        Reset the gripper servo.
+
+        Returns:
+            True if successful
+        """
+        try:
+            RAVEN_WRAPPER.reset_gripper()
+            return True
+        except Exception as e:
+            print(f"Error in reset_gripper: {e}")
             import traceback
             traceback.print_exc()
             return False

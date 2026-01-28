@@ -157,3 +157,13 @@ class IRobotCommander(ABC):
             True if successful
         """
         pass
+
+    @abstractmethod
+    def reset_gripper(self) -> bool:
+        """
+        Reset the gripper servo.
+
+        Returns:
+            True if successful
+        """
+        pass

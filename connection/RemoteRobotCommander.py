@@ -271,3 +271,20 @@ class RemoteRobotCommander(IRobotCommander):
             message_types.WAIT_MOVEMENT_FINISHED,
             []
         )
+
+    def reset_gripper(self) -> bool:
+        """
+        Reset the gripper servo.
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending reset gripper command')
+        return protocol.send_command(
+            self.command_socket,
+            message_types.RESET_GRIPPER,
+            []
+        )
