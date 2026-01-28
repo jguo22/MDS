@@ -158,7 +158,7 @@ class RavenWrapper():
         with self._lock:
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, 90)
-            time.sleep(1.2)
+            time.sleep(1.4)
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, 0)
 
@@ -167,7 +167,7 @@ class RavenWrapper():
         with self._lock:
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, -90)
-            time.sleep(1.2)
+            time.sleep(1.3)
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, 0)
 
