@@ -511,15 +511,16 @@ class RobotHandler():
         if True:
             # if self.hasGoodPickup():
             # Select target zone based on can color
-            if can_color == GREEN_CAN:
-                self.targetZone = GREEN_ZONE
-                zone_name = "GREEN"
-            elif can_color == RED_CAN:
-                self.targetZone = RED_ZONE
-                zone_name = "RED"
-            else:  # GOLDEN_CAN
-                self.targetZone = GOLDEN_ZONE
-                zone_name = "GOLDEN"
+            # if can_color == GREEN_CAN:
+            #     self.targetZone = GREEN_ZONE
+            #     zone_name = "GREEN"
+            # elif can_color == RED_CAN:
+            #     self.targetZone = RED_ZONE
+            #     zone_name = "RED"
+            # else:  # GOLDEN_CAN
+            #     self.targetZone = GOLDEN_ZONE
+            #     zone_name = "GOLDEN"
+            self.targetZone = GREEN_ZONE
             print(
                 f"State: {self.state.name} → PlaceInZone (target: {zone_name})")
             self.targetStackId = -1
@@ -546,7 +547,6 @@ class RobotHandler():
             targetStack = None
             if self.targetStackId == -1:
                 # find a stack based on the color zone
-                self.targetStackId = -1
                 for i, stack in enumerate(self.stacked_cans):
                     x, y, size, color = stack
                     if size < self.MAX_STACK_SIZE and color == self.targetZone:
@@ -585,7 +585,10 @@ class RobotHandler():
             self.robot_commander.backup()
             self.robot_commander.waitFinishedMoving()
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-            self.state = RobotState.PickupStack
+            if self.stacked_cans[self.targetStackId][2] == 0:
+                self.state = RobotState.MidgameGoToCan
+            else:
+                self.state = RobotState.PickupStack
         else:
             self.thetaStarAndSend(gx, gy)
 
@@ -658,7 +661,7 @@ class RobotHandler():
         self.thetaStar.addCan(cx, cy)
 
         print("→ override_movement([-1, -1, 3000])")
-        self.robot_commander.override_movement([-1, -1, BACKING_TICKS])
+        self.robot_commander.backup()
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
         print(f"⏳ Waiting for command {self.waiting_for_command_id}")
         print(f"State: {self.state.name} → MidgameGoToCan")
