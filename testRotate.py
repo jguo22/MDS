@@ -23,9 +23,9 @@ def main():
     while True:
         # Override paths with 30-degree rotation
         nav.overridePaths([
-            NavMove(*get_rotate(math.pi), smooth=False)
+            NavMove(*get_rotate(math.pi / 100), smooth=False)
         ])
-        time.sleep(0.1)
+        time.sleep(0.03)
 
 
 if __name__ == "__main__":

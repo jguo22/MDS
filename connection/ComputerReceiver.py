@@ -14,16 +14,14 @@ Run on the computer that will process the video and send movement commands.
 import socket
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 import cv2
 import traceback
-import math
 import config
 from . import protocol
-from . import message_types
 from connection.frame_info import FrameInfo
+from connection.RemoteRobotCommander import RemoteRobotCommander
 from profiler import Profiler
-import navHelpers
 from IRobotCommander import IRobotCommander  # type: ignore
 
 
@@ -61,6 +59,9 @@ class ComputerReceiver(IRobotCommander):
         # Client sockets (active connections for data transfer)
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
+
+        # Remote commander for sending commands
+        self._commander = RemoteRobotCommander()
 
         # takes in FrameInfo
         self.on_frame: Callable[[FrameInfo], None] = lambda _: None
@@ -138,6 +139,9 @@ class ComputerReceiver(IRobotCommander):
             self.command_client_socket, _ = self.command_server_socket.accept()
             print(
                 f"Movement command connection from {self.command_client_socket.getpeername()}")
+
+            # Update commander's socket
+            self._commander.set_socket(self.command_client_socket)
             return True
         except socket.error as e:
             print(f"Connection error: {e}")
@@ -150,11 +154,7 @@ class ComputerReceiver(IRobotCommander):
         Returns:
                 True if successful
         """
-        if not self.command_client_socket:
-            return False
-
-        return protocol.send_command(
-            self.command_client_socket, message_types.CLOSE, [])
+        return self._commander.close()
 
     def _receive_frames_thread(self):
         """Background thread that continuously receives frames and updates latest_frame."""
@@ -176,7 +176,8 @@ class ComputerReceiver(IRobotCommander):
                 if frame_info is None:
                     failed_frames += 1
                     if (failed_frames & (failed_frames - 1) == 0):
-                        print(f"Didn't Receive Frame (Connection Lost) {failed_frames}")
+                        print(
+                            f"Didn't Receive Frame (Connection Lost) {failed_frames}")
                     time.sleep(0.5)
                     continue
                 else:
@@ -213,7 +214,8 @@ class ComputerReceiver(IRobotCommander):
 
         # Start background thread to receive frames
         self.should_stop = False
-        self.receive_thread = threading.Thread(target=self._receive_frames_thread, daemon=True)
+        self.receive_thread = threading.Thread(
+            target=self._receive_frames_thread, daemon=True)
         self.receive_thread.start()
 
         fps_start = time.time()
@@ -244,7 +246,8 @@ class ComputerReceiver(IRobotCommander):
                     # Check if we skipped frames
                     if self.frames_skipped > last_skipped_count:
                         frames_skipped_this_cycle = self.frames_skipped - last_skipped_count
-                        print(f"Skipped {frames_skipped_this_cycle} frames (total: {self.frames_skipped})")
+                        print(
+                            f"Skipped {frames_skipped_this_cycle} frames (total: {self.frames_skipped})")
                         last_skipped_count = self.frames_skipped
 
                     last_frame_id = frame_info.frame_id
@@ -322,183 +325,77 @@ class ComputerReceiver(IRobotCommander):
         """
         # tell pi that we're closing the connection
         # so that it can look for a new one and see when we restart the code
-        self.send_close()
+        self._commander.close()
 
         # Close client connections
         protocol.close_socket(self.video_client_socket)
         self.video_client_socket = None
 
         protocol.close_socket(self.command_client_socket)
+        self._commander.set_socket(None)
         self.command_client_socket = None
         print("client connection stopped")
 
-    # ------------------ SENDING COMMANDS ------------------
-    def send_world_xy(self, world_x: float, world_y: float) -> bool:
+    # ------------------ IRobotCommander Interface ------------------
+    def early_game(
+            self,
+            golden: Tuple[float, float],
+            left: Tuple[float, float],
+            right: Tuple[float, float]) -> bool:
         """
-        Send world coordinate navigation command to the Pi.
-
-        The Pi will calculate the rotation and forward movement needed
-        to reach the world coordinate based on its current position and heading.
+        Send early game strategy command with can locations.
 
         Args:
-            world_x: Target x position in world frame (mm)
-            world_y: Target y position in world frame (mm)
+            golden: (x, y) coordinates of golden can in mm
+            left: (x, y) coordinates of left can in mm
+            right: (x, y) coordinates of right can in mm
 
         Returns:
             True if successful
         """
-        if not self.command_client_socket:
-            return False
+        return self._commander.early_game(golden, left, right)
 
-        print(f'Sending world coordinates: x={world_x}, y={world_y}')
-
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.SEND_WORLD_XY,
-            [world_x, world_y]
-        )
-
-    def send_xy(self, x, y):
-        """
-        Send relative movement in ROS coordinates (x=forward, y=left).
-
-        Args:
-            x: Forward distance in mm (positive = forward, negative = backward)
-            y: Lateral distance in mm (positive = left, negative = right)
-        """
-        if not self.command_client_socket:
-            return False
-
-        distance = math.sqrt(x * x + y * y)
-
-        # ROS coordinates: x is forward, y is left
-        # atan2(y, x) gives angle from forward axis (x) to target
-        theta = math.atan2(y, x)
-
-        rotate = list(navHelpers.get_rotate(theta))
-        forward = list(navHelpers.get_forward_mm(distance))
-
-        print(
-            f'sent movement x={x} y={y} theta={theta} distance={distance} rotate={rotate} forward={forward}')
-
-        self.override_movement(rotate + forward)
-
-    def add_movement(
-            self,
-            left_coef: float,
-            right_coef: float,
-            distance: float) -> bool:
-        """
-        Send movement commands to the Pi.
-
-        Args:
-            left_coef: Left motor coefficient (-1.0 to 1.0)
-            right_coef: Right motor coefficient (-1.0 to 1.0)
-            distance: Distance to move (in ticks)
-
-        Returns:
-                True if successful
-        """
-        if not self.command_client_socket:
-            return False
-
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.ADD_MOVEMENT,
-            [left_coef, right_coef, distance]
-        )
-
-    def override_movement(self, movement_args: list[float]):
+    def override_movement(self, movement_args: list[float]) -> bool:
         """
         Send list of movement commands to the Pi.
 
         Args:
-            movements: list of movement commands in groups of 3
+            movement_args: list of movement commands in groups of 3
                 left_coef: Left motor coefficient (-1.0 to 1.0)
                 right_coef: Right motor coefficient (-1.0 to 1.0)
                 distance: Distance to move (in ticks)
 
         Returns:
-                True if successful
+            True if successful
         """
-        if not self.command_client_socket:
-            return False
+        return self._commander.override_movement(movement_args)
 
-        assert (len(movement_args) % 3 == 0)
-
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.OVERRIDE_MOVEMENTS,
-            movement_args
-        )
-
-    def send_grip_can(self, height_mm: float) -> bool:
+    def override_waypoints(self, movement_args: list[float]) -> bool:
         """
-        Send command to grip can and lift it to specified height.
+        Override current path with waypoint navigation.
 
         Args:
-            height_mm: Height to lift gripper to in mm
+            movement_args: List of coordinates [start_x, start_y, wp1_x, wp1_y, ...]
 
         Returns:
             True if successful
         """
-        if not self.command_client_socket:
-            return False
+        return self._commander.override_waypoints(movement_args)
 
-        print(f'Sending grip can command: height={height_mm}mm')
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.GRIP_CAN,
-            [height_mm]
-        )
-
-    def send_release_can(self, height_mm: float) -> bool:
+    def pickup_can(self) -> bool:
         """
-        Send command to release can grip at specified height.
-
-        Args:
-            height_mm: Height to position gripper at before releasing in mm
+        Pick up a can with the gripper.
 
         Returns:
             True if successful
         """
-        if not self.command_client_socket:
-            return False
+        return self._commander.pickup_can()
 
-        print(f'Sending release can command: height={height_mm}mm')
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.RELEASE_CAN,
-            [height_mm]
-        )
-
-    def send_gripper_height(self, height_mm: float) -> bool:
+    def release_can(self) -> bool:
         """
-        Send command to set gripper height.
-
-        Args:
-            height_mm: Height to set gripper to in mm
+        Release the can from the gripper.
 
         Returns:
             True if successful
         """
-        if not self.command_client_socket:
-            return False
-
-        print(f'Sending gripper height command: height={height_mm}mm')
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.SEND_GRIPPER_HEIGHT,
-            [height_mm]
-        )
-
-    def send_early_game(self, golden, left, right):
-        if not self.command_client_socket:
-            return False
-
-        args = [golden[0], golden[1], left[0], left[1], right[0], right[1]]
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.EARLY_GAME,
-            args
-        )
+        return self._commander.release_can()

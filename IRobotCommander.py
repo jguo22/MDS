@@ -13,7 +13,7 @@ class IRobotCommander(ABC):
     """Abstract base class for robot command execution."""
 
     @abstractmethod
-    def send_early_game(
+    def early_game(
             self,
             golden: Tuple[float,
                           float],
@@ -52,12 +52,14 @@ class IRobotCommander(ABC):
         pass
 
     @abstractmethod
-    def send_grip_can(self, height_mm: float) -> bool:
+    def override_waypoints(self, movement_args: list[float]) -> bool:
         """
-        Send command to grip can and lift to specified height.
+        Override current path with waypoint navigation.
 
         Args:
-            height_mm: Height to lift gripper to in mm
+            movement_args: List of coordinates [start_x, start_y, wp1_x, wp1_y, ...]
+                - First two values are the starting point
+                - Remaining pairs are waypoints to navigate through
 
         Returns:
             True if successful
@@ -65,12 +67,9 @@ class IRobotCommander(ABC):
         pass
 
     @abstractmethod
-    def send_release_can(self, height_mm: float) -> bool:
+    def pickup_can(self) -> bool:
         """
-        Send command to lower gripper and release can.
-
-        Args:
-            height_mm: Height to position gripper at before releasing in mm
+        Pick up a can with the gripper.
 
         Returns:
             True if successful
@@ -78,59 +77,9 @@ class IRobotCommander(ABC):
         pass
 
     @abstractmethod
-    def send_gripper_height(self, height_mm: float) -> bool:
+    def release_can(self) -> bool:
         """
-        Send command to set gripper height.
-
-        Args:
-            height_mm: Height to set gripper to in mm
-
-        Returns:
-            True if successful
-        """
-        pass
-
-    @abstractmethod
-    def send_world_xy(self, world_x: float, world_y: float) -> bool:
-        """
-        Send world coordinate navigation command.
-
-        Args:
-            world_x: Target x position in world frame (mm)
-            world_y: Target y position in world frame (mm)
-
-        Returns:
-            True if successful
-        """
-        pass
-
-    @abstractmethod
-    def add_movement(
-            self,
-            left_coef: float,
-            right_coef: float,
-            distance: float) -> bool:
-        """
-        Add a single movement command to the queue.
-
-        Args:
-            left_coef: Left motor coefficient (-1.0 to 1.0)
-            right_coef: Right motor coefficient (-1.0 to 1.0)
-            distance: Distance to move in encoder ticks
-
-        Returns:
-            True if successful
-        """
-        pass
-
-    @abstractmethod
-    def send_xy(self, x: float, y: float) -> bool:
-        """
-        Send relative movement in ROS coordinates.
-
-        Args:
-            x: Forward distance in mm (positive = forward)
-            y: Lateral distance in mm (positive = left)
+        Release the can from the gripper.
 
         Returns:
             True if successful

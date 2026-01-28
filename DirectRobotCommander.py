@@ -5,14 +5,19 @@ This class implements IRobotCommander by directly calling the navigation
 and hardware control functions, suitable for Pi-side execution.
 """
 
-import math
 from typing import Tuple
+import math
+
+from spatialmath import SE2
+from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
+from config import BASE_D
 from nav import Nav, NavMove
 from distanceSensorWrapper import DistanceSensorWrapper
 from RavenWrapper import RAVEN_WRAPPER
 from earlyGame import EarlyGame
-import navHelpers
+from navHelpers import get_forward_mm, get_rotate
+from vision.relativeCoordinates import get_movement_plan
 
 
 class DirectRobotCommander(IRobotCommander):
@@ -23,7 +28,11 @@ class DirectRobotCommander(IRobotCommander):
     and other hardware interfaces without network overhead.
     """
 
-    def __init__(self, nav: Nav, distance_sensor: DistanceSensorWrapper):
+    def __init__(
+            self,
+            nav: Nav,
+            distance_sensor: DistanceSensorWrapper,
+            imu: IMUWrapper):
         """
         Initialize direct robot commander.
 
@@ -33,8 +42,10 @@ class DirectRobotCommander(IRobotCommander):
         """
         self.nav = nav
         self.distance_sensor = distance_sensor
+        self.imu = imu
+        self.previous_location = (0, 0)
 
-    def send_early_game(
+    def early_game(
             self,
             golden: Tuple[float,
                           float],
@@ -93,25 +104,59 @@ class DirectRobotCommander(IRobotCommander):
             print(f"Error in override_movement: {e}")
             return False
 
-    def send_grip_can(self, height_mm: float) -> bool:
+    def override_waypoints(self, movement_args: list[float]) -> bool:
         """
-        Grip can and lift to specified height.
+        Receive a list of x, y coordinates and navigate through waypoints.
 
         Args:
-            height_mm: Height to lift gripper to in mm
+            movement_args: List of coordinates [start_x, start_y, wp1_x, wp1_y, wp2_x, wp2_y, ...]
+                - First two values are the starting point (current robot position)
+                - Remaining pairs are waypoints to navigate to in sequence
 
         Returns:
             True if successful
         """
         try:
-            RAVEN_WRAPPER.close_gripper()
-            RAVEN_WRAPPER.raise_elevator()
-            return True
+            assert len(
+                movement_args) % 2 == 0, "Movement args must be pairs of x, y coordinates"
+
+            # Parse starting point and waypoints
+            start = movement_args[:2]
+            waypoints = []
+            for i in range(2, len(movement_args), 2):
+                waypoints.append((movement_args[i], movement_args[i + 1]))
+
+            x, y = RAVEN_WRAPPER.get_odometry()
+            theta = self.imu.get_heading()
+            robot_pose = SE2(x, y, theta)
+
+            # remove the first waypoint if we already passed it
+            # within the ~3 frames delay
+            if is_near_segment(start, [x, y], waypoints[0], BASE_D):
+                waypoints.pop(0)
+
+            plan = get_movement_plan(waypoints, robot_pose)
+
+            movement_args = []
+            for move in plan:
+                dist, theta = move
+                if theta > 0.01:
+                    movement_args.extend(get_rotate(theta))
+                if dist > 5:
+                    movement_args.extend(get_forward_mm(dist))
+            return self.override_movement(movement_args)
+
         except Exception as e:
-            print(f"Error in send_grip_can: {e}")
+            print(f"Error in override_waypoints: {e}")
             return False
 
-    def send_release_can(self, height_mm: float) -> bool:
+    def pickup_can(self) -> bool:
+        RAVEN_WRAPPER.lower_elevator()
+        RAVEN_WRAPPER.close_gripper()
+        RAVEN_WRAPPER.raise_elevator()
+        return True
+
+    def release_can(self) -> bool:
         """
         Lower gripper and release can.
 
@@ -129,90 +174,19 @@ class DirectRobotCommander(IRobotCommander):
             print(f"Error in send_release_can: {e}")
             return False
 
-    def send_gripper_height(self, height_mm: float) -> bool:
-        """
-        Set gripper height.
 
-        Args:
-            height_mm: Height to set gripper to in mm
+def is_near_segment(A, B, P, r):
+    # Vector math: A=start, B=end, P=test point, r=radius
+    dx, dy = B[0] - A[0], B[1] - A[1]
+    mag_sq = dx**2 + dy**2
 
-        Returns:
-            True if successful
-        """
-        try:
-            print(f"Setting gripper height: {height_mm}mm")
-            RAVEN_WRAPPER.raise_elevator()
-            return True
-        except Exception as e:
-            print(f"Error in send_gripper_height: {e}")
-            return False
+    if mag_sq == 0:
+        return math.dist(A, P) <= r
 
-    def send_world_xy(self, world_x: float, world_y: float) -> bool:
-        """
-        Navigate to world coordinates.
+    # Projection parameter t clamped to [0, 1]
+    t = max(0, min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / mag_sq))
 
-        Args:
-            world_x: Target x position in world frame (mm)
-            world_y: Target y position in world frame (mm)
+    # Closest point on segment
+    closest = (A[0] + t * dx, A[1] + t * dy)
 
-        Returns:
-            True if successful
-        """
-        try:
-            print(f"Navigating to world coordinates: x={world_x}, y={world_y}")
-            self.nav.override_paths_world_xy(world_x, world_y)
-            return True
-        except Exception as e:
-            print(f"Error in send_world_xy: {e}")
-            return False
-
-    def add_movement(
-            self,
-            left_coef: float,
-            right_coef: float,
-            distance: float) -> bool:
-        """
-        Add a single movement command to the queue.
-
-        Args:
-            left_coef: Left motor coefficient (-1.0 to 1.0)
-            right_coef: Right motor coefficient (-1.0 to 1.0)
-            distance: Distance to move in encoder ticks
-
-        Returns:
-            True if successful
-        """
-        try:
-            print(
-                f"Adding movement: left={left_coef}, right={right_coef}, dist={distance}")
-            self.nav.addPath(NavMove(left_coef, right_coef, distance, False))
-            return True
-        except Exception as e:
-            print(f"Error in add_movement: {e}")
-            return False
-
-    def send_xy(self, x: float, y: float) -> bool:
-        """
-        Send relative movement in ROS coordinates.
-
-        Args:
-            x: Forward distance in mm (positive = forward)
-            y: Lateral distance in mm (positive = left)
-
-        Returns:
-            True if successful
-        """
-        try:
-            distance = math.sqrt(x * x + y * y)
-            theta = math.atan2(y, x)
-
-            rotate = list(navHelpers.get_rotate(theta))
-            forward = list(navHelpers.get_forward_mm(distance))
-
-            print(
-                f'Sending movement: x={x} y={y} theta={theta} distance={distance}')
-
-            return self.override_movement(rotate + forward)
-        except Exception as e:
-            print(f"Error in send_xy: {e}")
-            return False
+    return math.dist(P, closest) <= r

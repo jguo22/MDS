@@ -1,18 +1,17 @@
 import time
 import math
-import cv2
 import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List
 from spatialmath import SE2
 from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
-from navHelpers import get_forward_mm, get_rotate
+from navHelpers import get_rotate
 import navHelpers
 from vision.segment import segmentImage
 from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
 from vision.can_utils import getCans
-from vision.relativeCoordinates import get_movement_plan, relative_to_world, world_to_relative
+from vision.relativeCoordinates import relative_to_world, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStarPlanner
 from streamer import Streamer
@@ -157,7 +156,7 @@ class RobotHandler():
         self.updateTelemetry()
         self.profiler.record("telemetry")
 
-        time.sleep(5)
+        time.sleep(0)
         self.profiler.record("sleep")
 
         self.profiler.end_frame()
@@ -261,8 +260,7 @@ class RobotHandler():
 
         if self.isPointInGripper(cx, cy):
             self.robot_commander.override_movement([])
-            self.robot_commander.send_grip_can(CAN_HEIGHT)
-            # TODO: add logic to check if its done picking up
+            self.robot_commander.pickup_can()
 
             # Select target zone based on can color
             if can_color == GREEN_CAN:
@@ -304,7 +302,6 @@ class RobotHandler():
         if self.isPointClose(*goal):
             self.handleMidgameStacking()
         else:
-            self.robot_commander.send_gripper_height(stack_size * CAN_HEIGHT)
             self.thetaStarAndSend(*goal)
 
     def handleMidgameStacking(self):
@@ -314,7 +311,7 @@ class RobotHandler():
         cx, cy, height = self.targetStack
 
         if self.isPointInGripper(cx, cy):
-            self.robot_commander.send_release_can(height)
+            self.robot_commander.release_can()
         elif self.isPointClose(cx, cy):
             self.preciseMoveToTarget(cx, cy)
         else:
@@ -475,16 +472,14 @@ class RobotHandler():
         return in_rectangle
 
     def send_waypoints(self, waypoints: List[Tuple[float, float]]):
-        plan = get_movement_plan(waypoints, self.robot_pose)
+        x = self.robot_pose.x
+        y = self.robot_pose.y
+        args = [x, y]
+        for point in waypoints:
+            args.append(point[0])
+            args.append(point[1])
 
-        movement_args = []
-        for move in plan:
-            dist, theta = move
-            movement_args.extend(get_rotate(theta))
-            movement_args.extend(get_forward_mm(dist))
-
-        self.robot_commander.override_movement(movement_args)
-        self.lastTimeSentPath = time.time()
+        self.robot_commander.override_waypoints(args)
 
     def thetaStarAndSend(self, x: float, y: float):
         robot_x = self.robot_pose.x
