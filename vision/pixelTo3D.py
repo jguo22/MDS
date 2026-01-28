@@ -1,5 +1,6 @@
 from vision.relativeCoordinates import world_to_pixel
 from vision.relativeCoordinates import world_to_relative
+from spatialmath import SE2
 import numpy as np
 from config import FRAME_WIDTH, FRAME_HEIGHT
 
@@ -76,6 +77,7 @@ def transform_contour_to_xy(contour, is_top=True):
 def is_world_point_visible(
         world_x: float,
         world_y: float,
+        robot_pose: SE2,
         is_top: bool) -> bool:
     """
     Check if a world point is visible in the camera's field of view.
@@ -91,7 +93,7 @@ def is_world_point_visible(
 
     # Convert world coordinates to robot-relative coordinates
     camera_relative = world_to_relative(
-        (world_x, world_y), self.robot_pose)
+        (world_x, world_y), robot_pose)
 
     # Points behind the camera cannot be visible
     if camera_relative[0] < 0:

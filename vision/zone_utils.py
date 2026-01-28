@@ -349,7 +349,7 @@ def getZones(result, image, is_top):
             print("  -> Square fitting failed")
             continue
 
-        print(f"  -> Square fitted with IoU={iou:.2f}")
+        # print(f"  -> Square fitted with IoU={iou:.2f}")
 
         squares.append(square)
         class_names.append(class_name)

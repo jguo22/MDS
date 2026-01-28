@@ -306,19 +306,15 @@ class DirectRobotCommander(IRobotCommander):
                 self.approach_can_with_ds()
                 self.pickup_can()
 
-                # move back
-                self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
-                self.waitFinishedMoving()
-
                 # go to temporary position
                 self.nav.override_rotate_world_xy(*temp_pos)
                 self.waitFinishedMoving()
                 self.approach_can_with_ds()
 
                 # Release stacked can with proper elevator control
-                RAVEN_WRAPPER.lower_elevator(2)
                 RAVEN_WRAPPER.open_gripper()
-                RAVEN_WRAPPER.raise_elevator(2.1)
+                self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
+                self.waitFinishedMoving()
 
             return True
         except Exception as e:
