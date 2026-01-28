@@ -2,14 +2,19 @@
 Latency testing tool for Pi-Computer communication.
 
 Usage:
-    # On computer (server):
+    # Test with small command messages:
     python3 test_latency.py --mode server
-
-    # On Pi (client):
-    python3 test_latency.py --mode client --host 192.168.1.101
+    python3 test_latency.py --mode client
 
     # Test with large images (realistic video frame size):
+    python3 test_latency.py --mode server --use-images
+    python3 test_latency.py --mode client --use-images
+
+    # Custom image size (auto-enables --use-images):
     python3 test_latency.py --mode client --image-size 1000
+
+    # Override host if needed (default: COMPUTER_IP from config.py):
+    python3 test_latency.py --mode client --host 192.168.1.101
 """
 
 import socket
@@ -98,7 +103,8 @@ def test_latency_client(
         port: int = COMMAND_PORT,
         num_tests: int = 100,
         image_size: int = 0,
-        jpeg_quality: int = config.JPEG_QUALITY):
+        jpeg_quality: int = config.JPEG_QUALITY,
+        use_images: bool = False):
     """
     Run latency test as client (Pi side).
     Sends timestamps and measures round-trip time.
@@ -109,10 +115,18 @@ def test_latency_client(
         num_tests: Number of ping-pong exchanges
         image_size: If > 0, send images of this size (e.g., 1000 for 1000x1000)
         jpeg_quality: JPEG quality for image compression (0-100)
+        use_images: If True, use image protocol (can be auto-set by image_size or port)
     """
     print(f"Connecting to {host}:{port}...")
 
-    use_images = image_size > 0
+    # Client uses images if explicitly requested or image_size is set
+    if image_size > 0:
+        use_images = True
+
+    # Default image size for image mode
+    if use_images and image_size == 0:
+        image_size = 640  # Default to camera resolution
+
     frame_data = b''
     data_size_kb = 0.0
 
@@ -240,7 +254,7 @@ def main():
     parser.add_argument('--mode', choices=['server', 'client'], required=True,
                         help='Run as server (computer) or client (Pi)')
     parser.add_argument('--host', type=str, default=config.COMPUTER_IP,
-                        help='Server IP address (client mode only)')
+                        help=f'Server IP address (client mode only, default: {config.COMPUTER_IP} from config.py)')
     parser.add_argument(
         '--port',
         type=int,
@@ -249,10 +263,14 @@ def main():
     parser.add_argument('--num-tests', type=int, default=100,
                         help='Number of ping-pong tests (default: 100)')
     parser.add_argument(
+        '--use-images',
+        action='store_true',
+        help='Use image protocol (send frames instead of small messages)')
+    parser.add_argument(
         '--image-size',
         type=int,
         default=0,
-        help='Image size for testing (e.g., 1000 for 1000x1000). 0 = use small messages (default)')
+        help='Image size for testing (e.g., 1000 for 1000x1000). 0 = use small messages (default). Auto-enables --use-images.')
     parser.add_argument(
         '--jpeg-quality',
         type=int,
@@ -261,16 +279,18 @@ def main():
 
     args = parser.parse_args()
 
+    # Determine if we're using images
+    # Auto-enable if image_size is specified, or explicit --use-images flag
+    use_images = args.use_images or args.image_size > 0
+
     # Auto-select port based on test mode
     if args.port is None:
-        if args.image_size > 0:
+        if use_images:
             args.port = VIDEO_PORT
             print(f"Image mode: Using VIDEO_PORT ({VIDEO_PORT})")
         else:
             args.port = COMMAND_PORT
             print(f"Command mode: Using COMMAND_PORT ({COMMAND_PORT})")
-
-    use_images = args.image_size > 0
 
     try:
         if args.mode == 'server':
@@ -281,7 +301,8 @@ def main():
                 args.port,
                 args.num_tests,
                 args.image_size,
-                args.jpeg_quality)
+                args.jpeg_quality,
+                use_images)
     except KeyboardInterrupt:
         print("\nTest interrupted by user")
     except Exception as e:
