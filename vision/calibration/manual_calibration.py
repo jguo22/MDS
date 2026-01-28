@@ -1,7 +1,9 @@
 import cv2
 import numpy as np
+import math
 
-IMAGE_WINDOW_NAME = "estimation"
+
+IMAGE_WINDOW_NAME = "manual calibration"
 
 
 def outputToArray(input: str) -> np.ndarray:
@@ -16,41 +18,55 @@ def outputToArray(input: str) -> np.ndarray:
     return np.array(points_2d)
 
 
-PTS_IMAGE_PLANE = outputToArray('''0 - u: 147, v: 261
-1 - u: 362, v: 233
-2 - u: 205, v: 177
-3 - u: 33, v: 197
-4 - u: 467, v: 144
-5 - u: 130, v: 286
-6 - u: 112, v: 312
-7 - u: 38, v: 416
-8 - u: 595, v: 290
-9 - u: 579, v: 208
-10 - u: 37, v: 275
-11 - u: 531, v: 439
-12 - u: 465, v: 361''')
+points_image = outputToArray('''0 - u: 295, v: 455
+1 - u: 330, v: 455
+2 - u: 364, v: 456
+3 - u: 546, v: 115
+4 - u: 702, v: 54
+5 - u: 294, v: 110
+6 - u: 462, v: 214
+7 - u: 376, v: 160
+8 - u: 260, v: 45
+9 - u: 15, v: 433
+10 - u: 12, v: 7
+11 - u: 860, v: 11
+12 - u: 845, v: 472
+13 - u: 562, v: 424
+''')
+
+points_ground = np.array([
+    [125, 18.9 * 3.5],
+    [125, 18.9 * 2.5],
+    [125, 18.9 * 1.5],
+    [352, -18.9 * 4.5],
+    [401.8, -198.35],
+    [125 + 227, 18.9 * 4.5],
+    [125 + 8 * 18.9, -18.9 * 1.5],
+    [125 + 10 * 18.9, 18.9 * 1.5],
+    [97 + 304.8, 97 + 18.9 / 2],
+    [97 + 304.8, 97 + 175],
+    [97 + 51, 97 - 304.8 - 115],
+    [97 + 15, 97 - 304.8 - 40],
+    [125 + 18.9, -18.9 * 4.5]
+])
+
+PTS_IMAGE_PLANE = outputToArray('''0 - u: 298, v: 420
+1 - u: 319, v: 135
+2 - u: 519, v: 139
+3 - u: 530, v: 424
+''')
 
 PTS_GROUND_PLANE = np.array([
-    [-1, 8],
-    [1, 8],
-    [-1, 16],
-    [-4, 16],
-    [4, 16],
-    [-1, 7],
-    [-1, 6],
-    [-1, 4],
-    [2, 5],
-    [3, 8],
-    [-2, 8],
-    [1, 3],
-    [1, 4],
-]) * 304.8
-
+    [125 + 18.9, 18.9 * 3.5],
+    [125 + 18.9 * 11, 18.9 * 3.5],
+    [125 + 18.9 * 11, -18.9 * 3.5],
+    [125 + 18.9, -18.9 * 3.5],
+])
 
 print(PTS_IMAGE_PLANE)
 assert (len(PTS_IMAGE_PLANE) == len(PTS_GROUND_PLANE))
 
-image_path = "frame.jpg"
+image_path = "bottom.jpg"
 frame = cv2.imread(image_path)
 cv2.imshow(IMAGE_WINDOW_NAME, frame)
 
@@ -79,10 +95,11 @@ def transform_uv_to_xy(h, u, v):
 
 
 np_pts_ground = np.float32(PTS_GROUND_PLANE[:, np.newaxis, :])
-
 np_pts_image = np.float32(PTS_IMAGE_PLANE[:, np.newaxis, :])
 
+print(len(np_pts_ground))
 h, err = cv2.findHomography(np_pts_image, np_pts_ground)
+print("h and error")
 print(h)
 print(err)
 
@@ -94,7 +111,9 @@ def mouse_event_listener(event, u, v, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
         # Transform to x y (world coordinate)
         x, y = transform_uv_to_xy(h, u, v)
+        print("thing")
         print(f"x: {x}, y: {y:}")  # Print world coordinate
+        print(f"u: {u}, v: {v}")
         test_frame = cv2.circle(
             frame.copy(), (u, v), 10, (0, 0, 255), 2
         )  # Draw red circle
@@ -114,6 +133,22 @@ def mouse_event_listener(event, u, v, flags, param):
 
 # Set click callback
 cv2.setMouseCallback(IMAGE_WINDOW_NAME, mouse_event_listener, frame)
+
+
+# for i in range(len(points_image)):
+#     u, v = points_image[i]
+#     predicted = transform_uv_to_xy(h, u, v)
+#     marked = points_ground[i]
+#     print(i)
+#     print(distance(predicted, marked))
+
+def distance(point1, point2):
+    x1, y1 = point1
+    x2, y2 = point2
+    dx = x1 - x2
+    dy = y1 - y2
+    return math.sqrt(dx * dx + dy * dy)
+
 
 # Wait for q or close to quit
 while True:
