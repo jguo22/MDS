@@ -8,8 +8,10 @@ from shapely.geometry import Polygon
 from colors import GOLDEN_ZONE, ZONE_CLASS_NAMES
 from config import BIG_ZONE_SIDE_LENGTH, SMALL_ZONE_SIDE_LENGTH
 
-from .pixelTo3D import transform_uv_to_xy
+from .pixelTo3D import transform_uv_to_xy, H_TOP, H_BOTTOM
 from .mask_utils import maskToConvexHull
+from .relativeCoordinates import world_to_pixel
+from spatialmath import SE2
 
 
 def getSquareCenter(square):
@@ -255,20 +257,21 @@ def getZones(result, image, is_top=True):
     """
     Extracts zones from YOLO results and approximates each as a square.
 
-    Processes zones directly without using getZones(), implementing the full pipeline
-    from YOLO results to square approximations in world coordinates.
+    Uses a more robust approach: transform only the center point, estimate orientation
+    from pixel space, then reconstruct the square using known dimensions.
+    This reduces error accumulation from homography at distance.
 
     Args:
         result: YOLO result object from inference
         image: Original BGR image (used for fixSegmentation)
-        side_length: Side length of the approximating squares in mm
+        is_top: True for top camera, False for bottom camera
 
     Returns:
         tuple: (squares_xy, class_names, confidence_scores)
             - squares_xy: List of numpy arrays (4, 2) with xy coordinates in mm
-                         Each array represents a square centered at the zone's centroid
+                         Each array represents a square with known dimensions
             - class_names: List of strings with class names for each square
-            - confidence_scores: List of floats representing IoU between hull and square in xy coordinates
+            - confidence_scores: List of floats (confidence from YOLO)
     """
     squares = []
     class_names = []
@@ -278,9 +281,10 @@ def getZones(result, image, is_top=True):
         return squares, class_names, confidence_scores
 
     for i, mask_orig in enumerate(result.masks):
-        # Get class name for this detection
+        # Get class name and confidence for this detection
         class_id = int(result.boxes.cls[i])
         class_name = result.names[class_id]
+        confidence = float(result.boxes.conf[i])
 
         # if its not a zone, continue to next mask
         if class_name not in ZONE_CLASS_NAMES:
@@ -302,7 +306,7 @@ def getZones(result, image, is_top=True):
         except Exception:
             continue
 
-        # Reshape from (N, 1, 2) to (N, 2) for easier iteration
+        # Reshape from (N, 1, 2) to (N, 2)
         hull_uv_reshaped = hull_uv.reshape(-1, 2)
 
         # Transform hull points from pixel to world coordinates
@@ -317,22 +321,142 @@ def getZones(result, image, is_top=True):
             hull_xy.append(xy)
 
         # move on to next mask if this isn't a valid hull
-        if not valid_hull:
+        if not valid_hull or len(hull_xy) < 4:
             continue
 
         hull_xy = np.array(hull_xy)
 
-        # Approximate with square based on zone type
+        # Get side length based on zone type
         if class_name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
-            square, iou = approximateConvexHullWithSquare(
-                hull_xy, SMALL_ZONE_SIDE_LENGTH)
+            side_length = SMALL_ZONE_SIDE_LENGTH
         else:
-            square, iou = approximateConvexHullWithSquare(
-                hull_xy, BIG_ZONE_SIDE_LENGTH)
+            side_length = BIG_ZONE_SIDE_LENGTH
 
-        if square is not None:
-            squares.append(square)
-            class_names.append(class_name)
-            confidence_scores.append(iou)
+        # Use PCA to find orientation in world space
+        # Calculate center
+        center = np.mean(hull_xy, axis=0)
+
+        # Center the points
+        centered_points = hull_xy - center
+
+        # Perform PCA to find principal axes
+        cov_matrix = np.cov(centered_points.T)
+        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+
+        # Sort eigenvectors by eigenvalues (largest first)
+        idx = eigenvalues.argsort()[::-1]
+        eigenvectors = eigenvectors[:, idx]
+
+        # First eigenvector is the primary orientation
+        angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0])
+
+        # Reconstruct square using exact dimensions
+        half_side = side_length / 2.0
+        local_square = np.array([
+            [-half_side, -half_side],
+            [half_side, -half_side],
+            [half_side, half_side],
+            [-half_side, half_side],
+        ])
+
+        # Rotate square by PCA angle
+        cos_angle = np.cos(angle)
+        sin_angle = np.sin(angle)
+        rotation_matrix = np.array([
+            [cos_angle, -sin_angle],
+            [sin_angle, cos_angle]
+        ])
+
+        rotated_square = local_square @ rotation_matrix.T
+
+        # Translate to center position
+        square = rotated_square + center
+
+        squares.append(square)
+        class_names.append(class_name)
+        confidence_scores.append(confidence)
 
     return squares, class_names, confidence_scores
+
+
+def visualize_xy_locations(
+    image: np.ndarray,
+    xy_points: list,
+    robot_pose: SE2,
+    is_top: bool = True,
+    color: tuple = (0, 255, 0),
+    radius: int = 5,
+    thickness: int = -1,
+    labels: list = None
+) -> np.ndarray:
+    """
+    Visualize world coordinate (x, y) locations on an image by projecting them to pixels.
+
+    Takes a list of points in world coordinates (mm) and draws them on the image
+    after converting to pixel coordinates using the camera's homography matrix.
+
+    Args:
+        image: Image to draw on (BGR format, numpy array)
+        xy_points: List of (x, y) tuples in world coordinates (mm)
+                  For camera-relative coordinates:
+                  - x: forward distance from camera (positive = in front)
+                  - y: lateral distance from camera (positive = left)
+        robot_pose: Robot's current pose (SE2) - used if points are in world frame
+        is_top: True for top camera, False for bottom camera
+        color: BGR color tuple for drawing points (default: green)
+        radius: Radius of circles to draw (default: 5)
+        thickness: Thickness of circle outline (-1 for filled, default: -1)
+        labels: Optional list of labels to display next to each point
+
+    Returns:
+        Image with xy locations visualized as circles
+
+    Example:
+        >>> image = cv2.imread("frame.jpg")
+        >>> can_locations = [(500, 100), (800, -200), (1200, 0)]  # in mm
+        >>> robot_pose = SE2(0, 0, 0)
+        >>> viz_image = visualize_xy_locations(image, can_locations, robot_pose, is_top=True)
+        >>> cv2.imshow("Cans", viz_image)
+    """
+    # Make a copy to avoid modifying the original
+    output_image = image.copy()
+
+    # Select the appropriate homography matrix
+    h_matrix = H_TOP if is_top else H_BOTTOM
+
+    # Draw each point
+    for i, xy_point in enumerate(xy_points):
+        if xy_point is None:
+            continue
+
+        # Convert world coordinates to pixel coordinates
+        pixel_coords = world_to_pixel(xy_point, h_matrix)
+
+        if pixel_coords is None:
+            # Point cannot be projected (behind camera or invalid)
+            continue
+
+        u, v = pixel_coords
+
+        # Check if point is within image bounds
+        if 0 <= u < image.shape[1] and 0 <= v < image.shape[0]:
+            # Draw circle at the location
+            cv.circle(output_image, (u, v), radius, color, thickness)
+
+            # Draw label if provided
+            if labels is not None and i < len(labels):
+                label = str(labels[i])
+                # Put text slightly offset from the circle
+                text_pos = (u + radius + 5, v + 5)
+                cv.putText(
+                    output_image,
+                    label,
+                    text_pos,
+                    cv.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    color,
+                    1,
+                    cv.LINE_AA
+                )
+
+    return output_image

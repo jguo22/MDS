@@ -1,7 +1,7 @@
 import math
 import numpy as np
 from colors import CAN_CLASS_NAMES
-from config import CAN_DIAMETER
+from config import CAN_DIAMETER, CAN_CONFIDENCE_THRESHOLD, CAN_MIN_AREA_PIXELS
 from .pixelTo3D import transform_uv_to_xy
 from .mask_utils import getSmoothRegionFromMask, yoloMaskToBinary
 
@@ -60,16 +60,28 @@ def getCans(result, image, is_top=True):
         return can_locations_xy, class_names
 
     for i, mask_orig in enumerate(result.masks):
-        # Get class name for this detection
+        # Get class name and confidence for this detection
         class_id = int(result.boxes.cls[i])
         class_name = result.names[class_id]
+        confidence = float(result.boxes.conf[i])
 
         # Only process can detections
         if class_name not in CAN_CLASS_NAMES:
             continue
 
+        # Skip cans with confidence below threshold
+        if confidence < CAN_CONFIDENCE_THRESHOLD:
+            continue
+
         # Convert mask to grayscale image
         binary_mask = yoloMaskToBinary(mask_orig, image)
+
+        # Calculate mask area (number of non-zero pixels)
+        mask_area = np.count_nonzero(binary_mask)
+
+        # Skip cans with area below threshold (likely specs/noise)
+        if mask_area < CAN_MIN_AREA_PIXELS:
+            continue
 
         # Get bottom center pixel coordinates
         bottom_center = getBottomCenterPixel(binary_mask)

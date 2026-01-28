@@ -163,3 +163,66 @@ def get_movement_plan(
         prev_pose = SE2(x, y, world_theta)
 
     return path
+
+
+def world_to_pixel(
+    world_point: Union[Tuple[float, float], np.ndarray],
+    h_matrix: np.ndarray
+) -> Union[Tuple[int, int], None]:
+    """
+    Convert world coordinates (mm) to pixel coordinates using homography.
+
+    This is the inverse transformation of transform_uv_to_xy from pixelTo3D.py.
+    Converts a point from camera-relative world coordinates to pixel coordinates
+    in the camera frame.
+
+    Args:
+        world_point: Point in world coordinates (x, y) in mm relative to camera
+                    - x: forward distance from camera (positive = in front)
+                    - y: lateral distance from camera (positive = left)
+        h_matrix: Homography matrix (3x3) for the camera (H_TOP or H_BOTTOM)
+
+    Returns:
+        Tuple (u, v) of pixel coordinates (integers), or None if point is invalid
+        - u: horizontal pixel coordinate (increases right)
+        - v: vertical pixel coordinate (increases down)
+        Returns None if point cannot be projected (behind camera, outside image, etc.)
+
+    Note:
+        The world_point should be in camera-relative coordinates.
+        For camera mounted on robot pointing forward:
+        - x: distance forward from camera
+        - y: distance left from camera
+    """
+    # Convert point to numpy array
+    world_point = _point_to_array(world_point)
+    x, y = world_point[0], world_point[1]
+
+    # Points behind the camera (negative x) cannot be projected
+    if x < 0:
+        return None
+
+    # Create homogeneous point in world coordinates [x, y, 1]
+    world_homogeneous = np.array([[x], [y], [1.0]])
+
+    try:
+        # Compute inverse homography: H^-1
+        h_inv = np.linalg.inv(h_matrix)
+
+        # Apply inverse transformation: [u, v, w] = H^-1 * [x, y, 1]
+        pixel_homogeneous = np.dot(h_inv, world_homogeneous)
+
+        # Normalize by the third coordinate to get actual pixel coordinates
+        w = pixel_homogeneous[2, 0]
+        if abs(w) < 1e-10:  # Avoid division by zero
+            return None
+
+        u = pixel_homogeneous[0, 0] / w
+        v = pixel_homogeneous[1, 0] / w
+
+        # Convert to integers and return
+        return (int(round(u)), int(round(v)))
+
+    except (np.linalg.LinAlgError, ValueError):
+        # Return None if matrix is singular or other numerical issues
+        return None
