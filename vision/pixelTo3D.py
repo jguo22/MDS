@@ -1,4 +1,7 @@
+from vision.relativeCoordinates import world_to_pixel
+from vision.relativeCoordinates import world_to_relative
 import numpy as np
+from config import FRAME_WIDTH, FRAME_HEIGHT
 
 H_TOP = np.array([[-3.26587760e-01, -1.19235902e+00, 4.41202786e+03],
                   [-4.62826170e+00, -5.02535675e-03, 1.70630658e+03],
@@ -68,3 +71,40 @@ def transform_contour_to_xy(contour, is_top=True):
         return None
 
     return np.array(transformed_points)
+
+
+def is_world_point_visible(
+        world_x: float,
+        world_y: float,
+        is_top: bool) -> bool:
+    """
+    Check if a world point is visible in the camera's field of view.
+
+    Args:
+        world_x: x coordinate in world frame (mm)
+        world_y: y coordinate in world frame (mm)
+        is_top: True for top camera, False for bottom camera
+
+    Returns:
+        True if the point is visible in the specified camera's FOV
+    """
+
+    # Convert world coordinates to robot-relative coordinates
+    camera_relative = world_to_relative(
+        (world_x, world_y), self.robot_pose)
+
+    # Points behind the camera cannot be visible
+    if camera_relative[0] < 0:
+        return False
+
+    # Get the appropriate homography matrix
+    h_matrix = H_TOP if is_top else H_BOTTOM
+
+    # Try to project to pixel coordinates
+    pixel_coords = world_to_pixel(camera_relative, h_matrix)
+    if pixel_coords is None:
+        return False
+
+    # Check if pixel coordinates are within frame bounds
+    u, v = pixel_coords
+    return 0 <= u < FRAME_WIDTH and 0 <= v < FRAME_HEIGHT

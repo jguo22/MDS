@@ -44,33 +44,13 @@ class DirectRobotCommander(IRobotCommander):
         self.distance_sensor = distance_sensor
         self.imu = imu
         self.previous_location = (0, 0)
-        self.last_completed_command_id = 0
-
-    def update_command_completion(self):
-        """
-        No-op. All commands now block until complete and call complete_command_immediately().
-        Kept for compatibility with PiStreamer.
-        """
-        pass
-
-    def get_last_completed_command_id(self) -> int:
-        """Get the ID of the last completed command."""
-        return self.last_completed_command_id
 
     def get_last_command_id(self) -> int:
         """
-        Get the ID of the last command sent.
-        For DirectRobotCommander, returns 0 (not applicable for local execution).
+        Not used on Pi side - command IDs tracked in protocol module.
+        Returns 0 for compatibility.
         """
         return 0
-
-    def complete_command_immediately(self, command_id: int):
-        """
-        Mark a command as complete.
-        All commands now block until done, so this is called when they finish.
-        """
-        if command_id > 0:
-            self.last_completed_command_id = command_id
 
     def early_game(
             self,
@@ -267,8 +247,8 @@ class DirectRobotCommander(IRobotCommander):
             True if successfully approached can, False if no can detected
         """
         try:
-            for i in range(3):
-                if self.distance_sensor.get_distance() > 100:
+            for _ in range(3):
+                if self.distance_sensor.get_distance() > 92:
                     distance = self.distance_sensor.get_distance()
                     if distance > 800:
                         return False
@@ -335,7 +315,10 @@ class DirectRobotCommander(IRobotCommander):
                 self.waitFinishedMoving()
                 self.approach_can_with_ds()
 
+                # Release stacked can with proper elevator control
+                RAVEN_WRAPPER.lower_elevator(2)
                 RAVEN_WRAPPER.open_gripper()
+                RAVEN_WRAPPER.raise_elevator(2.1)
 
             return True
         except Exception as e:

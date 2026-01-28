@@ -181,20 +181,9 @@ class IRobotCommander(ABC):
     @abstractmethod
     def get_last_command_id(self) -> int:
         """
-        Get the ID of the last command sent (for tracking completion).
+        Get the ID of the last command sent (for network tracking only).
 
         Returns:
-            Command ID (0 if not applicable)
-        """
-        pass
-
-    @abstractmethod
-    def complete_command_immediately(self, command_id: int) -> None:
-        """
-        Mark a command as complete.
-        All commands now block until done, so this is called when they finish.
-
-        Args:
-            command_id: The ID of the command that completed
+            Command ID (0 if not applicable, i.e., on Pi side)
         """
         pass

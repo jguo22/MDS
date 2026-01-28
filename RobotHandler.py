@@ -7,6 +7,7 @@ from spatialmath import SE2
 from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
+from vision.pixelTo3D import is_world_point_visible
 from vision.segment import segmentImage
 from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
 from vision.can_utils import getCans, is_hull_overlap_with_target_rect
@@ -52,6 +53,10 @@ class RobotHandler():
         # Number of consecutive frames each can has been visible but not detected
         # Aligned by index with self.cans / self.can_colors
         self.can_miss_counts: List[int] = []
+        # Can detection confidence tracking: rounded (x,y) -> consecutive
+        # frames detected
+        self.can_detections: dict[Tuple[int, int], int] = {}
+        self.DETECTION_THRESHOLD = 5  # Require 5 frames to confirm
         # x, y, stack size, color, id
         self.stacked_cans: List[Tuple[float, float, int, int, int]] = []
         self.borders: List[Tuple[int, int]] = []
@@ -96,13 +101,6 @@ class RobotHandler():
     def handleFrame(self, frame_info: FrameInfo):
         self.profiler.start_frame()
 
-        # Use top camera frame for vision processing
-        self.frame_top = frame_info.frame_top
-        self.frame_bottom = frame_info.frame_bottom
-        self.frame_id = frame_info.frame_id
-        self.robot_pose = SE2(frame_info.x, frame_info.y, frame_info.theta)
-        self.distanceSensed = frame_info.distanceSensed
-
         # Skip processing if paused
         if self.paused:
             self.profiler.end_frame()
@@ -121,6 +119,13 @@ class RobotHandler():
                 self.profiler.end_frame()
                 return
 
+        # Use top camera frame for vision processing
+        self.frame_top = frame_info.frame_top
+        self.frame_bottom = frame_info.frame_bottom
+        self.frame_id = frame_info.frame_id
+        self.robot_pose = SE2(frame_info.x, frame_info.y, frame_info.theta)
+        self.distanceSensed = frame_info.distanceSensed
+
         self.result_top = segmentImage(self.frame_top)
         self.result_bottom = segmentImage(self.frame_bottom)
         self.profiler.record("segmentImage")
@@ -130,6 +135,10 @@ class RobotHandler():
         # segmentation/rect.
         print(self.hasGoodPickup())
 
+        # Collect all detections from both cameras
+        all_locations: List[Tuple[float, float]] = []
+        all_colors: List[int] = []
+
         for result, frame, is_top in [
             (self.result_top, self.frame_top, True),
             (self.result_bottom, self.frame_bottom, False)
@@ -138,55 +147,98 @@ class RobotHandler():
             locations, color_strings = getCans(result, frame, is_top)
             colors = canNamesToNumbers(color_strings)
 
+            # Transform to world coordinates
             locations = [relative_to_world(location, self.robot_pose)
                          for location in locations]
 
-            # Ensure miss-count list is aligned with cans list
-            if len(self.can_miss_counts) != len(self.cans):
-                self.can_miss_counts = [0] * len(self.cans)
+            all_locations.extend(locations)
+            all_colors.extend(colors)
 
-            # Start new lists with currently detected cans (miss count = 0)
-            new_locations: List[Tuple[float, float]] = list(locations)
-            new_colors: List[int] = list(colors)
-            new_miss_counts: List[int] = [0] * len(new_locations)
+        # Update detection confidence tracking
+        new_detections: dict[Tuple[int, int], int] = {}
 
-            # Check each old can to see if it should be kept or removed
-            for i in range(len(self.cans)):
-                old_can_x, old_can_y = self.cans[i]
-                old_color = self.can_colors[i]
-                miss_count = self.can_miss_counts[i]
+        for i, location in enumerate(all_locations):
+            # Round to 50mm grid for matching
+            rounded = (
+                round(
+                    location[0] /
+                    50) *
+                50,
+                round(
+                    location[1] /
+                    50) *
+                50)
 
-                # Check if old can matches any new detection
-                has_nearby_detection = any(
-                    getDistance(self.cans[i], locations[j]) < CAN_DIAMETER / 2
-                    for j in range(len(locations))
-                )
+            # Check if matches existing detection
+            matched = False
+            for existing_loc, count in self.can_detections.items():
+                if getDistance(rounded, existing_loc) < CAN_DIAMETER:
+                    new_detections[existing_loc] = count + 1
+                    matched = True
+                    break
 
-                if has_nearby_detection:
-                    # Already represented by a current detection (miss count
-                    # reset via detection)
-                    continue
+            if not matched:
+                new_detections[rounded] = 1
 
-                # No nearby detection for this old can
-                if self.is_world_point_visible(old_can_x, old_can_y, is_top):
-                    # Visible in FOV but not detected this frame
-                    miss_count += 1
-                    # Only remove if it has been visible and undetected for 5
-                    # consecutive frames
-                    if miss_count >= 5:
-                        continue  # Drop this stale can
-                # If not visible, keep the existing miss_count (do not
-                # increment)
+        # Build confirmed cans list (detections >= threshold)
+        confirmed_cans: List[Tuple[float, float]] = []
+        confirmed_colors: List[int] = []
+        confirmed_miss_counts: List[int] = []
 
-                # Keep the can (either not visible or not yet past miss
-                # threshold)
-                new_locations.append(self.cans[i])
-                new_colors.append(old_color)
-                new_miss_counts.append(miss_count)
+        for rounded_loc, count in new_detections.items():
+            if count >= self.DETECTION_THRESHOLD:
+                # Find the actual detection location (not rounded)
+                for i, location in enumerate(all_locations):
+                    rounded = (
+                        round(
+                            location[0] /
+                            50) *
+                        50,
+                        round(
+                            location[1] /
+                            50) *
+                        50)
+                    if rounded == rounded_loc:
+                        confirmed_cans.append(location)
+                        confirmed_colors.append(all_colors[i])
+                        confirmed_miss_counts.append(0)
+                        break
 
-            self.cans = new_locations
-            self.can_colors = new_colors
-            self.can_miss_counts = new_miss_counts
+        # Keep old cans if not visible this frame
+        for i in range(len(self.cans)):
+            old_can = self.cans[i]
+            old_color = self.can_colors[i]
+
+            # Skip if already in confirmed list
+            if any(getDistance(old_can, new_can) < CAN_DIAMETER / 2
+                   for new_can in confirmed_cans):
+                continue
+
+            # Check visibility in both cameras
+            visible_top = is_world_point_visible(old_can[0], old_can[1], True)
+            visible_bottom = is_world_point_visible(
+                old_can[0], old_can[1], False)
+
+            # Keep if not visible in either camera
+            if not visible_top and not visible_bottom:
+                confirmed_cans.append(old_can)
+                confirmed_colors.append(old_color)
+                confirmed_miss_counts.append(
+                    self.can_miss_counts[i] if i < len(
+                        self.can_miss_counts) else 0)
+
+        self.can_detections = new_detections
+        self.cans = confirmed_cans
+        self.can_colors = confirmed_colors
+        self.can_miss_counts = confirmed_miss_counts
+
+        # Debug print
+        print(
+            f"Frame {self.frame_id}: Detected {len(all_locations)} cans, confirmed {len(confirmed_cans)}")
+        high_confidence = [(loc, cnt)
+                           for loc, cnt in self.can_detections.items() if cnt >= 3]
+        if high_confidence:
+            print(f"Detection counts (>= 3): {high_confidence}")
 
         # TESTING PURPOSES
         self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
@@ -353,6 +405,7 @@ class RobotHandler():
                 self.robot_commander.pickup_tipped_can()
                 self.robot_commander.release_can()
                 self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+                self.state = RobotState.MidgameGoToCan
             else:
                 print("pickup")
                 self.robot_commander.approach_can_with_ds()
@@ -364,7 +417,9 @@ class RobotHandler():
             print("close")
             # get close then pick up
             self.robot_commander.approach_can_with_ds()
+            self.robot_commander.pickup_can()
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+            self.state = RobotState.PostGrab
         else:
             print("far")
             self.thetaStarAndSend(cx, cy)
@@ -373,7 +428,7 @@ class RobotHandler():
     def handlePostGrab(self):
         self.state = RobotState.PostGrab
 
-        print("a")
+        print("asdfsdf")
         can_color = self.current_can[2]
         if can_color not in [GREEN_CAN, RED_CAN, GOLDEN_CAN]:
             print("huh??")
@@ -425,7 +480,7 @@ class RobotHandler():
             self.lastStackId += 1
 
         # get the target
-        cx, cy, color, height, id = targetStack
+        cx, cy, color, size, id = targetStack
 
         # calculate offsetted position
         zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
@@ -442,7 +497,12 @@ class RobotHandler():
             temp_pos = (cx + TEMP_STACK_OFFSET, cy)
 
         stack_pos = (cx, cy)
-        self.robot_commander.stack(temp_pos, stack_pos, height)
+        # Ensure previous nav commands are complete before stacking
+        self.robot_commander.waitFinishedMoving()
+        if size == 0:
+            self.robot_commander.stack(stack_pos, stack_pos, size)
+        else:
+            self.robot_commander.stack(temp_pos, stack_pos, size)
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
         print(
             f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
@@ -457,9 +517,9 @@ class RobotHandler():
 
         # update list of stacked cans
         for i in range(len(self.stacked_cans)):
-            _x, _y, color, prev_height, id = self.stacked_cans[i]
+            _, _, color, prev_size, id = self.stacked_cans[i]
             if self.targetStackId == id:
-                self.stacked_cans[i] = (cx, cy, color, prev_height + 1, id)
+                self.stacked_cans[i] = (cx, cy, color, prev_size + 1, id)
                 break
 
         self.thetaStar.addCan(cx, cy)
@@ -469,7 +529,6 @@ class RobotHandler():
         print(
             f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
         self.state = RobotState.MidgameGoToCan
-
     # ------------------------ HELPER FUNCTIONS .----------------------------
 
     def scanAndSetZones(self, result, image, is_top):
@@ -498,8 +557,8 @@ class RobotHandler():
 
     def hasGoodPickup(
         self,
-        min_intersection_over_rect: float = 0.4,
-        max_segmentation_over_rect: float = 3.6,
+        min_intersection_over_rect: float = 0.2,
+        max_segmentation_over_rect: float = 15.6,
     ) -> bool:
         """
         Check whether any current segmentation mask overlaps well with the target rectangle.
@@ -743,48 +802,8 @@ class RobotHandler():
 
         return in_rectangle
 
-    def is_world_point_visible(
-            self,
-            world_x: float,
-            world_y: float,
-            is_top: bool) -> bool:
-        """
-        Check if a world point is visible in the camera's field of view.
-
-        Args:
-            world_x: x coordinate in world frame (mm)
-            world_y: y coordinate in world frame (mm)
-            is_top: True for top camera, False for bottom camera
-
-        Returns:
-            True if the point is visible in the specified camera's FOV
-        """
-        from vision.pixelTo3D import H_TOP, H_BOTTOM
-        from vision.relativeCoordinates import world_to_pixel
-        from config import FRAME_WIDTH, FRAME_HEIGHT
-
-        # Convert world coordinates to robot-relative coordinates
-        camera_relative = world_to_relative(
-            (world_x, world_y), self.robot_pose)
-
-        # Points behind the camera cannot be visible
-        if camera_relative[0] < 0:
-            return False
-
-        # Get the appropriate homography matrix
-        h_matrix = H_TOP if is_top else H_BOTTOM
-
-        # Try to project to pixel coordinates
-        pixel_coords = world_to_pixel(camera_relative, h_matrix)
-        if pixel_coords is None:
-            return False
-
-        # Check if pixel coordinates are within frame bounds
-        u, v = pixel_coords
-        return 0 <= u < FRAME_WIDTH and 0 <= v < FRAME_HEIGHT
-
     def send_waypoints(self, waypoints: List[Tuple[float, float]]):
-        x, y, theta = unpackPose(self.robot_pose)
+        x, y, _ = unpackPose(self.robot_pose)
         command_args = [x, y]
         for x, y in waypoints:
             command_args.append(x)

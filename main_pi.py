@@ -11,6 +11,7 @@ import config
 from connection import message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
+from connection import command_tracker
 from DirectRobotCommander import DirectRobotCommander
 
 
@@ -79,7 +80,8 @@ def run_network_mode(
             assert (len(args) == 0)
             robot_commander.waitFinishedMoving()
 
-        robot_commander.complete_command_immediately(command_id)
+        # Mark command complete in tracker
+        command_tracker.mark_complete(command_id)
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True

@@ -35,6 +35,7 @@ from IMUWrapper import IMUWrapper
 from RavenWrapper import RavenWrapper
 from connection import message_types
 from connection.frame_info import FrameInfo
+from connection import command_tracker
 from profiler import Profiler
 
 import config
@@ -270,9 +271,8 @@ class PiStreamer():
                 distance_sensed = self.get_distance_sensed()
                 is_moving = self.nav.moving
 
-                # Update command completion tracking
-                self.robot_commander.update_command_completion()
-                last_completed_command_id = self.robot_commander.get_last_completed_command_id()
+                # Get last completed command ID from tracker
+                last_completed_command_id = command_tracker.get_last_completed_command_id()
 
                 self.profiler.record("get_sensors")
 
