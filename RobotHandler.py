@@ -5,7 +5,7 @@ import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List
 from spatialmath import SE2
-from connection.ComputerReceiver import ComputerReceiver
+from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_forward_mm, get_rotate
 import navHelpers
@@ -32,7 +32,7 @@ class RobotState(Enum):
 
 
 class RobotHandler():
-    def __init__(self, computer_receiver: ComputerReceiver):
+    def __init__(self, robot_commander: IRobotCommander):
         # state variables
         self.state = RobotState.StartScan
         self.started = False
@@ -62,7 +62,7 @@ class RobotHandler():
         self.startFrame: int = -1
         self.lastTimeSentPath = 0
 
-        self.computer_receiver = computer_receiver
+        self.robot_commander = robot_commander
         self.thetaStar = ThetaStarPlanner()
         self.profiler = Profiler(False)
         self.telemetry = Streamer()
@@ -200,7 +200,7 @@ class RobotHandler():
             self.didEarlyGame = True
 
             sorted_pairs = sorted(
-                zip(self.cans, self.can_colors), key=lambda pair: pair[0][1])
+                zip(self.cans, self.can_colors), key=lambda pair: -pair[0][1])
             sorted_cans = [can for can, color in sorted_pairs]
             sorted_colors = [color for can, color in sorted_pairs]
 
@@ -213,7 +213,7 @@ class RobotHandler():
             if golden_can is None:
                 golden_can = sorted_cans[len(sorted_cans) // 2]
 
-            self.computer_receiver.send_early_game(
+            self.robot_commander.send_early_game(
                 golden_can, sorted_cans[0], sorted_cans[-1])
 
     def handleMidgameSearch(self):
@@ -223,7 +223,7 @@ class RobotHandler():
         if self.zones[self.targetZone] is None:
             # Rotate slowly (45 degrees every second)
             rotate_cmd = list(get_rotate(math.pi / 4 / FPS))
-            self.computer_receiver.override_movement(rotate_cmd)
+            self.robot_commander.override_movement(rotate_cmd)
         else:
             self.state = RobotState.MidgameGoToZone
 
@@ -266,8 +266,8 @@ class RobotHandler():
             return
 
         if self.isPointInGripper(cx, cy):
-            self.computer_receiver.override_movement([])
-            self.computer_receiver.send_grip_can(CAN_HEIGHT)
+            self.robot_commander.override_movement([])
+            self.robot_commander.send_grip_can(CAN_HEIGHT)
             # TODO: add logic to check if its done picking up
 
             # Select target zone based on can color
@@ -310,7 +310,7 @@ class RobotHandler():
         if self.isPointClose(*goal):
             self.handleMidgameStacking()
         else:
-            self.computer_receiver.send_gripper_height(stack_size * CAN_HEIGHT)
+            self.robot_commander.send_gripper_height(stack_size * CAN_HEIGHT)
             self.thetaStarAndSend(*goal)
 
     def handleMidgameStacking(self):
@@ -320,7 +320,7 @@ class RobotHandler():
         cx, cy, height = self.targetStack
 
         if self.isPointInGripper(cx, cy):
-            self.computer_receiver.send_release_can(height)
+            self.robot_commander.send_release_can(height)
         elif self.isPointClose(cx, cy):
             self.preciseMoveToTarget(cx, cy)
         else:
@@ -489,7 +489,7 @@ class RobotHandler():
             movement_args.extend(get_rotate(theta))
             movement_args.extend(get_forward_mm(dist))
 
-        self.computer_receiver.override_movement(movement_args)
+        self.robot_commander.override_movement(movement_args)
         self.lastTimeSentPath = time.time()
 
     def thetaStarAndSend(self, x: float, y: float):
@@ -502,13 +502,13 @@ class RobotHandler():
         # TODO: add better logic
         distanceToMove = min(self.distanceSensed - CAN_DIAMETER / 2, 0)
         movement_args = list(navHelpers.get_forward_mm(distanceToMove))
-        self.computer_receiver.override_movement(movement_args)
+        self.robot_commander.override_movement(movement_args)
 
     def get_picklable_dict(self):
         """Returns a dict with unpicklable objects removed and enums converted to strings."""
 
         exclude = {
-            'computer_receiver',
+            'robot_commander',
             'thetaStar',
             'profiler',
             'telemetry',

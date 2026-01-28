@@ -24,9 +24,10 @@ from . import message_types
 from connection.frame_info import FrameInfo
 from profiler import Profiler
 import navHelpers
+from IRobotCommander import IRobotCommander  # type: ignore
 
 
-class ComputerReceiver():
+class ComputerReceiver(IRobotCommander):
     """
     Video receiver and movement command sender for computer.
 
