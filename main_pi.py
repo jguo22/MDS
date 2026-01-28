@@ -35,29 +35,13 @@ golden_x, golden_y = 0, 0
 ccx = []
 ccy = []
 
+# Positions for stacking
+center_pos = (1200, 0)
+offset_pos = (1200, -400)
+stacked_cans = 0
+can_in_center_pos = True
+
 def main():
-    def gripClaw():
-        nav.raven.set_servo_position(Raven.ServoChannel.CH1, 90)
-    def releaseClaw():
-        nav.raven.set_servo_position(Raven.ServoChannel.CH1, -90)
-
-    def moveElevatorUp():
-        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 90)
-        time.sleep(1.2)
-        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 0)
-    def moveElevatorDown():
-        nav.raven.set_servo_position(Raven.ServoChannel.CH4, -90)
-        time.sleep(1.2)
-        nav.raven.set_servo_position(Raven.ServoChannel.CH4, 0)
-
-
-    def gripCan():
-        moveElevatorDown()
-        getCanColor()
-        gripClaw()
-        time.sleep(0.5)
-        moveElevatorUp()
-
     def getCanColor():
         print("a")
         time.sleep(0.1)
@@ -81,20 +65,13 @@ def main():
 
         print(class_name)
 
-    def releaseGrip():
-        nav.raven.set_servo_position(Raven.ServoChannel.CH1, -90)
-        if heldCanColor != "None":
-            claw_x, claw_y = nav.get_world_claw_position()
-            ox.append(claw_x)
-            oy.append(claw_y)
-        heldCanColor = "None"
-
     def path_find(goal_x, goal_y):
         theta_star = ThetaStarPlanner(ox, oy, grid_size, robot_radius)
-        robot_x, robot_y = nav.raven.get_odometry()
+        robot_x, robot_y = nav.ravenWrapper.get_odometry()
         rx, ry = theta_star.planning(robot_x, robot_y, goal_x, goal_y)
         for (x, y) in zip(rx, ry):
-            nav.add_paths_world_xy(x, y)
+            nav.override_paths_world_xy(x, y)
+            time.sleep(5)
         # TODO: make the last path have the claw go to the x y, not the robot 0 0
 
     def store_can_locations():
@@ -124,47 +101,58 @@ def main():
                 golden_y = y
         # TODO: move to golden pringle can
         # Sort the cans from leftmost to rightmost
-        x_sorted, y_sorted = zip(*sorted(zip(cx, cy)))
+        y_sorted, x_sorted = zip(*sorted(zip(cy, cx)))
 
         cx = list(x_sorted)
         cy = list(y_sorted)
 
     def goto_golden_can():
+        nav.ravenWrapper.lower_left_arm()
         nav.override_paths_world_xy(golden_x, golden_y)
 
     def getCans():
-        i = cx.index(golden_x)
-        while i < len(cx):
-            # TODO: change these from override to add pathes
-            if (len(cx) >= i + 4):
-                nav.override_paths_world_xy(cx[i+4], cy[i+4])
-            else:
-                nav.override_paths_world_xy(cx[-1], cy[-1])
-            # Remove collected cans from list
-            del cx[i:i+6]
-            del cy[i:i+6]
-            # Deposit cans on our side
-            nav.addPath(NavMove(1.3, 0.7, 3000, False, True))
-            # TODO: STORE all can LOCATIONs from down facing camera
-            ccx.append(nav.ravenWrapper.get_odometry()[0])
-            ccy.append(nav.ravenWrapper.get_odometry()[1])
-            nav.addPath(NavMove(-1.3, -0.7, 3000, False, True))
+        global right_cans, left_cans
+        print("current pos is ", nav.ravenWrapper.get_odometry())
+        # Collect right side cans first
+        print("collecting right cans")
+        # TODO: change these from override to add paths
+        nav.override_paths_world_xy(cx[-1], cy[-1])
+        print(f"going to rightmost can at {cx[-1]}, {cy[-1]}")
+        time.sleep(2)
+        # Deposit cans on our side
+        nav.addPath(NavMove(1.3, 0.7, 6000, False, True))
+        time.sleep(2)
+        # TODO: STORE all can LOCATIONs from down facing camera
+        x, y = nav.get_world_claw_position()
+        ccx.append(x)
+        ccy.append(y)
+        nav.addPath(NavMove(-1.3, -0.7, 6000, False, True))
+        time.sleep(1)
+        nav.ravenWrapper.raise_left_arm()
+        time.sleep(1)
         # Collect cans from other side
+        print("collecting left cans now")
         nav.addPath(NavMove(*get_rotate(math.pi), False, False))
-        while len(cx) > 0:
-            if len(cx) > 5:
-                nav.override_paths_world_xy(cx[-4], cy[-4])
-            else:
-                nav.override_paths_world_xy(cx[0], cy[0])
-            # Remove collected cans from list
-            del cx[-5:]
-            del cy[-5:]
-            # Deposit cans on our side
-            nav.addPath(NavMove(0.7, 1.3, 3000, False, True))
-            # TODO: STORE all can LOCATIONs from down facing camera
-            ccx.append(nav.ravenWrapper.get_odometry()[0])
-            ccy.append(nav.ravenWrapper.get_odometry()[1])
-            nav.addPath(NavMove(-0.7, -1.3, 3000, False, True))
+        time.sleep(1)
+        nav.ravenWrapper.lower_right_arm()
+        time.sleep(1)
+        print(f"going to leftmost can at {cx[0]} {cy[0]}")
+        nav.override_paths_world_xy(cx[0], cy[0])
+        time.sleep(2)
+        # Deposit cans on our side
+        nav.addPath(NavMove(0.7, 1.3, 6000, False, True))
+        # TODO: STORE all can LOCATIONS from down facing camera
+        x, y = nav.get_world_claw_position()
+        ccx.append(x)
+        ccy.append(y)
+        time.sleep(2)
+        nav.addPath(NavMove(-0.7, -1.3, 6000, False, True))
+        time.sleep(2)
+        nav.ravenWrapper.raise_right_arm()
+        nav.override_paths_world_xy(0, 0)
+        time.sleep(5)
+        # Next movement
+        go_to_closest_can()
     # All the cans have been collected on our side
     def go_to_closest_can():
         # Find closest can
@@ -178,21 +166,70 @@ def main():
                 min_distance = distance
                 closest_can_x = can_x
                 closest_can_y = can_y
-        path_find(closest_can_x, closest_can_y)
+        nav.override_paths_world_xy(closest_can_x, closest_can_y, use_claw=True)
+        time.sleep(5)
+        # Next movement
+        grab_closest_can()
+
+    def approach_can_with_ds():
+        # Approach can with distance sensor
+        while nav.distance_sensor.get_distance() > 100:
+            nav.overridePaths([NavMove(*get_forward_mm(nav.distance_sensor.get_distance() - 85))])
+            time.sleep(1.2)
+
 
     # Use camera to grab closest can
     def grab_closest_can():
         # TODO: Use down facing camera to get image of cans
         # TODO: get closest can, rotate towards it
-        distance = nav.get_distance_mm()
-        nav.addPath(NavMove(1, 1, distance, False, True))
-        gripCan()
+        approach_can_with_ds()
+        nav.ravenWrapper.lower_elevator()
+        time.sleep(1.5)
+        nav.ravenWrapper.close_gripper()
+        time.sleep(1.5)
+        nav.ravenWrapper.raise_elevator()
+        time.sleep(1.5)
+        stack()
         # TODO: Remove can from collected cans list
 
     # Ran at the start of the game
     def store_zone_locations():
         # TODO: use camera to find and store zone locations
         return
+
+    def stack():
+        global can_in_center_pos, stacked_cans
+        # Assume robot is gripping can
+        nav.override_paths_world_xy(*offset_pos if can_in_center_pos else center_pos, use_claw=True)
+        time.sleep(4)
+        nav.ravenWrapper.lower_elevator()
+        time.sleep(1)
+        nav.ravenWrapper.open_gripper()
+        time.sleep(1)
+        nav.ravenWrapper.raise_elevator()
+        time.sleep(1)
+        nav.addPath(NavMove(-1, -1, 3000))
+        time.sleep(1.5)
+        if (stacked_cans > 0):
+            nav.override_rotate_world_xy(*center_pos if can_in_center_pos else offset_pos)
+            time.sleep(1)
+            approach_can_with_ds()
+            nav.ravenWrapper.lower_elevator()
+            time.sleep(1)
+            nav.ravenWrapper.close_gripper()
+            time.sleep(0.3)
+            nav.ravenWrapper.raise_elevator()
+            time.sleep(0.5)
+            nav.addPath(NavMove(-1, -1, 3000))
+            time.sleep(2)
+            nav.override_rotate_world_xy(*offset_pos if can_in_center_pos else center_pos)
+            time.sleep(1)
+            approach_can_with_ds()
+            nav.ravenWrapper.open_gripper()
+
+        can_in_center_pos = not can_in_center_pos
+        stacked_cans += 1
+        time.sleep(2)
 
     # Run when having a held can
     def score_held_can():
@@ -227,9 +264,59 @@ def main():
     #     return
 
     nav = Nav()
+    # activate the navigation in another thread
+    thread = threading.Thread(target=nav.startLoop, daemon=True)
+    thread.start()
 
+    # nav.ravenWrapper.lower_right_arm()
+    # nav.ravenWrapper.open_gripper()
+  # use 2438
+    golden_x = 2438
+    golden_y = 0
+    # cx.append(2483)
+    # cy.append(500)
+    # cx.append(2483)
+    # cy.append(400)
+    # cx.append(2483)
+    # cy.append(200)
+    cx.append(2483)
+    cy.append(100)
+    cx.append(2483)
+    cy.append(50)
+    cx.append(golden_x)
+    cy.append(golden_y)
+    cx.append(2483)
+    cy.append(-50)
+    cx.append(2483)
+    cy.append(-100)
+    cx.append(2483)
+    cy.append(-150)
+    cx.append(2483)
+    cy.append(-200)
+    cx.append(2483)
+    cy.append(-300)
+    # cx.append(2483)
+    # cy.append(-400)
+    # cx.append(2483)
+    # cy.append(-500)
 
+    print(nav.ravenWrapper.get_odometry())
 
+    # nav.addPath(NavMove(*get_rotate(math.pi/2)))
+    # goto_golden_can()
+    # time.sleep(4)
+    # getCans()
+    # go_to_closest_can()
+    ox.append(1000)
+    oy.append(0)
+    path_find(3000, 0)
+    # go_to_closest_can()
+    # ccx.append(2483)
+    # ccy.append(400)
+    # go_to_closest_can()
+    # stack()
+    print(nav.ravenWrapper.get_odometry())
+    print("DONE!")
     if False:
         segmentImage(camera.cap.read()[1])
         image = camera.cap.read()[1]
@@ -351,9 +438,6 @@ def main():
                     NavMove(args[3 * i], args[3 * i + 1], args[3 * i + 2], False))
             nav.overridePaths(moves)
 
-    # activate the navigation in another thread
-    thread = threading.Thread(target=nav.startLoop, daemon=True)
-    thread.start()
 
     if False:
         while True:

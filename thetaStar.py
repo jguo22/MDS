@@ -287,7 +287,7 @@ for i in range(-200, 200):
     ox.append(-200.0)
     oy.append(i)
 sx = 0.0  # [m]
-sy = 3.0  # [m]
+sy = 0.0  # [m]
 grid_size = 0.5  # [m]
 robot_radius = 1.0  # [m]
 
@@ -315,8 +315,8 @@ def main():
     print(__file__ + " start!!")
 
     # start and goal position
-    gx = 40.0  # [m]
-    gy = 40.0  # [m]
+    gx = 3000.0  # [m]
+    gy = 0.0  # [m]
 
     pixel_array = get_boundaries(None) # TODO: pass actual image
     for px in pixel_array:
