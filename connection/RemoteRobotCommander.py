@@ -344,20 +344,10 @@ class RemoteRobotCommander(IRobotCommander):
             command_id=0
         )
 
-    def start_movement_command(self, command_id: int) -> None:
-        """
-        Mark that a movement command has started.
-        Not used on computer side.
-
-        Args:
-            command_id: The ID of the command that started
-        """
-        pass
-
     def complete_command_immediately(self, command_id: int) -> None:
         """
-        Mark a synchronous command as complete.
-        Not used on computer side.
+        Mark a command as complete.
+        Not used on computer side (Pi handles completion).
 
         Args:
             command_id: The ID of the command that completed

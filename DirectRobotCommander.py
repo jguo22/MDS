@@ -45,22 +45,13 @@ class DirectRobotCommander(IRobotCommander):
         self.imu = imu
         self.previous_location = (0, 0)
         self.last_completed_command_id = 0
-        self.pending_movement_command_id = 0  # Command ID for movement in progress
-        self.was_moving = False
 
     def update_command_completion(self):
         """
-        Check if movement finished and update last completed command ID.
-        Should be called periodically (e.g., in PiStreamer's stream loop).
+        No-op. All commands now block until complete and call complete_command_immediately().
+        Kept for compatibility with PiStreamer.
         """
-        is_moving = self.nav.moving
-
-        # Detect transition from moving to not moving
-        if self.was_moving and not is_moving and self.pending_movement_command_id > 0:
-            self.last_completed_command_id = self.pending_movement_command_id
-            self.pending_movement_command_id = 0
-
-        self.was_moving = is_moving
+        pass
 
     def get_last_completed_command_id(self) -> int:
         """Get the ID of the last completed command."""
@@ -75,19 +66,11 @@ class DirectRobotCommander(IRobotCommander):
 
     def complete_command_immediately(self, command_id: int):
         """
-        Immediately mark a command as complete.
-        Used for synchronous commands that don't involve movement.
+        Mark a command as complete.
+        All commands now block until done, so this is called when they finish.
         """
         if command_id > 0:
             self.last_completed_command_id = command_id
-
-    def start_movement_command(self, command_id: int):
-        """
-        Mark that a movement command has started.
-        Completion will be detected when movement stops.
-        """
-        if command_id > 0:
-            self.pending_movement_command_id = command_id
 
     def early_game(
             self,
@@ -285,7 +268,7 @@ class DirectRobotCommander(IRobotCommander):
         """
         try:
             for i in range(3):
-                if self.distance_sensor.get_distance() > 95:
+                if self.distance_sensor.get_distance() > 100:
                     distance = self.distance_sensor.get_distance()
                     if distance > 800:
                         return False

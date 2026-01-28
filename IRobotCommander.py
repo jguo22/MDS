@@ -189,19 +189,10 @@ class IRobotCommander(ABC):
         pass
 
     @abstractmethod
-    def start_movement_command(self, command_id: int) -> None:
-        """
-        Mark that a movement command has started.
-
-        Args:
-            command_id: The ID of the command that started
-        """
-        pass
-
-    @abstractmethod
     def complete_command_immediately(self, command_id: int) -> None:
         """
-        Mark a synchronous command as complete.
+        Mark a command as complete.
+        All commands now block until done, so this is called when they finish.
 
         Args:
             command_id: The ID of the command that completed
