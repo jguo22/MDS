@@ -74,7 +74,8 @@ class DirectRobotCommander(IRobotCommander):
             early_game.performEarlyGame()
             return True
         except Exception as e:
-            print(f"Error in send_early_game: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def override_movement(self, movement_args: list[float]) -> bool:
@@ -98,19 +99,9 @@ class DirectRobotCommander(IRobotCommander):
                         movement_args[3 * i + 1],
                         movement_args[3 * i + 2],
                         False))
-            print(f"override_movement: Created {len(moves)} moves")
-            for idx, move in enumerate(moves):
-                print(
-                    f"  Move {idx}: left={
-                        move.left: .2f}, right={
-                        move.right: .2f}, dist={
-                        move.dist: .1f}, smooth={
-                        move.smooth}")
             self.nav.overridePaths(moves)
-            print("override_movement: Called nav.overridePaths()")
             return True
         except Exception as e:
-            print(f"Error in override_movement: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -158,7 +149,8 @@ class DirectRobotCommander(IRobotCommander):
             return self.override_movement(movement_args)
 
         except Exception as e:
-            print(f"Error in override_waypoints: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def override_relative_xy(self, x: float, y: float) -> bool:
@@ -173,7 +165,6 @@ class DirectRobotCommander(IRobotCommander):
             True if successful
         """
         try:
-            print(f'override_relative_xy called: x={x}, y={y}')
             distance = math.sqrt(x * x + y * y)
 
             # ROS coordinates: x is forward, y is left
@@ -183,20 +174,12 @@ class DirectRobotCommander(IRobotCommander):
             rotate_move = get_rotate(theta)
             forward_move = get_forward_mm(distance)
 
-            print(
-                f'Relative xy: theta={
-                    theta: .3f}rad({
-                        math.degrees(theta): .1f}deg), distance={
-                    distance: .1f}mm')
-            print(f'  rotate_move={rotate_move}')
-            print(f'  forward_move={forward_move}')
-
             movement_args = list(rotate_move) + list(forward_move)
-            print(f'  movement_args={movement_args}')
             return self.override_movement(movement_args)
 
         except Exception as e:
-            print(f"Error in override_relative_xy: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def override_world_xy(self, world_x: float, world_y: float) -> bool:
@@ -235,7 +218,8 @@ class DirectRobotCommander(IRobotCommander):
             RAVEN_WRAPPER.open_gripper()
             return True
         except Exception as e:
-            print(f"Error in send_release_can: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def approach_can_with_ds(self) -> bool:
@@ -252,24 +236,16 @@ class DirectRobotCommander(IRobotCommander):
             while self.distance_sensor.get_distance() > 100:
                 distance = self.distance_sensor.get_distance()
                 if distance > 800:
-                    print(
-                        f"No can detected (distance: {distance}mm > 800mm)")
                     return False
 
                 # Move forward by (current_distance - 85mm)
                 move_distance = distance - 85
-                print(
-                    f"Distance sensor: {distance}mm, moving forward {move_distance}mm")
                 self.nav.overridePaths(
                     [NavMove(*get_forward_mm(move_distance), smooth=False)])
                 time.sleep(1.2)
 
-            print(
-                f"Can approached successfully(final distance: {
-                    self.distance_sensor.get_distance()}mm)")
             return True
         except Exception as e:
-            print(f"Error in approach_can_with_ds: {e}")
             import traceback
             traceback.print_exc()
             return False

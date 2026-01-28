@@ -102,18 +102,13 @@ class RobotHandler():
             self.profiler.end_frame()
             return
 
-        result_top = segmentImage(self.frame_top)
-        # result_bottom = segmentImage(self.frame_bottom)
-
-        # Store results for visualization
-        self.result_top = result_top
-        # self.result_bottom = result_bottom
-
+        self.result_top = segmentImage(self.frame_top)
+        self.result_bottom = segmentImage(self.frame_bottom)
         self.profiler.record("segmentImage")
 
         for result, frame, is_top in [
-            (result_top, self.frame_top, True),
-            # (result_bottom, self.frame_bottom, False)
+            (self.result_top, self.frame_top, True),
+            (self.result_bottom, self.frame_bottom, False)
         ]:
             self.scanAndSetZones(result, frame, is_top)
             locations, color_strings = getCans(result, frame)
@@ -175,8 +170,6 @@ class RobotHandler():
             self.handleMidgameStacking()
         elif self.state == RobotState.FinishedStacking:
             self.handleFinishedStacking()
-        else:
-            print("ERROR: INVALID STATE")
 
         self.profiler.record("handleState")
 
@@ -203,7 +196,8 @@ class RobotHandler():
         """Handle StartGather state: send waypoints and check if cans reached"""
         self.state = RobotState.StartGather
 
-        self.handleMidgameGoToCan()
+        self.targetZone = GREEN_ZONE
+        self.handleMidgameGoToZone()
         return
         # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
         # if time.time() - self.lastTimeSentPath > 100:
@@ -260,6 +254,16 @@ class RobotHandler():
             self.handleMidgameDecide()
             return
 
+        # Sort cans by distance from robot (nearest first)
+        robot_x, robot_y = self.robot_pose.x, self.robot_pose.y
+        robot_pos = (robot_x, robot_y)
+        sorted_pairs = sorted(
+            zip(self.cans, self.can_colors),
+            key=lambda pair: getDistance(robot_pos, pair[0])
+        )
+        self.cans = [can for can, color in sorted_pairs]
+        self.can_colors = [color for can, color in sorted_pairs]
+
         # this allows for dynamic update of which can to go to
         can_x, can_y = self.cans[0]
         can_color = self.can_colors[0]
@@ -272,7 +276,13 @@ class RobotHandler():
             self.handleMidgameGrabbing()
         else:
             # move to can using theta*
-            self.robot_commander.override_world_xy(can_x, can_y)
+            dx, dy = world_to_relative((can_x, can_y), self.robot_pose)
+            gx, gy = relative_to_world((max(dx - 200, 0), dy), self.robot_pose)
+            self.robot_commander.override_world_xy(gx, gy)
+            self.robot_commander.waitFinishedMoving()
+            print("real positiosn and goals")
+            print(can_x, can_y)
+            print(gx, gy)
             # self.thetaStarAndSend(can_x, can_y)
 
     def handleMidgameGrabbing(self):
@@ -313,9 +323,13 @@ class RobotHandler():
             self.handleMidgameSearch()
             return
 
+        self.targetStackId = -1
         goal = None
         for stack in self.stacked_cans:
             x, y, size, color, id = stack
+            if size == 0:
+                print("WARNING: stack size of 0")
+                continue
             if color == self.targetZone:
                 if isPointInPoly((x, y), self.zones[self.targetZone]):
                     goal = (x, y)
@@ -325,12 +339,15 @@ class RobotHandler():
                     print("WARNING: CAN STACK NOT IN ZONE")
         if goal is None:
             goal = getSquareCenter(self.zones[self.targetZone])
+        print("go to zone goal")
+        print(goal)
 
         if self.isPointClose(*goal):
-            # TODO: this might be not robust
-            self.robot_commander.approach_can_with_ds()
-            self.robot_commander.pickup_can()
+            if self.targetStackId != 0:
+                self.robot_commander.approach_can_with_ds()
+                self.robot_commander.pickup_can()
             self.handleMidgameStacking()
+            print("stacking")
         else:
             self.thetaStarAndSend(*goal)
 
@@ -341,6 +358,7 @@ class RobotHandler():
         """
         self.state = RobotState.MidgameStacking
 
+        # see if there a target stack
         targetStack = None
         for stack in self.stacked_cans:
             stackId = stack[4]
@@ -348,6 +366,7 @@ class RobotHandler():
                 targetStack = stack
                 break
 
+        # otherwise, create a new stack of 0
         if targetStack is None:
             x, y = getSquareCenter(self.zones[self.targetZone])
             targetStack = (x, y, 0, self.targetZone, self.lastStackId + 1)
@@ -589,6 +608,30 @@ class RobotHandler():
             else:
                 print("INVALID COLOR")
         self.telemetry.update_circles(circles)
+
+        # Plot zones as lines
+        lines = []
+        zone_colors = {
+            GREEN_ZONE: "green",
+            RED_ZONE: "red",
+            GOLDEN_ZONE: "gold",
+            GREEN_ZONE_OPP: "lightgreen",
+            RED_ZONE_OPP: "pink",
+            GOLDEN_ZONE_OPP: "yellow"
+        }
+
+        for zone_id, zone in enumerate(self.zones):
+            if zone is not None:
+                color = zone_colors.get(zone_id, "white")
+                # Draw 4 lines connecting the vertices in a closed loop
+                for i in range(4):
+                    x1, y1 = zone[i]
+                    x2, y2 = zone[(i + 1) %
+                                  4]  # Wrap around to close the polygon
+                    lines.append((x1 * scaling, y1 * scaling,
+                                 x2 * scaling, y2 * scaling, color))
+
+        self.telemetry.update_lines(lines)
 
         data = self.get_picklable_dict()
         self.telemetry.set_data(data)
