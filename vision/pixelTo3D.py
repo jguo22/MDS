@@ -31,7 +31,7 @@ def transform_uv_to_xy(u, v, is_top=True):
     x = homogeneous_xy[0, 0]
     y = homogeneous_xy[1, 0]
 
-    if y < 0:
+    if x < 0:
         return None
 
     return x, y
@@ -47,7 +47,7 @@ def transform_contour_to_xy(contour, is_top=True):
 
     Returns:
         numpy array of shape (M, 2) where each point is [x, y] in world coordinates (mm).
-        Points that are behind the camera (y < 0) are filtered out, so M <= N.
+        Points that are behind the camera (x < 0) are filtered out, so M <= N.
         Returns None if no valid points remain after transformation.
     """
     # Handle both (N, 1, 2) and (N, 2) shapes
