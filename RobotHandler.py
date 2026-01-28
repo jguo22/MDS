@@ -48,6 +48,9 @@ class RobotHandler():
         # Store planned path to cans
         self.cans: List[Tuple[float, float]] = []
         self.can_colors: List[int] = []
+        # Number of consecutive frames each can has been visible but not detected
+        # Aligned by index with self.cans / self.can_colors
+        self.can_miss_counts: List[int] = []
         # x, y, stack size, color, id
         self.stacked_cans: List[Tuple[float, float, int, int, int]] = []
         self.borders: List[Tuple[int, int]] = []
@@ -132,20 +135,48 @@ class RobotHandler():
             locations = [relative_to_world(location, self.robot_pose)
                          for location in locations]
 
-            for i in range(len(self.cans)):
-                not_repeat = True
-                for j in range(len(locations)):
-                    if getDistance(
-                            self.cans[i],
-                            locations[j]) < CAN_DIAMETER:
-                        not_repeat = False
-                        break
-                if not_repeat:
-                    locations.append(self.cans[i])
-                    colors.append(self.can_colors[i])
+            # Ensure miss-count list is aligned with cans list
+            if len(self.can_miss_counts) != len(self.cans):
+                self.can_miss_counts = [0] * len(self.cans)
 
-            self.cans = locations
-            self.can_colors = colors
+            # Start new lists with currently detected cans (miss count = 0)
+            new_locations: List[Tuple[float, float]] = list(locations)
+            new_colors: List[int] = list(colors)
+            new_miss_counts: List[int] = [0] * len(new_locations)
+
+            # Check each old can to see if it should be kept or removed
+            for i in range(len(self.cans)):
+                old_can_x, old_can_y = self.cans[i]
+                old_color = self.can_colors[i]
+                miss_count = self.can_miss_counts[i]
+
+                # Check if old can matches any new detection
+                has_nearby_detection = any(
+                    getDistance(self.cans[i], locations[j]) < CAN_DIAMETER / 2
+                    for j in range(len(locations))
+                )
+
+                if has_nearby_detection:
+                    # Already represented by a current detection (miss count reset via detection)
+                    continue
+
+                # No nearby detection for this old can
+                if self.is_world_point_visible(old_can_x, old_can_y, is_top):
+                    # Visible in FOV but not detected this frame
+                    miss_count += 1
+                    # Only remove if it has been visible and undetected for 5 consecutive frames
+                    if miss_count >= 5:
+                        continue  # Drop this stale can
+                # If not visible, keep the existing miss_count (do not increment)
+
+                # Keep the can (either not visible or not yet past miss threshold)
+                new_locations.append(self.cans[i])
+                new_colors.append(old_color)
+                new_miss_counts.append(miss_count)
+
+            self.cans = new_locations
+            self.can_colors = new_colors
+            self.can_miss_counts = new_miss_counts
 
             # TESTING PURPOSES
             self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
@@ -289,6 +320,8 @@ class RobotHandler():
 
             # logic for grabbing it
             self.current_can = (can_x, can_y, can_color)
+            print("grabbing can at ")
+            print(can_x, can_y)
             self.handleMidgameGrabbing()
         else:
             # move to can using theta*
@@ -592,6 +625,41 @@ class RobotHandler():
         )
 
         return in_rectangle
+
+    def is_world_point_visible(self, world_x: float, world_y: float, is_top: bool) -> bool:
+        """
+        Check if a world point is visible in the camera's field of view.
+
+        Args:
+            world_x: x coordinate in world frame (mm)
+            world_y: y coordinate in world frame (mm)
+            is_top: True for top camera, False for bottom camera
+
+        Returns:
+            True if the point is visible in the specified camera's FOV
+        """
+        from vision.pixelTo3D import H_TOP, H_BOTTOM
+        from vision.relativeCoordinates import world_to_pixel
+        from config import FRAME_WIDTH, FRAME_HEIGHT
+
+        # Convert world coordinates to robot-relative coordinates
+        camera_relative = world_to_relative((world_x, world_y), self.robot_pose)
+
+        # Points behind the camera cannot be visible
+        if camera_relative[0] < 0:
+            return False
+
+        # Get the appropriate homography matrix
+        h_matrix = H_TOP if is_top else H_BOTTOM
+
+        # Try to project to pixel coordinates
+        pixel_coords = world_to_pixel(camera_relative, h_matrix)
+        if pixel_coords is None:
+            return False
+
+        # Check if pixel coordinates are within frame bounds
+        u, v = pixel_coords
+        return 0 <= u < FRAME_WIDTH and 0 <= v < FRAME_HEIGHT
 
     def send_waypoints(self, waypoints: List[Tuple[float, float]]):
         x, y, theta = unpackPose(self.robot_pose)
