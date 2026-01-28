@@ -55,7 +55,8 @@ def main():
 
         # Overlay YOLO segmentation results on frames first
         if robotHandler.result_top is not None:
-            if robotHandler.result_top.masks is not None and len(robotHandler.result_top.masks) > 0:
+            if robotHandler.result_top.masks is not None and len(
+                    robotHandler.result_top.masks) > 0:
                 # Plot segmentation masks on top frame
                 frame_info.frame_top = robotHandler.result_top.plot(
                     boxes=True,
@@ -73,7 +74,8 @@ def main():
                 )
 
         if robotHandler.result_bottom is not None:
-            if robotHandler.result_bottom.masks is not None and len(robotHandler.result_bottom.masks) > 0:
+            if robotHandler.result_bottom.masks is not None and len(
+                    robotHandler.result_bottom.masks) > 0:
                 # Plot segmentation masks on bottom frame
                 frame_info.frame_bottom = robotHandler.result_bottom.plot(
                     boxes=True,
@@ -142,7 +144,10 @@ def main():
                 # Convert corners to camera-relative coordinates
                 corners_relative = []
                 for corner in corners:
-                    rel = world_to_relative((float(corner[0]), float(corner[1])), robotHandler.robot_pose)
+                    rel = world_to_relative(
+                        (float(
+                            corner[0]), float(
+                            corner[1])), robotHandler.robot_pose)
                     corners_relative.append(rel)
 
                 # Visualize corners on top camera

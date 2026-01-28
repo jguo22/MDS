@@ -18,8 +18,6 @@ BIG_ZONE_SIDE_LENGTH = 20 / 12 * FT_TO_MM
 SMALL_ZONE_SIDE_LENGTH = 4 / 12 * FT_TO_MM
 
 # --------------------- VISION ---------------------
-# Minimum confidence for can detection (0.0-1.0)
-CAN_CONFIDENCE_THRESHOLD = 0.5
 # Minimum mask area in pixels for can detection (filters out specs/noise)
 CAN_MIN_AREA_PIXELS = 200
 

@@ -2,7 +2,7 @@ import math
 import numpy as np
 from typing import List, Tuple
 from colors import CAN_CLASS_NAMES
-from config import CAN_DIAMETER, CAN_CONFIDENCE_THRESHOLD, CAN_MIN_AREA_PIXELS
+from config import CAN_DIAMETER, CAN_MIN_AREA_PIXELS
 from .pixelTo3D import transform_uv_to_xy
 from .mask_utils import getSmoothRegionFromMask, yoloMaskToBinary
 
@@ -69,10 +69,6 @@ def getCans(result, image,
 
         # Only process can detections
         if class_name not in CAN_CLASS_NAMES:
-            continue
-
-        # Skip cans with confidence below threshold
-        if confidence < CAN_CONFIDENCE_THRESHOLD:
             continue
 
         # Convert mask to grayscale image

@@ -8,9 +8,16 @@ from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
 from vision.segment import segmentImage
-from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
+from vision.zone_utils import (
+    doPolygonsIntersect,
+    getSquareCenter,
+    getZones,
+    isPointInPoly,
+    is_hull_overlap_with_target_rect,
+)
 from vision.can_utils import getCans
 from vision.relativeCoordinates import relative_to_world, world_to_relative
+from vision.mask_utils import maskToConvexHull
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
@@ -498,6 +505,70 @@ class RobotHandler():
 
             elif name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
                 self.updateZone(zone, conf, GOLDEN_ZONE, GOLDEN_ZONE_OPP)
+
+    def any_segmentation_overlaps_target_rect(
+        self,
+        min_intersection_ratio: float,
+        max_hull_area: float,
+    ) -> bool:
+        """
+        Check whether any current segmentation mask overlaps well with the target rectangle.
+
+        For each mask in both top and bottom camera results, this function:
+        - converts the mask to a convex hull in pixel coordinates
+        - checks the hull's area
+        - computes its overlap with the fixed target rectangle in image space
+          using ``is_hull_overlap_with_target_rect``
+
+        It returns True as soon as any hull satisfies:
+        - intersection_area / hull_area >= min_intersection_ratio
+        - hull_area <= max_hull_area
+
+        Args:
+            min_intersection_ratio: Minimum required fraction of the hull's area
+                that must overlap the target rectangle (0.0–1.0).
+            max_hull_area: Maximum allowed hull area in pixel^2.
+
+        Returns:
+            bool: True if any segmentation's convex hull overlaps the rectangle
+            sufficiently and is under the area threshold, False otherwise.
+        """
+        # Helper to process one YOLO result object
+        def _result_has_overlap(result, frame) -> bool:
+            if result is None or result.masks is None:
+                return False
+
+            for mask_orig in result.masks:
+                # Convert mask to grayscale image
+                mask_array = mask_orig.data[0].cpu().numpy()
+                mask_uint8 = (mask_array * 255).astype(np.uint8)
+
+                # Resize mask to match original image size
+                mask_resized = cv2.resize(
+                    mask_uint8, (frame.shape[1], frame.shape[0]))
+
+                # Get convex hull in pixel coordinates (N, 1, 2)
+                try:
+                    hull_uv = maskToConvexHull(mask_resized)
+                    if hull_uv is None or len(hull_uv) == 0:
+                        continue
+                except Exception:
+                    continue
+
+                if is_hull_overlap_with_target_rect(
+                    hull_uv, min_intersection_ratio, max_hull_area
+                ):
+                    return True
+
+            return False
+
+        # Check both top and bottom camera segmentations
+        if _result_has_overlap(self.result_top, self.frame_top):
+            return True
+        if _result_has_overlap(self.result_bottom, self.frame_bottom):
+            return True
+
+        return False
 
     def updateZone(self, zone, conf, our_zone_id, their_zone_id):
         prev_zone = self.zones[our_zone_id]
