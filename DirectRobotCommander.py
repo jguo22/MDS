@@ -117,7 +117,7 @@ class DirectRobotCommander(IRobotCommander):
                 right)
             early_game.performEarlyGame()
             return True
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return False
@@ -145,7 +145,7 @@ class DirectRobotCommander(IRobotCommander):
                         False))
             self.nav.overridePaths(moves)
             return True
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return False
@@ -192,7 +192,7 @@ class DirectRobotCommander(IRobotCommander):
                     movement_args.extend(get_forward_mm(dist))
             return self.override_movement(movement_args)
 
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return False
@@ -221,7 +221,7 @@ class DirectRobotCommander(IRobotCommander):
             movement_args = list(rotate_move) + list(forward_move)
             return self.override_movement(movement_args)
 
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return False
@@ -248,6 +248,13 @@ class DirectRobotCommander(IRobotCommander):
         RAVEN_WRAPPER.raise_elevator(1.5)
         return True
 
+    def pickup_tipped_can(self) -> bool:
+        RAVEN_WRAPPER.open_gripper()
+        RAVEN_WRAPPER.lower_elevator(2)
+        RAVEN_WRAPPER.close_gripper()
+        RAVEN_WRAPPER.raise_elevator(2.1)
+        return True
+
     def release_can(self) -> bool:
         """
         Lower gripper and release can.
@@ -261,7 +268,7 @@ class DirectRobotCommander(IRobotCommander):
         try:
             RAVEN_WRAPPER.open_gripper()
             return True
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return False
@@ -278,7 +285,7 @@ class DirectRobotCommander(IRobotCommander):
         """
         try:
             for i in range(3):
-                if self.distance_sensor.get_distance() > 100:
+                if self.distance_sensor.get_distance() > 95:
                     distance = self.distance_sensor.get_distance()
                     if distance > 800:
                         return False
@@ -287,11 +294,11 @@ class DirectRobotCommander(IRobotCommander):
                     move_distance = distance - 85
                     self.nav.overridePaths(
                         [NavMove(*get_forward_mm(move_distance), smooth=False)])
-                    time.sleep(1.2)
+                    self.waitFinishedMoving()
                 else:
                     return True
             return False
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return False

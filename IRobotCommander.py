@@ -105,6 +105,16 @@ class IRobotCommander(ABC):
         pass
 
     @abstractmethod
+    def pickup_tipped_can(self) -> bool:
+        """
+        Pick up a tipped-over can with the gripper.
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
     def release_can(self) -> bool:
         """
         Release the can from the gripper.

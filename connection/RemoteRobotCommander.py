@@ -207,6 +207,30 @@ class RemoteRobotCommander(IRobotCommander):
             command_id=command_id
         )
 
+    def pickup_tipped_can(self) -> bool:
+        """
+        Pick up a tipped-over can with the gripper.
+
+        Note:
+            The current network protocol does not distinguish between
+            tipped and upright cans, so this uses the same message type
+            as ``pickup_can``.
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending pickup tipped can command (alias for pickup can)')
+        command_id = self._get_command_id()
+        return protocol.send_command(
+            self.command_socket,
+            message_types.PICKUP_CAN,
+            [],
+            command_id=command_id
+        )
+
     def release_can(self) -> bool:
         """
         Release the can from the gripper.

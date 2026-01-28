@@ -27,6 +27,8 @@ def main():
         help=f"Coordinate port (default: {config.COMMAND_PORT})")
     parser.add_argument("--no-display", action="store_true",
                         help="Disable video display")
+    parser.add_argument("--picture-delay", type=float, default=None,
+                        help="Delay in seconds between saving pictures (default: don't save)")
     args = parser.parse_args()
 
     window_name_top = "Top Camera"
@@ -42,7 +44,11 @@ def main():
     robotHandler = RobotHandler(robot_commander)
     inputProcessor = InputProcessor(
         robot_commander, window_name_top, robotHandler)
-    frame_saver = FrameSaver(1, "images")
+
+    # Only create FrameSaver if picture-delay is specified
+    frame_saver = None
+    if args.picture_delay is not None:
+        frame_saver = FrameSaver(args.picture_delay, "images")
 
     # Create main profiler for frame processing pipeline
     main_profiler = Profiler(False)
@@ -195,8 +201,12 @@ def main():
                 )
 
         main_profiler.record("visualization")
-        frame_saver.saveFrame(frame_info)
-        main_profiler.record("saveFrame")
+
+        # Only save frame if frame_saver was initialized
+        if frame_saver is not None:
+            frame_saver.saveFrame(frame_info)
+            main_profiler.record("saveFrame")
+
         main_profiler.end_frame()
 
     # Set the frame callback to use our processor

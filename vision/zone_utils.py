@@ -15,20 +15,6 @@ from .relativeCoordinates import world_to_pixel
 from spatialmath import SE2
 
 
-#: Fixed rectangle in pixel (u, v) coordinates used for overlap checks.
-#:
-#: The rectangle corners are specified in image coordinates as:
-#: (295, 480) bottom-left, (295, 260) top-left,
-#: (540, 260) top-right, (540, 480) bottom-right.
-TARGET_RECT_UV = np.array(
-    [[295, 480],
-     [295, 260],
-     [540, 260],
-     [540, 480]],
-    dtype=float,
-)
-
-
 def getSquareCenter(square) -> Tuple[float, float]:
     """
     Calculates the center point of a square.
@@ -137,82 +123,6 @@ def doPolygonsIntersect(poly1, poly2) -> bool:
 
     except (ValueError, TypeError, AttributeError):
         # Return False for any errors (invalid inputs, empty arrays, etc.)
-        return False
-
-
-def is_hull_overlap_with_target_rect(
-    convex_hull: np.ndarray,
-    min_intersection_ratio: float,
-    max_hull_area: float,
-) -> bool:
-    """
-    Check whether a convex hull sufficiently overlaps a fixed image-space rectangle.
-
-    The rectangle is defined in (u, v) pixel coordinates by ``TARGET_RECT_UV``:
-    (295, 480), (295, 260), (540, 260), (540, 480).
-
-    This function computes:
-
-    - the area of the convex hull in pixel space
-    - the intersection area between the hull and the rectangle
-    - the ratio ``intersection_area / hull_area``
-
-    It returns ``True`` only if both of the following hold:
-
-    - ``intersection_area / hull_area >= min_intersection_ratio``
-    - ``hull_area <= max_hull_area``
-
-    Args:
-        convex_hull: Convex hull vertices in pixel (u, v) coordinates, as:
-            - numpy array with shape (N, 1, 2) or (N, 2)
-        min_intersection_ratio: Minimum required ratio of
-            ``intersection_area / hull_area`` (0.0–1.0).
-        max_hull_area: Maximum allowed area for the convex hull (in pixel^2).
-
-    Returns:
-        bool: ``True`` if the hull overlaps the rectangle enough and the hull
-        area is under the specified threshold, ``False`` otherwise.
-    """
-    # Basic validation
-    if convex_hull is None:
-        return False
-
-    try:
-        # Handle both (N, 1, 2) and (N, 2) shapes
-        if isinstance(convex_hull, np.ndarray):
-            if convex_hull.ndim == 3:
-                convex_hull = convex_hull.reshape(-1, 2)
-        else:
-            # Unsupported type
-            return False
-
-        if convex_hull.shape[0] < 3:
-            # Need at least a triangle to have non-zero area
-            return False
-
-        hull_poly = Polygon(convex_hull)
-        rect_poly = Polygon(TARGET_RECT_UV)
-
-        # Validate polygons
-        if not hull_poly.is_valid or not rect_poly.is_valid:
-            return False
-
-        hull_area = hull_poly.area
-        if hull_area <= 0.0 or hull_area > max_hull_area:
-            return False
-
-        intersection = hull_poly.intersection(rect_poly)
-        intersection_area = intersection.area
-
-        if intersection_area <= 0.0:
-            return False
-
-        intersection_ratio = intersection_area / hull_area
-
-        return intersection_ratio >= min_intersection_ratio
-
-    except Exception:
-        # On any geometric/numeric error, treat as non-overlapping
         return False
 
 
@@ -344,7 +254,7 @@ def approximateConvexHullWithSquare(convexHull, side_length):
         return None, 0.0
 
 
-def getZones(result, image, is_top=True):
+def getZones(result, image, is_top):
     """
     Extracts zones from YOLO results and approximates each as a square.
 
@@ -428,7 +338,7 @@ def getZones(result, image, is_top=True):
             hull_xy_array[:, 0]) - np.min(hull_xy_array[:, 0])
         hull_extent_y = np.max(
             hull_xy_array[:, 1]) - np.min(hull_xy_array[:, 1])
-        print(f"Zone {class_name}: hull points={len(hull_xy)}, extent=({hull_extent_x:.1f}, {hull_extent_y:.1f})mm, target_size={side_length:.1f}mm")
+        # print(f"Zone {class_name}: hull points={len(hull_xy)}, extent=({hull_extent_x:.1f}, {hull_extent_y:.1f})mm, target_size={side_length:.1f}mm")
 
         # Fit a square in world space using the transformed convex hull
         square, iou = approximateConvexHullWithSquare(

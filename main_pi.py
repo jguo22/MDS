@@ -113,7 +113,7 @@ def run_network_mode(
             if streamer.connect():
                 streamer.stream(max_fps=config.FPS)
                 # stream() blocks until disconnected
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
         except KeyboardInterrupt:
             running = False

@@ -2,7 +2,7 @@ import cv2  # OpenCV version 2
 
 IMAGE_WINDOW_NAME = "calibration"
 
-image_path = "picked.jpg"
+image_path = "tipped.jpg"
 image = cv2.imread(image_path)
 if image is None:
     raise

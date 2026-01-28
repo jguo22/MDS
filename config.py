@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 # measurements are in mm
 FT_TO_MM = 304.8
@@ -16,6 +17,10 @@ MIN_ROTATION = 1
 
 BIG_ZONE_SIDE_LENGTH = 20 / 12 * FT_TO_MM
 SMALL_ZONE_SIDE_LENGTH = 4 / 12 * FT_TO_MM
+
+PICKED_RECT = np.array([[295, 480], [295, 240], [540, 240], [540, 480]])
+TIPPED_RECT = np.array([[318, 338], [318, 480], [515, 480], [515, 338]])
+
 
 # --------------------- VISION ---------------------
 # Minimum mask area in pixels for can detection (filters out specs/noise)

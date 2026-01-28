@@ -8,20 +8,14 @@ from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
 from vision.segment import segmentImage
-from vision.zone_utils import (
-    doPolygonsIntersect,
-    getSquareCenter,
-    getZones,
-    isPointInPoly,
-    is_hull_overlap_with_target_rect,
-)
-from vision.can_utils import getCans
+from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
+from vision.can_utils import getCans, is_hull_overlap_with_target_rect
 from vision.relativeCoordinates import relative_to_world, world_to_relative
-from vision.mask_utils import maskToConvexHull
+from vision.mask_utils import maskToConvexHull, yoloMaskToBinary
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
+from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -32,9 +26,9 @@ class RobotState(Enum):
     MidgameDecide = auto()
     MidgameGoToCan = auto()
     MidgameGrabbing = auto()
-    MidgameGoToZone = auto()
     MidgameStacking = auto()
     FinishedStacking = auto()
+    PostGrab = auto()
 
 
 class RobotHandler():
@@ -131,12 +125,17 @@ class RobotHandler():
         self.result_bottom = segmentImage(self.frame_bottom)
         self.profiler.record("segmentImage")
 
+        # Example usage: check if any bottom-camera segmentation overlaps the
+        # fixed rectangle enough in intersection/rect and not too much in
+        # segmentation/rect.
+        print(self.hasGoodPickup())
+
         for result, frame, is_top in [
             (self.result_top, self.frame_top, True),
             (self.result_bottom, self.frame_bottom, False)
         ]:
             self.scanAndSetZones(result, frame, is_top)
-            locations, color_strings = getCans(result, frame)
+            locations, color_strings = getCans(result, frame, is_top)
             colors = canNamesToNumbers(color_strings)
 
             locations = [relative_to_world(location, self.robot_pose)
@@ -164,19 +163,23 @@ class RobotHandler():
                 )
 
                 if has_nearby_detection:
-                    # Already represented by a current detection (miss count reset via detection)
+                    # Already represented by a current detection (miss count
+                    # reset via detection)
                     continue
 
                 # No nearby detection for this old can
                 if self.is_world_point_visible(old_can_x, old_can_y, is_top):
                     # Visible in FOV but not detected this frame
                     miss_count += 1
-                    # Only remove if it has been visible and undetected for 5 consecutive frames
+                    # Only remove if it has been visible and undetected for 5
+                    # consecutive frames
                     if miss_count >= 5:
                         continue  # Drop this stale can
-                # If not visible, keep the existing miss_count (do not increment)
+                # If not visible, keep the existing miss_count (do not
+                # increment)
 
-                # Keep the can (either not visible or not yet past miss threshold)
+                # Keep the can (either not visible or not yet past miss
+                # threshold)
                 new_locations.append(self.cans[i])
                 new_colors.append(old_color)
                 new_miss_counts.append(miss_count)
@@ -185,22 +188,22 @@ class RobotHandler():
             self.can_colors = new_colors
             self.can_miss_counts = new_miss_counts
 
-            # TESTING PURPOSES
-            self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
-                                               [922.48, -271.63],
-                                               [1391.22, -262.14],
-                                               [1382.95, 269.04]])
-            self.zone_confidences[GREEN_ZONE] = 2
-            self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
-                                             [1791.50, 311.42],
-                                             [1438.28, 7.33],
-                                             [1710.01, -324.33]])
-            self.zone_confidences[RED_ZONE] = 2
-            self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
-                                                [1832.41, -610.53],
-                                                [1732.2, -675.07],
-                                                [1811.42, -762.24]])
-            self.zone_confidences[GOLDEN_ZONE] = 2
+        # TESTING PURPOSES
+        self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
+                                           [922.48, -271.63],
+                                           [1391.22, -262.14],
+                                           [1382.95, 269.04]])
+        self.zone_confidences[GREEN_ZONE] = 2
+        self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
+                                         [1791.50, 311.42],
+                                         [1438.28, 7.33],
+                                         [1710.01, -324.33]])
+        self.zone_confidences[RED_ZONE] = 2
+        self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
+                                            [1832.41, -610.53],
+                                            [1732.2, -675.07],
+                                            [1811.42, -762.24]])
+        self.zone_confidences[GOLDEN_ZONE] = 2
 
         self.profiler.record("scanAndSetZones")
 
@@ -217,12 +220,12 @@ class RobotHandler():
             self.handleMidgameGoToCan()
         elif self.state == RobotState.MidgameGrabbing:
             self.handleMidgameGrabbing()
-        elif self.state == RobotState.MidgameGoToZone:
-            self.handleMidgameGoToZone()
         elif self.state == RobotState.MidgameStacking:
             self.handleMidgameStacking()
         elif self.state == RobotState.FinishedStacking:
             self.handleFinishedStacking()
+        elif self.state == RobotState.PostGrab:
+            self.handlePostGrab()
 
         self.profiler.record("handleState")
 
@@ -251,7 +254,7 @@ class RobotHandler():
         self.state = RobotState.StartGather
 
         self.targetZone = GREEN_ZONE
-        self.handleMidgameGoToZone()
+        self.handleMidgameGoToCan()
         return
         # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
         # if time.time() - self.lastTimeSentPath > 100:
@@ -292,7 +295,7 @@ class RobotHandler():
             rotate_cmd = list(get_rotate(math.pi / 4 / FPS))
             self.robot_commander.override_movement(rotate_cmd)
         else:
-            self.state = RobotState.MidgameGoToZone
+            self.state = RobotState.MidgameStacking
 
     def handleMidgameDecide(self):
         """Handle Midgame state: placeholder for midgame logic"""
@@ -332,13 +335,6 @@ class RobotHandler():
             self.handleMidgameGrabbing()
         else:
             # move to can using theta*
-            # dx, dy = world_to_relative((can_x, can_y), self.robot_pose)
-            # gx, gy = relative_to_world((max(dx - 200, 0), dy), self.robot_pose)
-            # self.robot_commander.override_world_xy(gx, gy)
-            # self.robot_commander.waitFinishedMoving()
-            # print("real positions and goals")
-            # print(can_x, can_y)
-            # print(gx, gy)
             self.thetaStarAndSend(can_x, can_y)
 
     def handleMidgameGrabbing(self):
@@ -347,18 +343,45 @@ class RobotHandler():
         """
         self.state = RobotState.MidgameGrabbing
 
-        cx, cy, can_color = self.current_can
+        cx, cy, _ = self.current_can
+        print("grabbing")
+        if self.isPointInGripper(cx, cy):
+            # figure out if tipped and pick up
+            if self.hasTippedCan():
+                print("tipped")
+                self.robot_commander.approach_can_with_ds()
+                self.robot_commander.pickup_tipped_can()
+                self.robot_commander.release_can()
+                self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+            else:
+                print("pickup")
+                self.robot_commander.approach_can_with_ds()
+                self.robot_commander.waitFinishedMoving()
+                self.robot_commander.pickup_can()
+                self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+                self.state = RobotState.PostGrab
+        elif self.isPointClose(cx, cy):
+            print("close")
+            # get close then pick up
+            self.robot_commander.approach_can_with_ds()
+            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+        else:
+            print("far")
+            self.thetaStarAndSend(cx, cy)
+            self.state = RobotState.MidgameGoToCan
+
+    def handlePostGrab(self):
+        self.state = RobotState.PostGrab
+
+        print("a")
+        can_color = self.current_can[2]
         if can_color not in [GREEN_CAN, RED_CAN, GOLDEN_CAN]:
+            print("huh??")
             self.state = RobotState.MidgameGoToCan
             return
 
-        if self.isPointClose(cx, cy):
-            self.robot_commander.approach_can_with_ds()
-            self.robot_commander.pickup_can()
-            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-            print(
-                f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
-
+        if self.hasGoodPickup():
+            print("good")
             # Select target zone based on can color
             if can_color == GREEN_CAN:
                 self.targetZone = GREEN_ZONE
@@ -366,52 +389,12 @@ class RobotHandler():
                 self.targetZone = RED_ZONE
             elif can_color == GOLDEN_CAN:
                 self.targetZone = GOLDEN_ZONE
-
-            # TODO: logic to see if we actually got it
-            self.state = RobotState.MidgameGoToZone
-        else:
-            self.thetaStarAndSend(cx, cy)
-            self.state = RobotState.MidgameGoToCan
-
-    def handleMidgameGoToZone(self):
-        """Handle MidgameGoToZone state: navigate to zone and release can"""
-        self.state = RobotState.MidgameGoToZone
-
-        # Check if robot is in target zone
-        if self.zones[self.targetZone] is None:
-            self.handleMidgameSearch()
-            return
-
-        self.targetStackId = -1
-        goal = None
-        for stack in self.stacked_cans:
-            x, y, size, color, id = stack
-            if size == 0:
-                print("WARNING: stack size of 0")
-                continue
-            if color == self.targetZone:
-                if isPointInPoly((x, y), self.zones[self.targetZone]):
-                    goal = (x, y)
-                    self.targetStackId = id
-                    break
-                else:
-                    print("WARNING: CAN STACK NOT IN ZONE")
-        if goal is None:
-            goal = getSquareCenter(self.zones[self.targetZone])
-        print("go to zone goal")
-        print(goal)
-
-        if self.isPointClose(*goal):
-            if self.targetStackId != 0:
-                self.robot_commander.approach_can_with_ds()
-                self.robot_commander.pickup_can()
-                self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-                print(
-                    f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
             self.handleMidgameStacking()
-            print("stacking")
         else:
-            self.thetaStarAndSend(*goal)
+            print("bad")
+            self.robot_commander.release_can()
+            self.current_can = (0, 0, -1)
+            self.handleMidgameGoToCan()
 
     def handleMidgameStacking(self):
         """
@@ -420,15 +403,22 @@ class RobotHandler():
         """
         self.state = RobotState.MidgameStacking
 
-        # see if there a target stack
+        # get the target stack and save the id so we don't switch around
+        # between frames
+        self.targetStackId = -1
         targetStack = None
         for stack in self.stacked_cans:
-            stackId = stack[4]
-            if self.targetStackId == stackId:
-                targetStack = stack
-                break
-
-        # otherwise, create a new stack of 0
+            x, y, size, color, id = stack
+            if size == 0:
+                print("WARNING: stack size of 0")
+                continue
+            if color == self.targetZone:
+                if isPointInPoly((x, y), self.zones[self.targetZone]):
+                    targetStack = (x, y, size, self.targetZone, id)
+                    self.targetStackId = id
+                    break
+                else:
+                    print("WARNING: CAN STACK NOT IN ZONE")
         if targetStack is None:
             x, y = getSquareCenter(self.zones[self.targetZone])
             targetStack = (x, y, 0, self.targetZone, self.lastStackId + 1)
@@ -444,7 +434,7 @@ class RobotHandler():
         distance = math.sqrt(dx * dx + dy * dy)
 
         # Move 200mm towards zone center (or less if zone center is closer)
-        if distance > 0:
+        if distance > 0.01:
             temp_pos = (cx + dx / distance * TEMP_STACK_OFFSET,
                         cy + dy / distance * TEMP_STACK_OFFSET)
         else:
@@ -506,67 +496,123 @@ class RobotHandler():
             elif name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
                 self.updateZone(zone, conf, GOLDEN_ZONE, GOLDEN_ZONE_OPP)
 
-    def any_segmentation_overlaps_target_rect(
+    def hasGoodPickup(
         self,
-        min_intersection_ratio: float,
-        max_hull_area: float,
+        min_intersection_over_rect: float = 0.4,
+        max_segmentation_over_rect: float = 3.6,
     ) -> bool:
         """
         Check whether any current segmentation mask overlaps well with the target rectangle.
 
-        For each mask in both top and bottom camera results, this function:
+        For each mask in the given YOLO result, this function:
         - converts the mask to a convex hull in pixel coordinates
         - checks the hull's area
         - computes its overlap with the fixed target rectangle in image space
           using ``is_hull_overlap_with_target_rect``
 
         It returns True as soon as any hull satisfies:
-        - intersection_area / hull_area >= min_intersection_ratio
-        - hull_area <= max_hull_area
+        - intersection_area / rect_area >= min_intersection_over_rect
+        - hull_area / rect_area <= max_segmentation_over_rect
 
         Args:
-            min_intersection_ratio: Minimum required fraction of the hull's area
-                that must overlap the target rectangle (0.0–1.0).
-            max_hull_area: Maximum allowed hull area in pixel^2.
+            min_intersection_over_rect: Minimum required fraction of the
+                rectangle's area that must be covered by the intersection
+                (0.0–1.0).
+            max_segmentation_over_rect: Maximum allowed fraction of the
+                rectangle's area that may be covered by the hull itself
+                (0.0–1.0).
 
         Returns:
             bool: True if any segmentation's convex hull overlaps the rectangle
             sufficiently and is under the area threshold, False otherwise.
         """
-        # Helper to process one YOLO result object
-        def _result_has_overlap(result, frame) -> bool:
-            if result is None or result.masks is None:
-                return False
-
-            for mask_orig in result.masks:
-                # Convert mask to grayscale image
-                mask_array = mask_orig.data[0].cpu().numpy()
-                mask_uint8 = (mask_array * 255).astype(np.uint8)
-
-                # Resize mask to match original image size
-                mask_resized = cv2.resize(
-                    mask_uint8, (frame.shape[1], frame.shape[0]))
-
-                # Get convex hull in pixel coordinates (N, 1, 2)
-                try:
-                    hull_uv = maskToConvexHull(mask_resized)
-                    if hull_uv is None or len(hull_uv) == 0:
-                        continue
-                except Exception:
-                    continue
-
-                if is_hull_overlap_with_target_rect(
-                    hull_uv, min_intersection_ratio, max_hull_area
-                ):
-                    return True
-
+        if self.result_bottom is None or self.result_bottom.masks is None:
             return False
 
-        # Check both top and bottom camera segmentations
-        if _result_has_overlap(self.result_top, self.frame_top):
-            return True
-        if _result_has_overlap(self.result_bottom, self.frame_bottom):
-            return True
+        # Choose corresponding image for mask resizing; here we assume bottom
+        # camera result when this helper is used from handleFrame.
+        image = self.frame_bottom
+
+        for mask_orig in self.result_bottom.masks:
+            try:
+                # Convert YOLO mask object to a binary numpy mask in image
+                # space
+                binary_mask = yoloMaskToBinary(mask_orig, image)
+                hull_uv = maskToConvexHull(binary_mask)
+                if hull_uv is None or len(hull_uv) == 0:
+                    continue
+            except Exception as e:
+                print(e)
+                print('error in overlap rect')
+                continue
+
+            if is_hull_overlap_with_target_rect(
+                hull_uv,
+                PICKED_RECT,
+                min_intersection_over_rect,
+                max_segmentation_over_rect,
+            ):
+                return True
+
+        return False
+
+    def hasTippedCan(
+        self,
+        min_intersection_over_rect: float = 0.7,
+        max_segmentation_over_rect: float = 1.6,
+    ) -> bool:
+        """
+        Check whether any current segmentation mask overlaps well with the target rectangle.
+
+        For each mask in the given YOLO result, this function:
+        - converts the mask to a convex hull in pixel coordinates
+        - checks the hull's area
+        - computes its overlap with the fixed target rectangle in image space
+          using ``is_hull_overlap_with_target_rect``
+
+        It returns True as soon as any hull satisfies:
+        - intersection_area / rect_area >= min_intersection_over_rect
+        - hull_area / rect_area <= max_segmentation_over_rect
+
+        Args:
+            min_intersection_over_rect: Minimum required fraction of the
+                rectangle's area that must be covered by the intersection
+                (0.0–1.0).
+            max_segmentation_over_rect: Maximum allowed fraction of the
+                rectangle's area that may be covered by the hull itself
+                (0.0–1.0).
+
+        Returns:
+            bool: True if any segmentation's convex hull overlaps the rectangle
+            sufficiently and is under the area threshold, False otherwise.
+        """
+        if self.result_bottom is None or self.result_bottom.masks is None:
+            return False
+
+        # Choose corresponding image for mask resizing; here we assume bottom
+        # camera result when this helper is used from handleFrame.
+        image = self.frame_bottom
+
+        for mask_orig in self.result_bottom.masks:
+            try:
+                # Convert YOLO mask object to a binary numpy mask in image
+                # space
+                binary_mask = yoloMaskToBinary(mask_orig, image)
+                hull_uv = maskToConvexHull(binary_mask)
+                if hull_uv is None or len(hull_uv) == 0:
+                    continue
+            except Exception as e:
+                print(e)
+                print('error in overlap rect')
+                continue
+
+            if is_hull_overlap_with_target_rect(
+                hull_uv,
+                PICKED_RECT,
+                min_intersection_over_rect,
+                max_segmentation_over_rect,
+            ):
+                return True
 
         return False
 
@@ -697,7 +743,11 @@ class RobotHandler():
 
         return in_rectangle
 
-    def is_world_point_visible(self, world_x: float, world_y: float, is_top: bool) -> bool:
+    def is_world_point_visible(
+            self,
+            world_x: float,
+            world_y: float,
+            is_top: bool) -> bool:
         """
         Check if a world point is visible in the camera's field of view.
 
@@ -714,7 +764,8 @@ class RobotHandler():
         from config import FRAME_WIDTH, FRAME_HEIGHT
 
         # Convert world coordinates to robot-relative coordinates
-        camera_relative = world_to_relative((world_x, world_y), self.robot_pose)
+        camera_relative = world_to_relative(
+            (world_x, world_y), self.robot_pose)
 
         # Points behind the camera cannot be visible
         if camera_relative[0] < 0:
