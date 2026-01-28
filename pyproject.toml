@@ -14,7 +14,7 @@ dependencies = [
     "numpy",
     "opencv-python",
     "adafruit-circuitpython-bno08x",
-	"adafruit_vl53l0x",
+	"adafruit-circuitpython-vl53l0x",
     "pyserial",
 	"spatialmath-python",
 	"maslab-lib @ git+https://github.com/MASLAB/maslab-lib.git@main",

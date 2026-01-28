@@ -124,7 +124,8 @@ def run_network_mode(camera_top, camera_bottom, robot_commander, imu_wrapper):
         """Route network commands to DirectRobotCommander."""
         if msg_type == message_types.ADD_MOVEMENT:
             assert (len(args) == 3)
-            print(f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
+            print(
+                f"ADD_MOVEMENT: left={args[0]}, right={args[1]}, dist={args[2]}")
             robot_commander.add_movement(args[0], args[1], args[2])
 
         elif msg_type == message_types.OVERRIDE_MOVEMENTS:
@@ -212,8 +213,9 @@ def main():
                         help="Top camera device path")
     parser.add_argument("--camera-bottom", default="/dev/videoblackbot",
                         help="Bottom camera device path")
-    parser.add_argument("--local", action="store_true",
-                        help="Run autonomously on Pi without network (default: connect to computer)")
+    parser.add_argument(
+        "--local",
+        help="Run autonomously on Pi without network (default: connect to computer)")
     parser.add_argument("--fps", type=int, default=config.FPS,
                         help="Target frames per second (local mode only)")
     args = parser.parse_args()
@@ -275,7 +277,6 @@ def main():
             camera_bottom,
             robot_commander,
             imu_wrapper)
-
 
 
 if __name__ == "__main__":
