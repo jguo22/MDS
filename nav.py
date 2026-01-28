@@ -72,9 +72,6 @@ class Nav:
                     delta_time = NAV_FRAME_TIME
                 start_time = time.time()
 
-                # print(f'x, y is {self.raven.get_odometry()}')
-                # print(f'angle is {self.raven.get_angle()}')
-
                 self._updatePath(delta_time)
         except KeyboardInterrupt:
             self.imu_wrapper.hard_reset()
@@ -87,7 +84,6 @@ class Nav:
             self.moves.append(nav_move)
 
     def overridePaths(self, nav_moves: list[NavMove]):
-        print(nav_moves)
         # copy it to not modify original
         nav_moves = nav_moves[:]
         # immediately use startPath to override current path
@@ -156,12 +152,8 @@ class Nav:
 
             self._updateAngle()
 
-            # print(self.correct_angle)
-
             if self.correct_angle:
                 angle_error = (self.angle - self.start_angle) - target_angle
-                # if (self.moving):
-                #     print(f'angle error: {angle_error}')
 
                 self.start_left -= angle_error * ANGLE_PROP * dt - self.diff_angle * ANGLE_D * dt
                 self.start_right -= angle_error * ANGLE_PROP * \

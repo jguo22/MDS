@@ -276,14 +276,14 @@ class RobotHandler():
             self.handleMidgameGrabbing()
         else:
             # move to can using theta*
-            dx, dy = world_to_relative((can_x, can_y), self.robot_pose)
-            gx, gy = relative_to_world((max(dx - 200, 0), dy), self.robot_pose)
-            self.robot_commander.override_world_xy(gx, gy)
-            self.robot_commander.waitFinishedMoving()
-            print("real positiosn and goals")
-            print(can_x, can_y)
-            print(gx, gy)
-            # self.thetaStarAndSend(can_x, can_y)
+            # dx, dy = world_to_relative((can_x, can_y), self.robot_pose)
+            # gx, gy = relative_to_world((max(dx - 200, 0), dy), self.robot_pose)
+            # self.robot_commander.override_world_xy(gx, gy)
+            # self.robot_commander.waitFinishedMoving()
+            # print("real positions and goals")
+            # print(can_x, can_y)
+            # print(gx, gy)
+            self.thetaStarAndSend(can_x, can_y)
 
     def handleMidgameGrabbing(self):
         """
@@ -575,17 +575,23 @@ class RobotHandler():
         self.robot_commander.override_waypoints(command_args)
 
     def thetaStarAndSend(self, x: float, y: float):
-        robot_x = self.robot_pose.x
-        robot_y = self.robot_pose.y
-
-        self.thetaStar.set_start(robot_x, robot_y)
-        self.thetaStar.set_goal(x, y)
-        waypoints = self.thetaStar.path_find()
-
-        print("theta*")
+        # temporary while thetastar doesn't work
+        dx, dy = world_to_relative((x, y), self.robot_pose)
+        gx, gy = relative_to_world((max(dx - 150, 0), dy), self.robot_pose)
+        self.robot_commander.override_world_xy(gx, gy)
+        self.robot_commander.waitFinishedMoving()
+        print("real positions and goals")
         print(x, y)
-        print(waypoints)
-        self.send_waypoints(waypoints)
+        print(gx, gy)
+        #
+        # robot_x = self.robot_pose.x
+        # robot_y = self.robot_pose.y
+        #
+        # self.thetaStar.set_start(robot_x, robot_y)
+        # self.thetaStar.set_goal(x, y)
+        # waypoints = self.thetaStar.path_find()
+        #
+        # self.send_waypoints(waypoints)
 
     def updateTelemetry(self):
         # self.telemetry.set_img(cv2.Mat(self.frame_top))
