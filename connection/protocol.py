@@ -183,7 +183,8 @@ def recv_frame(
 def send_command(
         sock: socket.socket,
         msg_type: int,
-        args: list[float]) -> bool:
+        args: list[float],
+        command_id: int = 0) -> bool:
     """
     Send a generic command message.
 
@@ -191,6 +192,7 @@ def send_command(
         sock: Socket to send on
         msg_type: Message type identifier (0-255)
         args: List of float arguments
+        command_id: Command ID for tracking completion (0 = no tracking)
 
     Returns:
         True if successful
@@ -201,8 +203,9 @@ def send_command(
             print(f"Unknown message type: {msg_type}")
             return False
 
-        # Pack: 1-byte message type + N 4-byte floats
+        # Pack: 1-byte message type + 4-byte command_id + N 4-byte floats
         data = struct.pack('!B', msg_type) + \
+            struct.pack('!I', command_id) + \
             struct.pack(f'!{len(args)}f', *args)
         return send_message(sock, data)
     except struct.error as e:
@@ -210,7 +213,7 @@ def send_command(
         return False
 
 
-def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
+def recv_command(sock: socket.socket) -> Optional[Tuple[int, int, list[float]]]:
     """
     Receive a generic command message.
 
@@ -218,12 +221,12 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
         sock: Socket to receive from
 
     Returns:
-        Tuple of (msg_type, args) where args is a list of floats, or None if failed
+        Tuple of (msg_type, command_id, args) where args is a list of floats, or None if failed
     """
     # Receive message with length header
     data = recv_message(sock)
     print(f'data is {data}')
-    if data is None or len(data) < 1:
+    if data is None or len(data) < 5:  # At least 1 byte type + 4 byte command_id
         return None
 
     try:
@@ -235,13 +238,16 @@ def recv_command(sock: socket.socket) -> Optional[Tuple[int, list[float]]]:
             print(f"Unknown message type: {msg_type}")
             return None
 
-        # 1 byte type + N floats (4 bytes each) = length of data
-        arg_count = (len(data) - 1) // 4
+        # Unpack command_id (4 bytes)
+        command_id: int = struct.unpack('!I', data[1:5])[0]
+
+        # 1 byte type + 4 bytes command_id + N floats (4 bytes each) = length of data
+        arg_count = (len(data) - 5) // 4
 
         # Unpack float arguments
-        args = list(struct.unpack(f'!{arg_count}f', data[1:]))
+        args = list(struct.unpack(f'!{arg_count}f', data[5:]))
 
-        return msg_type, args
+        return msg_type, command_id, args
     except struct.error as e:
         print(f"Failed to unpack command: {e}")
         return None
@@ -281,6 +287,8 @@ def send_frame_info(
         # Pack data:
         # - frame_id (4 bytes)
         # - 7 floats: x, y, theta, gripperHeight, gripperAngle, scooperAngle, distanceSensed (28 bytes)
+        # - isMoving (1 byte boolean)
+        # - lastCompletedCommandId (4 bytes)
         # - frame_top length (4 bytes)
         # - frame_top data (variable)
         # - frame_bottom length (4 bytes)
@@ -296,6 +304,8 @@ def send_frame_info(
             frame_info.scooperAngle,
             frame_info.distanceSensed
         )
+        packet += struct.pack('!?', frame_info.isMoving)
+        packet += struct.pack('!I', frame_info.lastCompletedCommandId)
         packet += struct.pack('!I', len(frame_top_bytes))
         packet += frame_top_bytes
         packet += struct.pack('!I', len(frame_bottom_bytes))
@@ -327,9 +337,9 @@ def recv_frame_info(sock: socket.socket) -> Optional[FrameInfo | Literal[0]]:
         print("Received graceful disconnect from Pi")
         return 0
 
-    # Minimum size: 4 (frame_id) + 28 (7 floats) + 4 (top_len) + 4
-    # (bottom_len) = 40 bytes
-    if len(data) < 40:
+    # Minimum size: 4 (frame_id) + 28 (7 floats) + 1 (isMoving) + 4 (lastCompletedCommandId) + 4 (top_len) + 4
+    # (bottom_len) = 45 bytes
+    if len(data) < 45:
         return None
 
     try:
@@ -343,6 +353,14 @@ def recv_frame_info(sock: socket.socket) -> Optional[FrameInfo | Literal[0]]:
         x, y, theta, gripperHeight, gripperAngle, scooperAngle, distanceSensed = \
             struct.unpack('!fffffff', data[offset:offset + 28])
         offset += 28
+
+        # Unpack isMoving boolean
+        is_moving = struct.unpack('!?', data[offset:offset + 1])[0]
+        offset += 1
+
+        # Unpack lastCompletedCommandId
+        last_completed_command_id = struct.unpack('!I', data[offset:offset + 4])[0]
+        offset += 4
 
         # Unpack frame_top
         frame_top_len = struct.unpack('!I', data[offset:offset + 4])[0]
@@ -379,7 +397,9 @@ def recv_frame_info(sock: socket.socket) -> Optional[FrameInfo | Literal[0]]:
             gripperHeight=gripperHeight,
             gripperAngle=gripperAngle,
             scooperAngle=scooperAngle,
-            distanceSensed=distanceSensed
+            distanceSensed=distanceSensed,
+            isMoving=is_moving,
+            lastCompletedCommandId=last_completed_command_id
         )
     except (struct.error, cv2.error) as e:
         print(f"Failed to unpack frame info: {e}")

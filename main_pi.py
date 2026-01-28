@@ -18,62 +18,77 @@ def run_network_mode(
         camera_top,
         camera_bottom,
         robot_commander: IRobotCommander,
-        imu_wrapper):
+        imu_wrapper,
+        nav):
     """Run network mode - stream to computer and receive commands."""
 
-    def command_callback(msg_type: int, args: list[float]):
+    def command_callback(msg_type: int, command_id: int, args: list[float]):
         """Route network commands to DirectRobotCommander."""
+
+        # Movement commands (will complete when movement stops)
         if msg_type == message_types.OVERRIDE_MOVEMENTS:
             assert (len(args) % 3 == 0)
+            robot_commander.start_movement_command(command_id)
             robot_commander.override_movement(args)
 
         elif msg_type == message_types.OVERRIDE_WAYPOINTS:
             assert (len(args) % 2 == 0)
+            robot_commander.start_movement_command(command_id)
             robot_commander.override_waypoints(args)
 
         elif msg_type == message_types.OVERRIDE_RELATIVE_XY:
             assert (len(args) == 2)
             x, y = args[0], args[1]
+            robot_commander.start_movement_command(command_id)
             robot_commander.override_relative_xy(x, y)
 
         elif msg_type == message_types.OVERRIDE_WORLD_XY:
             assert (len(args) == 2)
             world_x, world_y = args[0], args[1]
+            robot_commander.start_movement_command(command_id)
             robot_commander.override_world_xy(world_x, world_y)
 
-        elif msg_type == message_types.PICKUP_CAN:
+        elif msg_type == message_types.APPROACH_CAN_DS:
             assert (len(args) == 0)
-            robot_commander.pickup_can()
-
-        elif msg_type == message_types.RELEASE_CAN:
-            assert (len(args) == 0)
-            robot_commander.release_can()
+            robot_commander.start_movement_command(command_id)
+            robot_commander.approach_can_with_ds()
 
         elif msg_type == message_types.EARLY_GAME:
             assert (len(args) == 6)
             golden = (args[0], args[1])
             left = (args[2], args[3])
             right = (args[4], args[5])
+            robot_commander.start_movement_command(command_id)
             robot_commander.early_game(golden, left, right)
-
-        elif msg_type == message_types.APPROACH_CAN_DS:
-            assert (len(args) == 0)
-            robot_commander.approach_can_with_ds()
 
         elif msg_type == message_types.STACK:
             assert (len(args) == 5)
             temp_pos = (args[0], args[1])
             stack_pos = (args[2], args[3])
             stacked_cans = int(args[4])
+            robot_commander.start_movement_command(command_id)
             robot_commander.stack(temp_pos, stack_pos, stacked_cans)
 
-        elif msg_type == message_types.WAIT_MOVEMENT_FINISHED:
+        # Non-movement commands (complete immediately)
+        elif msg_type == message_types.PICKUP_CAN:
             assert (len(args) == 0)
-            robot_commander.waitFinishedMoving()
+            robot_commander.pickup_can()
+            robot_commander.complete_command_immediately(command_id)
+
+        elif msg_type == message_types.RELEASE_CAN:
+            assert (len(args) == 0)
+            robot_commander.release_can()
+            robot_commander.complete_command_immediately(command_id)
 
         elif msg_type == message_types.RESET_GRIPPER:
             assert (len(args) == 0)
             robot_commander.reset_gripper()
+            robot_commander.complete_command_immediately(command_id)
+
+        elif msg_type == message_types.WAIT_MOVEMENT_FINISHED:
+            assert (len(args) == 0)
+            robot_commander.waitFinishedMoving()
+            robot_commander.complete_command_immediately(command_id)
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True
@@ -85,6 +100,8 @@ def run_network_mode(
                 camera_bottom,
                 RAVEN_WRAPPER,
                 imu_wrapper,
+                nav,
+                robot_commander,
                 host=config.COMPUTER_IP,
                 video_port=config.VIDEO_PORT,
                 command_port=config.COMMAND_PORT)
@@ -160,7 +177,8 @@ def main():
         camera_top,
         camera_bottom,
         robot_commander,
-        imu_wrapper)
+        imu_wrapper,
+        nav)
 
 
 if __name__ == "__main__":

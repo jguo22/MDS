@@ -55,6 +55,8 @@ class PiStreamer():
                  camera_bottom: CameraCapture,
                  ravenWrapper: RavenWrapper,
                  imuWrapper: IMUWrapper,
+                 nav,
+                 robot_commander,
                  host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
                  command_port: int = config.COMMAND_PORT):
@@ -66,6 +68,8 @@ class PiStreamer():
             camera_bottom: Bottom CameraCapture instance (managed externally)
             raven: Raven motor controller instance (for odometry)
             imu_wrapper: IMUWrapper instance (for heading)
+            nav: Nav instance (for movement state)
+            robot_commander: Robot commander for command tracking
             host: Computer IP address to connect to
             video_port: Port for video streaming
             command_port: Port for receiving commands
@@ -75,6 +79,8 @@ class PiStreamer():
         self.camera_bottom = camera_bottom
         self.ravenWrapper = ravenWrapper
         self.imu_wrapper = imuWrapper
+        self.nav = nav
+        self.robot_commander = robot_commander
         self.host = host
         self.video_port = video_port
         self.command_port = command_port
@@ -91,9 +97,9 @@ class PiStreamer():
         self.get_distance_sensed: Callable[[], float] = lambda: 0.0
 
         # movement callback blocks the command receiving thread
-        # takes in msg_type and args and does the command
+        # takes in msg_type, command_id, and args and does the command
         self.command_callback: Callable[[
-            int, list[float]], None] = (lambda _, __: None)
+            int, int, list[float]], None] = (lambda _, __, ___: None)
 
         self._command_receiver_thread: Optional[threading.Thread] = None
 
@@ -101,13 +107,13 @@ class PiStreamer():
         self.profiler = Profiler(False)
 
     def set_command_callback(
-            self, callback: Callable[[int, list[float]], None]):
+            self, callback: Callable[[int, int, list[float]], None]):
         """
         Set callback for when movement commands are received.
         NOTE: movement callback blocks the command receiver thread
 
         Args:
-            callback: Function(msg_type, args) called on command receipt
+            callback: Function(msg_type, command_id, args) called on command receipt
         """
         self.command_callback = callback
 
@@ -192,7 +198,7 @@ class PiStreamer():
                     time.sleep(0.1)
                     continue
 
-                msg_type, args = result
+                msg_type, command_id, args = result
 
                 # Handle close command (type 0) - explicit shutdown signal
                 if msg_type == message_types.CLOSE:
@@ -201,7 +207,7 @@ class PiStreamer():
                     break
                 else:
                     try:
-                        self.command_callback(msg_type, args)
+                        self.command_callback(msg_type, command_id, args)
                     except Exception as e:
                         print(f"Error in movement callback: {type(e).__name__}: {e}")
                         traceback.print_exc()
@@ -262,6 +268,12 @@ class PiStreamer():
                 gripper_angle = self.get_gripper_angle()
                 scooper_angle = self.get_scooper_angle()
                 distance_sensed = self.get_distance_sensed()
+                is_moving = self.nav.moving
+
+                # Update command completion tracking
+                self.robot_commander.update_command_completion()
+                last_completed_command_id = self.robot_commander.get_last_completed_command_id()
+
                 self.profiler.record("get_sensors")
 
                 # Create FrameInfo object
@@ -275,7 +287,9 @@ class PiStreamer():
                     gripperHeight=gripper_height,
                     gripperAngle=gripper_angle,
                     scooperAngle=scooper_angle,
-                    distanceSensed=distance_sensed
+                    distanceSensed=distance_sensed,
+                    isMoving=is_moving,
+                    lastCompletedCommandId=last_completed_command_id
                 )
 
                 self.profiler.record("send_frame0")

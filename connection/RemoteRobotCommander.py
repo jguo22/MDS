@@ -28,6 +28,7 @@ class RemoteRobotCommander(IRobotCommander):
         """
         super().__init__()
         self.command_socket = command_socket
+        self.next_command_id = 1
 
     def set_socket(self, command_socket: Optional[socket.socket]) -> None:
         """
@@ -37,6 +38,17 @@ class RemoteRobotCommander(IRobotCommander):
             command_socket: TCP socket for sending commands
         """
         self.command_socket = command_socket
+
+    def _get_command_id(self) -> int:
+        """Get the next command ID and increment the counter."""
+        command_id = self.next_command_id
+        self.next_command_id += 1
+        self.last_command_id = command_id
+        return command_id
+
+    def get_last_command_id(self) -> int:
+        """Get the ID of the last command sent (for waiting on completion)."""
+        return getattr(self, 'last_command_id', 0)
 
     def close(self) -> bool:
         """
@@ -49,7 +61,7 @@ class RemoteRobotCommander(IRobotCommander):
             return False
 
         return protocol.send_command(
-            self.command_socket, message_types.CLOSE, [])
+            self.command_socket, message_types.CLOSE, [], command_id=0)
 
     def early_game(
             self,
@@ -71,10 +83,12 @@ class RemoteRobotCommander(IRobotCommander):
             return False
 
         args = [golden[0], golden[1], left[0], left[1], right[0], right[1]]
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.EARLY_GAME,
-            args
+            args,
+            command_id=command_id
         )
 
     def override_movement(self, movement_args: list[float]) -> bool:
@@ -95,10 +109,12 @@ class RemoteRobotCommander(IRobotCommander):
 
         assert (len(movement_args) % 3 == 0)
 
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.OVERRIDE_MOVEMENTS,
-            movement_args
+            movement_args,
+            command_id=command_id
         )
 
     def override_waypoints(self, movement_args: list[float]) -> bool:
@@ -118,10 +134,12 @@ class RemoteRobotCommander(IRobotCommander):
 
         assert (len(movement_args) % 2 == 0)
 
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.OVERRIDE_WAYPOINTS,
-            movement_args
+            movement_args,
+            command_id=command_id
         )
 
     def override_relative_xy(self, x: float, y: float) -> bool:
@@ -139,10 +157,12 @@ class RemoteRobotCommander(IRobotCommander):
             return False
 
         print(f'Sending relative xy: x={x}, y={y}')
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.OVERRIDE_RELATIVE_XY,
-            [x, y]
+            [x, y],
+            command_id=command_id
         )
 
     def override_world_xy(self, world_x: float, world_y: float) -> bool:
@@ -160,10 +180,12 @@ class RemoteRobotCommander(IRobotCommander):
             return False
 
         print(f'Sending world coordinates: x={world_x}, y={world_y}')
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.OVERRIDE_WORLD_XY,
-            [world_x, world_y]
+            [world_x, world_y],
+            command_id=command_id
         )
 
     def pickup_can(self) -> bool:
@@ -177,10 +199,12 @@ class RemoteRobotCommander(IRobotCommander):
             return False
 
         print('Sending pickup can command')
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.PICKUP_CAN,
-            []
+            [],
+            command_id=command_id
         )
 
     def release_can(self) -> bool:
@@ -197,7 +221,8 @@ class RemoteRobotCommander(IRobotCommander):
         return protocol.send_command(
             self.command_socket,
             message_types.RELEASE_CAN,
-            []
+            [],
+            command_id=0
         )
 
     def approach_can_with_ds(self) -> bool:
@@ -214,10 +239,12 @@ class RemoteRobotCommander(IRobotCommander):
             return False
 
         print('Sending approach can with distance sensor command')
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.APPROACH_CAN_DS,
-            []
+            [],
+            command_id=command_id
         )
 
     def stack(
@@ -247,10 +274,12 @@ class RemoteRobotCommander(IRobotCommander):
             stack_pos[0],
             stack_pos[1],
             float(stacked_cans)]
+        command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.STACK,
-            args
+            args,
+            command_id=command_id
         )
 
     def waitFinishedMoving(self) -> bool:
@@ -269,7 +298,8 @@ class RemoteRobotCommander(IRobotCommander):
         return protocol.send_command(
             self.command_socket,
             message_types.WAIT_MOVEMENT_FINISHED,
-            []
+            [],
+            command_id=0
         )
 
     def reset_gripper(self) -> bool:
@@ -286,5 +316,26 @@ class RemoteRobotCommander(IRobotCommander):
         return protocol.send_command(
             self.command_socket,
             message_types.RESET_GRIPPER,
-            []
+            [],
+            command_id=0
         )
+
+    def start_movement_command(self, command_id: int) -> None:
+        """
+        Mark that a movement command has started.
+        Not used on computer side.
+
+        Args:
+            command_id: The ID of the command that started
+        """
+        pass
+
+    def complete_command_immediately(self, command_id: int) -> None:
+        """
+        Mark a synchronous command as complete.
+        Not used on computer side.
+
+        Args:
+            command_id: The ID of the command that completed
+        """
+        pass

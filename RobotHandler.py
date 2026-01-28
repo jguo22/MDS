@@ -14,7 +14,7 @@ from vision.relativeCoordinates import relative_to_world, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH, TEMP_STACK_OFFSET
+from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -36,6 +36,8 @@ class RobotHandler():
         self.state = RobotState.StartScan
         self.started = False
         self.paused = False
+        # Command ID we're waiting for (0 = not waiting)
+        self.waiting_for_command_id = 0
 
         # BEST GUESS MEMORY VARIABLES
         # four vertices of scoring zones in world coords
@@ -101,6 +103,19 @@ class RobotHandler():
         if self.paused:
             self.profiler.end_frame()
             return
+
+        # Check if we're waiting for a command to complete
+        if self.waiting_for_command_id > 0:
+            # Check if the command we're waiting for has completed
+            if frame_info.lastCompletedCommandId >= self.waiting_for_command_id:
+                # Command completed, clear waiting state
+                print(
+                    f"on frame {self.frame_id}, waiting command id {self.waiting_for_command_id} finished")
+                self.waiting_for_command_id = 0
+            else:
+                # Still waiting, skip state processing
+                self.profiler.end_frame()
+                return
 
         self.result_top = segmentImage(self.frame_top)
         self.result_bottom = segmentImage(self.frame_bottom)
@@ -300,6 +315,9 @@ class RobotHandler():
         if self.isPointClose(cx, cy):
             self.robot_commander.approach_can_with_ds()
             self.robot_commander.pickup_can()
+            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+            print(
+                f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
 
             # Select target zone based on can color
             if can_color == GREEN_CAN:
@@ -347,6 +365,9 @@ class RobotHandler():
             if self.targetStackId != 0:
                 self.robot_commander.approach_can_with_ds()
                 self.robot_commander.pickup_can()
+                self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+                print(
+                    f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
             self.handleMidgameStacking()
             print("stacking")
         else:
@@ -392,6 +413,9 @@ class RobotHandler():
 
         stack_pos = (cx, cy)
         self.robot_commander.stack(temp_pos, stack_pos, height)
+        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+        print(
+            f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
 
         self.state = RobotState.FinishedStacking
 
@@ -411,7 +435,9 @@ class RobotHandler():
         self.thetaStar.addCan(cx, cy)
 
         self.robot_commander.override_movement([-1, -1, 3000])
-        self.robot_commander.waitFinishedMoving()
+        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+        print(
+            f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
         self.state = RobotState.MidgameGoToCan
 
     # ------------------------ HELPER FUNCTIONS .----------------------------
@@ -554,7 +580,7 @@ class RobotHandler():
         # Check 1: Would the can be fully in the robot?
         # Handles measurement inaccuracy
         distance = math.sqrt(local_x**2 + local_y**2)
-        if distance <= (BASE_D - CAN_DIAMETER) / 2:
+        if distance <= ROBOT_DIAMETER / 2:
             return True
 
         # Check 2: Is point within rectangle in front of robot?
@@ -577,13 +603,16 @@ class RobotHandler():
 
     def thetaStarAndSend(self, x: float, y: float):
         # temporary while thetastar doesn't work
-        dx, dy = world_to_relative((x, y), self.robot_pose)
-        gx, gy = relative_to_world((max(dx - 150, 0), dy), self.robot_pose)
-        self.robot_commander.override_world_xy(gx, gy)
-        self.robot_commander.waitFinishedMoving()
+        # dx, dy = world_to_relative((x, y), self.robot_pose)
+        # gx, gy = relative_to_world((max(dx - 150, 0), dy), self.robot_pose)
+        # self.robot_commander.override_world_xy(gx, gy)
+        self.robot_commander.override_world_xy(x, y)
+        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+        print(
+            f"on frame {self.frame_id}, sent a waiting command with id {self.waiting_for_command_id}")
         print("real positions and goals")
         print(x, y)
-        print(gx, gy)
+        # print(gx, gy)
         #
         # robot_x = self.robot_pose.x
         # robot_y = self.robot_pose.y

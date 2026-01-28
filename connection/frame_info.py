@@ -19,3 +19,5 @@ class FrameInfo:
     gripperAngle: float
     scooperAngle: float
     distanceSensed: float
+    isMoving: bool
+    lastCompletedCommandId: int

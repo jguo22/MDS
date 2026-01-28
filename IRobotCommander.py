@@ -167,3 +167,33 @@ class IRobotCommander(ABC):
             True if successful
         """
         pass
+
+    @abstractmethod
+    def get_last_command_id(self) -> int:
+        """
+        Get the ID of the last command sent (for tracking completion).
+
+        Returns:
+            Command ID (0 if not applicable)
+        """
+        pass
+
+    @abstractmethod
+    def start_movement_command(self, command_id: int) -> None:
+        """
+        Mark that a movement command has started.
+
+        Args:
+            command_id: The ID of the command that started
+        """
+        pass
+
+    @abstractmethod
+    def complete_command_immediately(self, command_id: int) -> None:
+        """
+        Mark a synchronous command as complete.
+
+        Args:
+            command_id: The ID of the command that completed
+        """
+        pass

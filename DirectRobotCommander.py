@@ -11,12 +11,12 @@ import time
 from spatialmath import SE2
 from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
-from config import BACKING_TICKS, BASE_D, MIN_ROTATION
+from config import BACKING_TICKS, BASE_D
 from nav import Nav, NavMove
 from distanceSensorWrapper import DistanceSensorWrapper
 from RavenWrapper import RAVEN_WRAPPER
 from earlyGame import EarlyGame
-from navHelpers import get_arc, get_forward_mm, get_rotate
+from navHelpers import get_forward_mm, get_rotate
 from vision.relativeCoordinates import get_movement_plan
 
 
@@ -44,6 +44,50 @@ class DirectRobotCommander(IRobotCommander):
         self.distance_sensor = distance_sensor
         self.imu = imu
         self.previous_location = (0, 0)
+        self.last_completed_command_id = 0
+        self.pending_movement_command_id = 0  # Command ID for movement in progress
+        self.was_moving = False
+
+    def update_command_completion(self):
+        """
+        Check if movement finished and update last completed command ID.
+        Should be called periodically (e.g., in PiStreamer's stream loop).
+        """
+        is_moving = self.nav.moving
+
+        # Detect transition from moving to not moving
+        if self.was_moving and not is_moving and self.pending_movement_command_id > 0:
+            self.last_completed_command_id = self.pending_movement_command_id
+            self.pending_movement_command_id = 0
+
+        self.was_moving = is_moving
+
+    def get_last_completed_command_id(self) -> int:
+        """Get the ID of the last completed command."""
+        return self.last_completed_command_id
+
+    def get_last_command_id(self) -> int:
+        """
+        Get the ID of the last command sent.
+        For DirectRobotCommander, returns 0 (not applicable for local execution).
+        """
+        return 0
+
+    def complete_command_immediately(self, command_id: int):
+        """
+        Immediately mark a command as complete.
+        Used for synchronous commands that don't involve movement.
+        """
+        if command_id > 0:
+            self.last_completed_command_id = command_id
+
+    def start_movement_command(self, command_id: int):
+        """
+        Mark that a movement command has started.
+        Completion will be detected when movement stops.
+        """
+        if command_id > 0:
+            self.pending_movement_command_id = command_id
 
     def early_game(
             self,
