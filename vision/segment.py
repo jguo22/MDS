@@ -5,7 +5,7 @@ from ultralytics.models.yolo import YOLO
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
 
-MODEL = YOLO(str(SCRIPT_DIR / 'best.pt'))
+MODEL = YOLO(str(SCRIPT_DIR / 'best_ncnn_model'))
 labels = MODEL.names
 print(labels)
 
