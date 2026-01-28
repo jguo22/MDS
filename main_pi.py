@@ -76,6 +76,14 @@ def run_network_mode(
             assert (len(args) == 0)
             robot_commander.reset_gripper()
 
+        elif msg_type == message_types.SET_DOWN_CAN:
+            assert (len(args) == 0)
+            robot_commander.set_down_can()
+
+        elif msg_type == message_types.BACKUP:
+            assert (len(args) == 0)
+            robot_commander.backup()
+
         elif msg_type == message_types.WAIT_MOVEMENT_FINISHED:
             assert (len(args) == 0)
             robot_commander.waitFinishedMoving()

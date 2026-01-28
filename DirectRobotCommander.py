@@ -214,7 +214,7 @@ class DirectRobotCommander(IRobotCommander):
         return True
 
     def set_down_can(self) -> bool:
-        RAVEN_WRAPPER.raise_elevator(1.5)
+        RAVEN_WRAPPER.lower_elevator(1.5)
         RAVEN_WRAPPER.open_gripper()
         return True
 

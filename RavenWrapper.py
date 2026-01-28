@@ -171,20 +171,7 @@ class RavenWrapper():
 
     def reset_gripper(self):
         self.open_gripper()
-
-        self.set_servo_position(ELEVATOR_SERVO, -90)  # Elevator
-        sleep_time = 2
-        if (sleep_time < 0):
-            sleep_time = 0
-        time.sleep(sleep_time)
-        self.set_servo_position(ELEVATOR_SERVO, 0)  # Elevator
-
-        self.set_servo_position(ELEVATOR_SERVO, 90)  # Elevator
-        sleep_time = 2.1
-        if (sleep_time < 0):
-            sleep_time = 0
-        time.sleep(sleep_time)
-        self.set_servo_position(ELEVATOR_SERVO, 0)  # Elevator
+        self.lower_elevator(2)
 
 
 RAVEN_WRAPPER = RavenWrapper()

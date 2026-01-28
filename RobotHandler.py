@@ -318,8 +318,8 @@ class RobotHandler():
         self.state = RobotState.StartScan
         if self.startFrame == -1:
             self.startFrame = frame_id
-            print("→ reset_gripper")
-            self.robot_commander.reset_gripper()
+            # print("→ reset_gripper")
+            # self.robot_commander.reset_gripper()
 
         if self.started:
             print(f"State: {self.state.name} → StartGather")
@@ -508,7 +508,8 @@ class RobotHandler():
             self.state = RobotState.MidgameGoToCan
             return
 
-        if self.hasGoodPickup():
+        if True:
+            # if self.hasGoodPickup():
             # Select target zone based on can color
             if can_color == GREEN_CAN:
                 self.targetZone = GREEN_ZONE
