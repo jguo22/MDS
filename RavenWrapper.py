@@ -143,31 +143,29 @@ class RavenWrapper():
     def open_gripper(self):
         """Open gripper."""
         with self._lock:
-            return self.raven.set_servo_position(
-                GRIPPER_SERVO, 0)
+            return self.raven.set_servo_position(GRIPPER_SERVO, 0)
 
     def close_gripper(self):
         """Close gripper."""
         with self._lock:
-            return self.raven.set_servo_position(
-                GRIPPER_SERVO, 67)
+            return self.raven.set_servo_position(GRIPPER_SERVO, 90)
 
     # Elevator Methods
-    def raise_elevator(self):
+    def raise_elevator(self, sleep_time):
         """Raise elevator."""
         with self._lock:
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, 90)
-            time.sleep(1.4)
+            time.sleep(sleep_time)
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, 0)
 
-    def lower_elevator(self):
+    def lower_elevator(self, sleep_time):
         """Lower elevator."""
         with self._lock:
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, -90)
-            time.sleep(1.3)
+            time.sleep(sleep_time)
             self.raven.set_servo_position(
                 ELEVATOR_SERVO, 0)
 

@@ -101,7 +101,11 @@ class DirectRobotCommander(IRobotCommander):
             print(f"override_movement: Created {len(moves)} moves")
             for idx, move in enumerate(moves):
                 print(
-                    f"  Move {idx}: left={move.left:.2f}, right={move.right:.2f}, dist={move.dist:.1f}, smooth={move.smooth}")
+                    f"  Move {idx}: left={
+                        move.left:.2f}, right={
+                        move.right:.2f}, dist={
+                        move.dist:.1f}, smooth={
+                        move.smooth}")
             self.nav.overridePaths(moves)
             print("override_movement: Called nav.overridePaths()")
             return True
@@ -180,7 +184,10 @@ class DirectRobotCommander(IRobotCommander):
             forward_move = get_forward_mm(distance)
 
             print(
-                f'Relative xy: theta={theta:.3f}rad ({math.degrees(theta):.1f}deg), distance={distance:.1f}mm')
+                f'Relative xy: theta={
+                    theta:.3f}rad ({
+                    math.degrees(theta):.1f}deg), distance={
+                    distance:.1f}mm')
             print(f'  rotate_move={rotate_move}')
             print(f'  forward_move={forward_move}')
 
@@ -223,8 +230,11 @@ class DirectRobotCommander(IRobotCommander):
             forward_move = get_forward_mm(distance)
 
             print(
-                f'World xy movement: target=({world_x}, {world_y}) current=({current_x:.1f}, {current_y:.1f}) '
-                f'rotate={rotation_angle:.3f}rad distance={distance:.1f}mm')
+                f'World xy movement: target=({world_x}, {world_y}) current=({
+                    current_x:.1f}, {
+                    current_y:.1f}) ' f'rotate={
+                    rotation_angle:.3f}rad distance={
+                    distance:.1f}mm')
 
             movement_args = list(rotate_move) + list(forward_move)
             return self.override_movement(movement_args)
@@ -234,9 +244,11 @@ class DirectRobotCommander(IRobotCommander):
             return False
 
     def pickup_can(self) -> bool:
-        RAVEN_WRAPPER.lower_elevator()
+        RAVEN_WRAPPER.open_gripper()
+        RAVEN_WRAPPER.lower_elevator(2)
+        RAVEN_WRAPPER.raise_elevator(0.6)
         RAVEN_WRAPPER.close_gripper()
-        RAVEN_WRAPPER.raise_elevator()
+        RAVEN_WRAPPER.raise_elevator(1.5)
         return True
 
     def release_can(self) -> bool:
