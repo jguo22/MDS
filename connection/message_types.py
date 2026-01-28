@@ -12,6 +12,9 @@ EARLY_GAME = 6
 OVERRIDE_RELATIVE_XY = 7  # Relative movement: [x, y] in mm
 OVERRIDE_WORLD_XY = 8  # World coordinate navigation: [world_x, world_y] in mm
 APPROACH_CAN_DS = 9  # Approach can using distance sensor (no arguments)
+# Stack can: [temp_pos_x, temp_pos_y, stack_pos_x, stack_pos_y, stacked_cans]
+STACK = 10
+WAIT_MOVEMENT_FINISHED = 11  # Wait for movement to complete (no arguments)
 
 messageTypes = [
     CLOSE,
@@ -23,5 +26,7 @@ messageTypes = [
     EARLY_GAME,
     OVERRIDE_RELATIVE_XY,
     OVERRIDE_WORLD_XY,
-    APPROACH_CAN_DS
+    APPROACH_CAN_DS,
+    STACK,
+    WAIT_MOVEMENT_FINISHED
 ]

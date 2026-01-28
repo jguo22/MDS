@@ -66,6 +66,22 @@ def run_network_mode(camera_top, camera_bottom, robot_commander, imu_wrapper):
             result = robot_commander.approach_can_with_ds()
             print(f"APPROACH_CAN_DS result: {result}")
 
+        elif msg_type == message_types.STACK:
+            assert (len(args) == 5)
+            temp_pos = (args[0], args[1])
+            stack_pos = (args[2], args[3])
+            stacked_cans = int(args[4])
+            print(
+                f"STACK: temp_pos={temp_pos}, stack_pos={stack_pos}, stacked_cans={stacked_cans}")
+            result = robot_commander.stack(temp_pos, stack_pos, stacked_cans)
+            print(f"STACK result: {result}")
+
+        elif msg_type == message_types.WAIT_MOVEMENT_FINISHED:
+            assert (len(args) == 0)
+            print("WAIT_MOVEMENT_FINISHED")
+            result = robot_commander.waitMovementFinished()
+            print(f"WAIT_MOVEMENT_FINISHED result: {result}")
+
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True
     while running:

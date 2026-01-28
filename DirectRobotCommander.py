@@ -11,7 +11,7 @@ import time
 from spatialmath import SE2
 from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
-from config import BASE_D
+from config import BACKING_TICKS, BASE_D
 from nav import Nav, NavMove
 from distanceSensorWrapper import DistanceSensorWrapper
 from RavenWrapper import RAVEN_WRAPPER
@@ -304,48 +304,82 @@ class DirectRobotCommander(IRobotCommander):
             traceback.print_exc()
             return False
 
-    def stack(self,
-              temp_pos: Tuple[float, float],
-              stack_pos: Tuple[float, float],
-              stacked_cans: int,
-              ):
-        # Assume robot is gripping can
-        self.nav.override_paths_world_xy(*temp_pos, use_claw=True)
-        self.waitMovementFinished()
+    def stack(
+            self,
+            temp_pos: Tuple[float, float],
+            stack_pos: Tuple[float, float],
+            stacked_cans: int) -> bool:
+        """
+        Stack can at temporary position then stack with existing cans.
 
-        # set can down
-        self.approach_can_with_ds()
-        RAVEN_WRAPPER.lower_elevator(2)
-        RAVEN_WRAPPER.open_gripper()
-        RAVEN_WRAPPER.raise_elevator(2.1)
+        Args:
+            temp_pos: (x, y) temporary position to place can in mm
+            stack_pos: (x, y) position of stack in mm
+            stacked_cans: Number of cans already stacked
 
-        # move backwards so later we can turn without knocking over cans
-        self.nav.addPath(NavMove(-1, -1, 3000))
-        self.waitMovementFinished()
+        Returns:
+            True if successful
+        """
+        try:
+            # Assume robot is gripping can
+            self.nav.override_paths_world_xy(*temp_pos, use_claw=True)
+            self.waitFinishedMoving()
 
-        if (stacked_cans > 0):
-            # rotate
-            self.nav.override_rotate_world_xy(*stack_pos)
-            self.waitMovementFinished()
-
-            # pickup stack
+            # set can down
             self.approach_can_with_ds()
-            self.pickup_can()
-
-            # move back
-            self.nav.addPath(NavMove(-1, -1, 3000))
-            self.waitMovementFinished()
-
-            # go to temporary position
-            self.nav.override_rotate_world_xy(*temp_pos)
-            self.waitMovementFinished()
-            self.approach_can_with_ds()
-
+            RAVEN_WRAPPER.lower_elevator(2)
             RAVEN_WRAPPER.open_gripper()
+            RAVEN_WRAPPER.raise_elevator(2.1)
 
-    def waitMovementFinished(self):
-        while self.nav.moving:
-            time.sleep(0.1)
+            # move backwards so later we can turn without knocking over cans
+            self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
+            self.waitFinishedMoving()
+
+            if (stacked_cans > 0):
+                # rotate
+                self.nav.override_rotate_world_xy(*stack_pos)
+                self.waitFinishedMoving()
+
+                # pickup stack
+                self.approach_can_with_ds()
+                self.pickup_can()
+
+                # move back
+                self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
+                self.waitFinishedMoving()
+
+                # go to temporary position
+                self.nav.override_rotate_world_xy(*temp_pos)
+                self.waitFinishedMoving()
+                self.approach_can_with_ds()
+
+                RAVEN_WRAPPER.open_gripper()
+
+            return True
+        except Exception as e:
+            print(f"Error in stack: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def waitFinishedMoving(self) -> bool:
+        """
+        Wait for current movement to complete.
+
+        Blocks until the robot's navigation system reports no movement.
+
+        Returns:
+            True if successful
+        """
+        try:
+            while self.nav.moving:
+                time.sleep(0.1)
+            return True
+        except Exception as e:
+            print(f"Error in waitMovementFinished: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 
 def is_near_segment(A, B, P, r):

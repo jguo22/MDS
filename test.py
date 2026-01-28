@@ -13,12 +13,16 @@ ds = DistanceSensorWrapper()
 directCommander = DirectRobotCommander(nav, ds, imu)
 
 
-def approach_can_with_ds():
+def approach_can_with_ds() -> bool:
     # Approach can with distance sensor
+
     while ds.get_distance() > 100:
+        if ds.get_distance() > 800:
+            return False
         nav.overridePaths(
             [NavMove(*get_forward_mm(ds.get_distance() - 85))])
         time.sleep(1.2)
+    return True
 
 
 directCommander.pickup_can()

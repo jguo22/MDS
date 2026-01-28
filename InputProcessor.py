@@ -78,7 +78,7 @@ class InputProcessor():
                     if success:
                         print(f"  → Sent relative movement: x={x}, y={y}")
                     else:
-                        print(f"  → ERROR: Failed to send relative movement (no connection?)")
+                        print("  → ERROR: Failed to send relative movement (no connection?)")
 
                 # World coordinates: w x y
                 elif len(parts) == 3 and parts[0].lower() == 'w':
@@ -88,7 +88,7 @@ class InputProcessor():
                     if success:
                         print(f"  → Sent world coordinates: x={x}, y={y}")
                     else:
-                        print(f"  → ERROR: Failed to send world coordinates (no connection?)")
+                        print("  → ERROR: Failed to send world coordinates (no connection?)")
 
                 # Backward compatibility: plain x y defaults to relative
                 elif len(parts) == 2:
@@ -98,7 +98,7 @@ class InputProcessor():
                     if success:
                         print(f"  → Sent relative movement: x={x}, y={y} (default mode)")
                     else:
-                        print(f"  → ERROR: Failed to send relative movement (no connection?)")
+                        print("  → ERROR: Failed to send relative movement (no connection?)")
 
                 else:
                     print("Invalid command. Use: r x y (relative), w x y (world), pickup, or release")

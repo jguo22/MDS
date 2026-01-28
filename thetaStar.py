@@ -1,82 +1,94 @@
 """
-Theta* grid planning with:
-  1) HARD obstacles (e.g., cans) the robot must never collide with
-  2) SEMI-PERMEABLE boundaries the robot may move onto / along, but may NOT fully cross
+Theta* grid planning (grid-cells version + greedy LOS simplification)
 
-Coordinate system: ORIGINAL (Cartesian)
-  - x increases to the right
-  - y increases upward
-  - (0,0) is NOT forced to top-left
+- Planner operates purely in GRID CELLS (integers).
+- Robot/world (mm) conversion handled by convert_world_to_grid / convert_grid_to_world.
+- Obstacle map is built in grid-cells and inflated by robot_radius (in cells).
 
-How semi-permeable boundaries work (key idea):
-  - Boundary cells are traversable.
-  - Space is partitioned into "regions" separated by boundary cells (computed once by flood-fill).
-  - When the robot ENTERS a boundary from a region R, it may move within the boundary,
-    but it may only EXIT back to region R (so it cannot cross to the other side).
-
-This matches:
-  - "can pass over it, but not fully cross"
-  - can approach boundary and move close
-  - cannot traverse through the boundary to the opposite side
-
-Author: (original) Musab Kasbati (@Musab1Blaser)
-Refactor: numpy grids + heap + semi-permeable boundaries + hard obstacles
-Paper: https://cdn.aaai.org/AAAI/2007/AAAI07-187.pdf
+This avoids mixing "world coords" and "grid coords" which breaks LOS smoothing.
 """
 
 import math
 import heapq
-from collections import deque
-
 import numpy as np
 import matplotlib.pyplot as plt
-
 
 show_animation = True
 use_theta_star = True
 
-UNIT_SQUARE_SIZE = 500
-ROBOT_RADIUS = 1000
 
+# -------------------------
+# Field + conversion (robot world mm <-> planner grid cells)
+# -------------------------
+
+FIELD_SIZE_MM = 10 * 304.8          # 3048 mm
+GRID_SIZE = 100                      # 100 x 100 cells
+CELL_SIZE_MM = FIELD_SIZE_MM / GRID_SIZE  # 30.48 mm per cell
+
+GRID_W = 200
+GRID_H = 200
+
+LOGICAL_OFFSET = 50   # how much the 100x100 is inset
+START_GRID_X = LOGICAL_OFFSET + GRID_SIZE // 2  # 50 + 50 = 100
+START_GRID_Y = LOGICAL_OFFSET                   # 50
+
+
+def convert_world_to_grid(wx_mm: float, wy_mm: float):
+    """
+    Robot/world (mm) -> planner grid cells (int)
+
+    Robot frame:
+      +X forward
+      +Y left
+
+    Planner grid:
+      +x right
+      +y up
+
+    Bottom-middle is (50,0).
+    """
+    gx_offset = -wy_mm / CELL_SIZE_MM
+    gy_offset = wx_mm / CELL_SIZE_MM
+
+    gx = int(round(START_GRID_X + gx_offset))
+    gy = int(round(START_GRID_Y + gy_offset))
+    return gx, gy
+
+
+def convert_grid_to_world(gx: int, gy: int):
+    """
+    Planner grid cells -> robot/world (mm)
+    """
+    dx = gx - START_GRID_X
+    dy = gy - START_GRID_Y
+
+    wx_mm = dy * CELL_SIZE_MM
+    wy_mm = -dx * CELL_SIZE_MM
+    return wx_mm, wy_mm
+
+
+def clamp_grid(gx: int, gy: int):
+    gx = max(0, min(GRID_W - 1, gx))
+    gy = max(0, min(GRID_H - 1, gy))
+    return gx, gy
+
+
+# -------------------------
+# Theta* Planner (GRID CELLS ONLY)
+# -------------------------
 
 class ThetaStarPlanner:
-    def __init__(self):
+    def __init__(self, ox, oy, grid_w, grid_h, robot_radius_cells: float):
         """
-        Build planner object. You can add hard obstacles + boundaries, then call build_map().
+        ox, oy: obstacle coordinates in GRID CELLS
+        grid_w, grid_h: grid dimensions
+        robot_radius_cells: inflation radius in CELLS (keep your same value)
         """
-        self.resolution = float(UNIT_SQUARE_SIZE)
-        self.rr = float(ROBOT_RADIUS)
+        self.grid_w = int(grid_w)
+        self.grid_h = int(grid_h)
+        self.rr = float(robot_radius_cells)
 
-        # World bounds (set in build_map)
-        self.min_x = None
-        self.min_y = None
-        self.max_x = None
-        self.max_y = None
-
-        # Grid size (set in build_map)
-        self.x_width = None
-        self.y_width = None
-
-        # Maps (set in build_map)
-        # obstacle_map: True = collision
-        # shape: (x_width, y_width) (matches original code indexing)
-        self.obstacle_map = None
-        # boundary_map: True = boundary cell (traversable)
-        self.boundary_map = None  # shape: (x_width, y_width)
-        # region_map: 0 = boundary/blocked/unlabeled, 1..K = free-space regions
-        # separated by boundaries
-        self.region_map = None  # shape: (x_width, y_width), dtype int32
-
-        # Inputs
-        # list of (x, y) in world coords (e.g., can centers)
-        self._hard_obstacles = []
-        # per-obstacle radius inflation (world units); default robot rr
-        self._hard_obstacle_rr = []
-        # list of polylines; each polyline is list of (x, y) world coords
-        self._boundaries = []
-        self._boundary_thickness = []  # thickness in world units
-
-        # Motion model (dx, dy, cost) in GRID units
+        # 8-connected motion: dx, dy, cost
         self.motion = np.array(
             [
                 [1, 0, 1.0],
@@ -88,462 +100,115 @@ class ThetaStarPlanner:
                 [1, -1, math.sqrt(2)],
                 [1, 1, math.sqrt(2)],
             ],
-            dtype=float
+            dtype=float,
         )
 
-    # -------------------------
-    # Public: add features
-    # -------------------------
-
-    def add_hard_obstacle_points(self, ox, oy, obstacle_radius=None):
-        """
-        Add HARD obstacles (e.g., cans) that the robot must never hit.
-
-        ox, oy: lists (or arrays) of world x/y points.
-        obstacle_radius: if None -> uses robot radius self.rr (inflation).
-                        else -> uses given radius (world units) per point.
-        """
-        if obstacle_radius is None:
-            obstacle_radius = self.rr
-
-        if np.isscalar(obstacle_radius):
-            for x, y in zip(ox, oy):
-                self._hard_obstacles.append((float(x), float(y)))
-                self._hard_obstacle_rr.append(float(obstacle_radius))
-        else:
-            # per-point radii
-            for x, y, r in zip(ox, oy, obstacle_radius):
-                self._hard_obstacles.append((float(x), float(y)))
-                self._hard_obstacle_rr.append(float(r))
-
-    def add_boundary_polyline(self, points, thickness=None):
-        """
-        Add a SEMI-PERMEABLE boundary as a polyline in world coords.
-        The boundary is traversable but cannot be fully crossed.
-
-        points: [(x0,y0), (x1,y1), ...]
-        thickness: world units; if None -> thickness = resolution (about 1 cell thick)
-        """
-        if thickness is None:
-            thickness = self.resolution
-
-        pts = [(float(x), float(y)) for x, y in points]
-        if len(pts) < 2:
-            raise ValueError("Boundary polyline must have at least 2 points.")
-
-        self._boundaries.append(pts)
-        self._boundary_thickness.append(float(thickness))
-
-    # -------------------------
-    # Build maps
-    # -------------------------
-
-    def build_map(self, sx, sy, gx, gy, margin_cells=10):
-        """
-        Build obstacle, boundary, and region maps.
-        Must be called after adding obstacles/boundaries and before planning().
-
-        sx,sy,gx,gy are world coords (to include in bounds).
-        margin_cells adds padding to ensure enough space around everything.
-        """
-        # 1) Determine bounds from start/goal + features
-        xs = [float(sx), float(gx)]
-        ys = [float(sy), float(gy)]
-
-        if self._hard_obstacles:
-            xs.extend([p[0] for p in self._hard_obstacles])
-            ys.extend([p[1] for p in self._hard_obstacles])
-
-        for poly in self._boundaries:
-            xs.extend([p[0] for p in poly])
-            ys.extend([p[1] for p in poly])
-
-        # Expand bounds by margin (in world units)
-        margin = margin_cells * self.resolution
-        self.min_x = math.floor(min(xs) - margin)
-        self.min_y = math.floor(min(ys) - margin)
-        self.max_x = math.ceil(max(xs) + margin)
-        self.max_y = math.ceil(max(ys) + margin)
-
-        self.x_width = int(round((self.max_x - self.min_x) / self.resolution))
-        self.y_width = int(round((self.max_y - self.min_y) / self.resolution))
-
-        if self.x_width <= 0 or self.y_width <= 0:
-            raise ValueError(
-                "Invalid grid size computed. Check bounds/resolution.")
-
-        # 2) Allocate maps (keep original indexing style: [x][y])
-        self.obstacle_map = np.zeros((self.x_width, self.y_width), dtype=bool)
-        self.boundary_map = np.zeros((self.x_width, self.y_width), dtype=bool)
-        self.region_map = np.zeros(
-            (self.x_width, self.y_width), dtype=np.int32)
-
-        # 3) Rasterize hard obstacles (fast stamping with disk mask per unique
-        # radius)
-        self._rasterize_hard_obstacles()
-
-        # 4) Rasterize boundaries (as traversable boundary cells)
-        self._rasterize_boundaries()
-
-        # 5) Compute region labels (free space separated by boundary cells)
-        self._compute_regions()
-
-        # Optional debug prints
-        # print("min_x:", self.min_x)
-        # print("min_y:", self.min_y)
-        # print("max_x:", self.max_x)
-        # print("max_y:", self.max_y)
-        # print("x_width:", self.x_width)
-        # print("y_width:", self.y_width)
-        # print("regions:", int(self.region_map.max()))
-
-    def _rasterize_hard_obstacles(self):
-        if not self._hard_obstacles:
-            return
-
-        # Group points by radius to reuse disk masks
-        by_r = {}
-        for (x, y), r in zip(self._hard_obstacles, self._hard_obstacle_rr):
-            by_r.setdefault(r, []).append((x, y))
-
-        for r_world, pts in by_r.items():
-            r_cells = int(math.ceil(r_world / self.resolution))
-            if r_cells <= 0:
-                # mark nearest cell only
-                for xw, yw in pts:
-                    ix = self.calc_xy_index(xw, self.min_x)
-                    iy = self.calc_xy_index(yw, self.min_y)
-                    if 0 <= ix < self.x_width and 0 <= iy < self.y_width:
-                        self.obstacle_map[ix, iy] = True
-                continue
-
-            # Disk offsets in cells
-            rr2 = r_cells * r_cells
-            dx = np.arange(-r_cells, r_cells + 1, dtype=np.int32)
-            dy = np.arange(-r_cells, r_cells + 1, dtype=np.int32)
-            DX, DY = np.meshgrid(dx, dy, indexing="ij")
-            mask = (DX * DX + DY * DY) <= rr2
-            off_x = DX[mask].ravel()
-            off_y = DY[mask].ravel()
-
-            for xw, yw in pts:
-                cx = self.calc_xy_index(xw, self.min_x)
-                cy = self.calc_xy_index(yw, self.min_y)
-
-                xs = cx + off_x
-                ys = cy + off_y
-                valid = (
-                    (xs >= 0) & (xs < self.x_width) &
-                    (ys >= 0) & (ys < self.y_width)
-                )
-                self.obstacle_map[xs[valid], ys[valid]] = True
-
-    def _rasterize_boundaries(self):
-        if not self._boundaries:
-            return
-
-        for poly, thick_world in zip(
-                self._boundaries, self._boundary_thickness):
-            thick_cells = max(0, int(math.ceil(thick_world / self.resolution)))
-            # Rasterize each segment
-            for (x0, y0), (x1, y1) in zip(poly[:-1], poly[1:]):
-                ix0 = self.calc_xy_index(x0, self.min_x)
-                iy0 = self.calc_xy_index(y0, self.min_y)
-                ix1 = self.calc_xy_index(x1, self.min_x)
-                iy1 = self.calc_xy_index(y1, self.min_y)
-
-                cells = self._bresenham_cells(ix0, iy0, ix1, iy1)
-                for cx, cy in cells:
-                    if 0 <= cx < self.x_width and 0 <= cy < self.y_width:
-                        self.boundary_map[cx, cy] = True
-
-            # Thicken boundary by dilation (still traversable)
-            if thick_cells > 0:
-                self._dilate_boundary(thick_cells)
-
-        # Important: boundary is NOT an obstacle. Ensure obstacle_map doesn't override boundary unless you want.
-        # If a hard obstacle overlaps boundary, it should remain hard obstacle:
-        # (obstacle_map wins in collision checking)
-
-    def _dilate_boundary(self, r_cells: int):
-        # Stamp a disk around all boundary cells (simple and robust)
-        boundary_points = np.argwhere(
-            self.boundary_map)  # returns (x, y) pairs
-        if boundary_points.size == 0:
-            return
-
-        rr2 = r_cells * r_cells
-        dx = np.arange(-r_cells, r_cells + 1, dtype=np.int32)
-        dy = np.arange(-r_cells, r_cells + 1, dtype=np.int32)
-        DX, DY = np.meshgrid(dx, dy, indexing="ij")
-        mask = (DX * DX + DY * DY) <= rr2
-        off_x = DX[mask].ravel()
-        off_y = DY[mask].ravel()
-
-        for cx, cy in boundary_points:
-            xs = cx + off_x
-            ys = cy + off_y
-            valid = (
-                (xs >= 0) & (xs < self.x_width) &
-                (ys >= 0) & (ys < self.y_width)
-            )
-            self.boundary_map[xs[valid], ys[valid]] = True
-
-    def _compute_regions(self):
-        """
-        Label connected free-space regions separated by boundary cells.
-        - Obstacles are blocked.
-        - Boundary cells are NOT part of any region (label 0).
-        """
-        region_id = 0
-        visited = np.zeros((self.x_width, self.y_width), dtype=bool)
-
-        def is_free(ix, iy):
-            if ix < 0 or ix >= self.x_width or iy < 0 or iy >= self.y_width:
-                return False
-            if self.obstacle_map[ix, iy]:
-                return False
-            if self.boundary_map[ix, iy]:
-                return False
-            return True
-
-        for ix in range(self.x_width):
-            for iy in range(self.y_width):
-                if visited[ix, iy]:
-                    continue
-                if not is_free(ix, iy):
-                    visited[ix, iy] = True
-                    continue
-
-                region_id += 1
-                # BFS flood fill
-                q = deque()
-                q.append((ix, iy))
-                visited[ix, iy] = True
-                self.region_map[ix, iy] = region_id
-
-                while q:
-                    x, y = q.popleft()
-                    # 4-connected is enough to define regions (boundaries are
-                    # thin)
-                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < self.x_width and 0 <= ny < self.y_width and not visited[
-                                nx, ny]:
-                            visited[nx, ny] = True
-                            if is_free(nx, ny):
-                                self.region_map[nx, ny] = region_id
-                                q.append((nx, ny))
-
-    # -------------------------
-    # Planning
-    # -------------------------
+        self._build_obstacle_map_fast(ox, oy)
 
     def planning(self, sx, sy, gx, gy):
         """
-        Theta* search with semi-permeable boundaries.
-        Returns rx, ry in world coords.
+        Theta* / A* planning on a grid (ALL IN GRID CELLS).
+        Returns:
+            rx, ry: lists of grid-cell coordinates
         """
-        if self.obstacle_map is None:
-            raise RuntimeError("Call build_map(...) before planning().")
+        sx, sy = int(sx), int(sy)
+        gx, gy = int(gx), int(gy)
 
-        sx_i = self.calc_xy_index(sx, self.min_x)
-        sy_i = self.calc_xy_index(sy, self.min_y)
-        gx_i = self.calc_xy_index(gx, self.min_x)
-        gy_i = self.calc_xy_index(gy, self.min_y)
-
-        if not self._valid_cell(sx_i, sy_i):
+        if not self._valid(sx, sy):
             raise ValueError("Start is invalid or in collision.")
-        if not self._valid_cell(gx_i, gy_i):
+        if not self._valid(gx, gy):
             raise ValueError("Goal is invalid or in collision.")
 
-        start_is_boundary = self.boundary_map[sx_i, sy_i]
-        goal_is_boundary = self.boundary_map[gx_i, gy_i]
-        if start_is_boundary or goal_is_boundary:
-            raise ValueError(
-                "Start/goal must not be on a boundary cell for semi-permeable logic to be well-defined.")
+        INF = np.inf
+        g_cost = np.full((self.grid_w, self.grid_h), INF, dtype=float)
+        closed = np.zeros((self.grid_w, self.grid_h), dtype=bool)
+        parent = np.full((self.grid_w, self.grid_h, 2), -1, dtype=np.int32)
 
-        start_region = int(self.region_map[sx_i, sy_i])
-        goal_region = int(self.region_map[gx_i, gy_i])
-        if start_region == 0 or goal_region == 0:
-            raise ValueError(
-                "Start/goal must be in free space (not boundary / not blocked).")
+        g_cost[sx, sy] = 0.0
+        parent[sx, sy] = (sx, sy)
 
-        # Node state:
-        #   (x, y, home_region)
-        # home_region = -1 for normal free space
-        # home_region = region_id when you are on boundary, meaning "must exit
-        # back to this region"
-        start_state = (sx_i, sy_i, -1)
-        goal_state = (gx_i, gy_i, -1)
-
-        def h(x, y):
-            return math.hypot(gx_i - x, gy_i - y)
-
-        # g cost store
-        g_cost = {start_state: 0.0}
-        parent = {start_state: None}  # parent[state] = prev_state
-
-        # Heap: (f, g, state)
-        pq = [(h(sx_i, sy_i), 0.0, start_state)]
-        closed = set()
+        pq = []
+        heapq.heappush(pq, (self._heuristic(sx, sy, gx, gy), sx, sy))
 
         expand_count = 0
 
         while pq:
-            _, gcur, cur = heapq.heappop(pq)
-            if cur in closed:
+            _, x, y = heapq.heappop(pq)
+            if closed[x, y]:
                 continue
-            closed.add(cur)
-
-            x, y, home = cur
+            closed[x, y] = True
             expand_count += 1
 
-            # Bring back throttled pause (like original)
             if show_animation and (expand_count % 10 == 0):
+                plt.plot(x, y, ".c", markersize=2)
                 plt.pause(0.00001)
 
-            if (x, y) == (gx_i, gy_i) and home == -1:
-                # Found goal in free space
+            if x == gx and y == gy:
                 break
 
-            # Expand neighbors
+            px, py = parent[x, y]
+
             for dx, dy, step_cost in self.motion:
                 nx = x + int(dx)
                 ny = y + int(dy)
 
-                # Must stay in grid
-                if nx < 0 or nx >= self.x_width or ny < 0 or ny >= self.y_width:
+                if not self._valid(nx, ny) or closed[nx, ny]:
                     continue
 
-                # Hard obstacles are never allowed
-                if self.obstacle_map[nx, ny]:
-                    continue
+                # Default A*
+                best_parent_x, best_parent_y = x, y
+                new_g = g_cost[x, y] + float(step_cost)
 
-                n_is_boundary = bool(self.boundary_map[nx, ny])
-                c_is_boundary = bool(self.boundary_map[x, y])
+                # Theta*: try connect via parent(current) if LOS exists
+                if use_theta_star and self._line_of_sight(px, py, nx, ny):
+                    los_g = g_cost[px, py] + math.hypot(nx - px, ny - py)
+                    if los_g < new_g:
+                        new_g = los_g
+                        best_parent_x, best_parent_y = px, py
 
-                # Semi-permeable rules:
-                # - If moving into boundary from free space: set home_region = current region
-                # - If moving within boundary: keep home_region
-                # - If moving from boundary to free space: only allowed if exiting back to home_region
-                if not c_is_boundary:
-                    c_region = int(self.region_map[x, y])
-                    if c_region == 0:
-                        continue  # should not happen unless map issue
+                if new_g < g_cost[nx, ny]:
+                    g_cost[nx, ny] = new_g
+                    parent[nx, ny] = (best_parent_x, best_parent_y)
+                    f = new_g + self._heuristic(nx, ny, gx, gy)
+                    heapq.heappush(pq, (f, nx, ny))
 
-                    if n_is_boundary:
-                        n_home = c_region
-                    else:
-                        n_region = int(self.region_map[nx, ny])
-                        if n_region == 0:
-                            # can't step into boundary-labeled or blocked
-                            # (should be boundary)
-                            continue
-                        # You cannot step into a different free region without going through boundary.
-                        # This prevents "crossing" in free space directly.
-                        if n_region != c_region:
-                            continue
-                        n_home = -1
-                else:
-                    # current is boundary
-                    if home <= 0:
-                        # boundary states must have valid home_region
-                        continue
-                    if n_is_boundary:
-                        n_home = home
-                    else:
-                        n_region = int(self.region_map[nx, ny])
-                        if n_region != home:
-                            # Can't exit boundary into the other side
-                            continue
-                        n_home = -1
-
-                n_state = (nx, ny, n_home)
-                if n_state in closed:
-                    continue
-
-                # Base cost for step
-                tentative_g = gcur + float(step_cost)
-
-                # Theta* shortcut only applies within the same "mode"
-                # (we avoid compressing across boundary logic; keep it correct and simple)
-                if use_theta_star and n_home == -1 and home == -1:
-                    # Try connect from parent of current (if any) to neighbor
-                    pstate = parent.get(cur)
-                    if pstate is not None:
-                        px, py, phome = pstate
-                        if phome == -1:
-                            # Ensure same region and line-of-sight
-                            if self.region_map[px, py] == self.region_map[nx, ny] and self.line_of_sight(
-                                    px, py, nx, ny):
-                                pg = g_cost[pstate]
-                                los_g = pg + math.hypot(nx - px, ny - py)
-                                if los_g < tentative_g:
-                                    tentative_g = los_g
-                                    # change parent for n_state
-                                    # (note: parent state is free-space, and n_state is free-space)
-                                    parent[n_state] = pstate
-
-                # Normal relaxation
-                if tentative_g < g_cost.get(n_state, float("inf")):
-                    g_cost[n_state] = tentative_g
-                    if n_state not in parent:
-                        parent[n_state] = cur
-                    else:
-                        # only overwrite parent if we didn't already set it via
-                        # theta* above
-                        if parent[n_state] != parent.get(n_state):
-                            parent[n_state] = cur
-
-                    f = tentative_g + h(nx, ny)
-                    heapq.heappush(pq, (f, tentative_g, n_state))
-
-        # Reconstruct
-        if goal_state not in parent and goal_state not in g_cost:
-            # might be unreachable
-            return [], []
-
-        rx, ry = self._reconstruct_path(parent, goal_state)
+        rx, ry = self._reconstruct_path(parent, sx, sy, gx, gy)
         return rx, ry
 
-    def _reconstruct_path(self, parent, goal_state):
-        cur = goal_state
-        if cur not in parent:
+    @staticmethod
+    def _heuristic(x, y, gx, gy):
+        return math.hypot(gx - x, gy - y)
+
+    def _valid(self, x, y):
+        return (
+            0 <= x < self.grid_w
+            and 0 <= y < self.grid_h
+            and (not self.obstacle_map[x, y])
+        )
+
+    def _reconstruct_path(self, parent, sx, sy, gx, gy):
+        x, y = gx, gy
+        if parent[x, y, 0] < 0:
             return [], []
 
-        rx, ry = [], []
-        while cur is not None:
-            x, y, _home = cur
-            rx.append(self.calc_grid_position(x, self.min_x))
-            ry.append(self.calc_grid_position(y, self.min_y))
-            cur = parent[cur]
+        rx = [x]
+        ry = [y]
+
+        while not (x == sx and y == sy):
+            px, py = parent[x, y]
+            if px < 0:
+                return [], []
+            x, y = int(px), int(py)
+            rx.append(x)
+            ry.append(y)
 
         rx.reverse()
         ry.reverse()
         return rx, ry
 
-    # -------------------------
-    # Geometry + grid helpers
-    # -------------------------
-
-    def calc_grid_position(self, index, min_position):
-        return index * self.resolution + min_position
-
-    def calc_xy_index(self, position, min_pos):
-        return int(round((position - min_pos) / self.resolution))
-
-    def _valid_cell(self, x, y):
-        if x < 0 or x >= self.x_width or y < 0 or y >= self.y_width:
-            return False
-        if self.obstacle_map[x, y]:
-            return False
-        return True
-
-    def line_of_sight(self, x0, y0, x1, y1):
+    def _line_of_sight(self, x0, y0, x1, y1):
         """
-        Bresenham LOS on grid cells; treats hard obstacles as blocking.
-        Boundary cells do NOT block LOS (they are traversable).
+        Bresenham line traversal in GRID CELLS, collision-checking along the segment.
         """
         dx = abs(x1 - x0)
         dy = abs(y1 - y0)
@@ -552,9 +217,7 @@ class ThetaStarPlanner:
         err = dx - dy
 
         while True:
-            if x0 < 0 or x0 >= self.x_width or y0 < 0 or y0 >= self.y_width:
-                return False
-            if self.obstacle_map[x0, y0]:
+            if not self._valid(x0, y0):
                 return False
             if x0 == x1 and y0 == y1:
                 return True
@@ -566,134 +229,199 @@ class ThetaStarPlanner:
                 err += dx
                 y0 += sy
 
-    @staticmethod
-    def _bresenham_cells(x0, y0, x1, y1):
+    def _build_obstacle_map_fast(self, ox, oy):
         """
-        Return list of grid cells (x,y) along segment using Bresenham.
+        Build obstacle map in GRID CELLS.
+        Inflates obstacles by self.rr (cells).
         """
-        cells = []
-        dx = abs(x1 - x0)
-        dy = abs(y1 - y0)
-        sx = 1 if x0 < x1 else -1
-        sy = 1 if y0 < y1 else -1
-        err = dx - dy
+        self.obstacle_map = np.zeros((self.grid_w, self.grid_h), dtype=bool)
 
-        x, y = x0, y0
-        while True:
-            cells.append((x, y))
-            if x == x1 and y == y1:
-                break
-            e2 = 2 * err
-            if e2 > -dy:
-                err -= dy
-                x += sx
-            if e2 < dx:
-                err += dx
-                y += sy
-        return cells
+        ox = np.asarray(ox, dtype=np.int32)
+        oy = np.asarray(oy, dtype=np.int32)
+
+        # radius in cells (keep your same "robot_radius" concept)
+        r_cells = int(math.ceil(self.rr))
+        if r_cells <= 0:
+            valid = (
+                ox >= 0) & (
+                ox < self.grid_w) & (
+                oy >= 0) & (
+                oy < self.grid_h)
+            self.obstacle_map[ox[valid], oy[valid]] = True
+            return
+
+        rr2 = r_cells * r_cells
+        dx = np.arange(-r_cells, r_cells + 1, dtype=np.int32)
+        dy = np.arange(-r_cells, r_cells + 1, dtype=np.int32)
+        DX, DY = np.meshgrid(dx, dy, indexing="ij")
+        mask = (DX * DX + DY * DY) <= rr2
+        off_x = DX[mask].ravel()
+        off_y = DY[mask].ravel()
+
+        for cx, cy in zip(ox, oy):
+            x_idx = cx + off_x
+            y_idx = cy + off_y
+            valid = (
+                (x_idx >= 0) & (x_idx < self.grid_w) &
+                (y_idx >= 0) & (y_idx < self.grid_h)
+            )
+            self.obstacle_map[x_idx[valid], y_idx[valid]] = True
+
+    # -------------------------
+    # Path simplification (GRID CELLS)
+    # -------------------------
+
+    def simplify_path_los_greedy(self, rx, ry):
+        """
+        Greedy LOS shortcutting:
+        Builds the longest visible segment repeatedly => fewest turns in practice.
+        Input/Output in GRID CELLS.
+        """
+        if not rx or len(rx) < 3:
+            return rx, ry
+
+        pts = list(zip(rx, ry))
+        out = [pts[0]]
+
+        i = 0
+        while i < len(pts) - 1:
+            # extend j as far as LOS holds
+            j = i + 1
+            last_good = j
+
+            while j < len(pts):
+                x0, y0 = out[-1]
+                x1, y1 = pts[j]
+                if self._line_of_sight(x0, y0, x1, y1):
+                    last_good = j
+                    j += 1
+                else:
+                    break
+
+            out.append(pts[last_good])
+            i = last_good
+
+        rx2, ry2 = zip(*out)
+        return list(rx2), list(ry2)
+
+
+# -------------------------
+# Example main
+# -------------------------
+
+
+class ThetaStar():
+    def __init__(self):
+        self.ox, self.oy = [], []
+        self.robot_radius = 1  # 177 mm / 30.48 mm = 5.8 cells
+
+        # --- Start/goal from robot-world (mm) -> grid
+        self.sx, self.sy = convert_world_to_grid(0, 0)
+        self.gx, self.gy = convert_world_to_grid(0, 0)
+        self.sx, self.sy = clamp_grid(self.sx, self.sy)
+        self.gx, self.gy = clamp_grid(self.gx, self.gy)
+
+        # Make borders
+
+        MIN_B = 0
+        MAX_B = GRID_W - 1   # 199
+
+        # bottom & top
+        for x in range(MIN_B, MAX_B + 1):
+            self.ox.append(x)
+            self.oy.append(MIN_B)     # y = -50 mapped to 0
+            self.ox.append(x)
+            self.oy.append(MAX_B)     # y = 150 mapped to 199
+
+        # left & right
+        for y in range(MIN_B, MAX_B + 1):
+            self.ox.append(MIN_B)
+            self.oy.append(y)
+            self.ox.append(MAX_B)
+            self.oy.append(y)
+
+    def set_start(self, world_x, world_y):
+        self.sx, self.sy = convert_world_to_grid(world_x, world_y)
+        self.sx, self.sy = clamp_grid(self.sx, self.sy)
+
+    def set_goal(self, world_x, world_y):
+        self.gx, self.gy = convert_world_to_grid(world_x, world_y)
+        self.gx, self.gy = clamp_grid(self.gx, self.gy)
+
+    def prune_near_collinear(self, rx, ry, angle_deg=10.0):
+        """
+        Remove points that introduce only small heading changes.
+        Input/Output in GRID CELLS.
+        """
+        if len(rx) < 3:
+            return rx, ry
+
+        outx, outy = [rx[0]], [ry[0]]
+
+        def angle(ax, ay, bx, by):
+            da = math.hypot(ax, ay)
+            db = math.hypot(bx, by)
+            if da == 0 or db == 0:
+                return 0.0
+            c = max(-1.0, min(1.0, (ax * bx + ay * by) / (da * db)))
+            return math.degrees(math.acos(c))
+
+        for i in range(1, len(rx) - 1):
+            v1x, v1y = rx[i] - rx[i - 1], ry[i] - ry[i - 1]
+            v2x, v2y = rx[i + 1] - rx[i], ry[i + 1] - ry[i]
+            if angle(v1x, v1y, v2x, v2y) > angle_deg:
+                outx.append(rx[i])
+                outy.append(ry[i])
+
+        outx.append(rx[-1])
+        outy.append(ry[-1])
+        return outx, outy
+
+    def addCan(self, world_x, world_y):
+        radius = self.robot_radius
+        for i in range(-radius, radius):
+            for j in range(-radius, radius):
+                if i * i + j * j <= radius * radius:
+                    obs_gx, obs_gy = convert_world_to_grid(world_x, world_y)
+                    obs_gx, obs_gy = clamp_grid(obs_gx + i, obs_gy + j)
+                    self.ox.append(obs_gx)
+                    self.oy.append(obs_gy)
+    # Return a list of waypoints
+
+    def path_find(self):
+        planner = ThetaStarPlanner(
+            self.ox, self.oy, GRID_W, GRID_H, self.robot_radius)
+        rx, ry = planner.planning(self.sx, self.sy, self.gx, self.gy)
+        rx, ry = planner.simplify_path_los_greedy(rx, ry)
+        rx, ry = self.prune_near_collinear(rx, ry, angle_deg=10.0)
+        return [convert_grid_to_world(x, y) for x, y in zip(rx, ry)]
 
 
 def main():
-    print(__file__ + " start!!")
+    thetaStar = ThetaStar()
+    thetaStar.addCan(700, 0)
+    thetaStar.set_goal(1000, 0)
 
-    # start and goal position (world coords, original Cartesian)
-    sx, sy = 10.0, 10.0
-    gx, gy = 50.0, 50.0
+    # # --- Plot setup
+    # if show_animation:
+    #     plt.figure()
+    #     plt.plot(thetaStar.ox, thetaStar.oy, ".k")
+    #     plt.plot(thetaStar.sx, thetaStar.sy, "og")
+    #     plt.plot(thetaStar.gx, thetaStar.gy, "xb")
+    #     plt.grid(True)
+    #     plt.axis("equal")
+    #     plt.title("Theta* in GRID CELLS")
 
-    planner = ThetaStarPlanner()
+    # # --- Plot final
+    # if show_animation and thetaStar.rx and ry:
+    #     plt.plot(rx, ry, "-r", linewidth=2)
+    #     plt.show()
 
-    # -------------------------
-    # Example: add HARD obstacles (cans)
-    # -------------------------
-    # These points are "never hit" obstacles. Increase obstacle_radius to keep
-    # extra distance from cans.
-    can_x = [30.0, 31.0, 32.0]
-    can_y = [30.0, 30.5, 29.7]
-    planner.add_hard_obstacle_points(
-        can_x, can_y, obstacle_radius=1.2)  # slightly > robot_radius
-
-    # -------------------------
-    # Example: add SEMI-PERMEABLE boundaries
-    # -------------------------
-    # A "fence" line the robot can step onto but cannot fully cross.
-    fence = [(20.0, -10.0), (20.0, 60.0)]
-    planner.add_boundary_polyline(fence, thickness=0.5)
-
-    # Another boundary (diagonal)
-    fence2 = [(40.0, 60.0), (60.0, 40.0)]
-    planner.add_boundary_polyline(fence2, thickness=0.5)
-
-    # -------------------------
-    # Also add the outer walls as HARD obstacles (classic closed box)
-    # (If you want them to be semi-permeable instead, add them as boundaries, not obstacles.)
-    # -------------------------
-    ox, oy = [], []
-    for i in range(-10, 61):
-        ox.append(i)
-        oy.append(-10.0)
-        ox.append(i)
-        oy.append(60.0)
-    for i in range(-10, 61):
-        ox.append(-10.0)
-        oy.append(i)
-        ox.append(60.0)
-        oy.append(i)
-    planner.add_hard_obstacle_points(ox, oy, obstacle_radius=ROBOT_RADIUS)
-
-    # Build maps (bounds computed from features + start/goal)
-    planner.build_map(sx, sy, gx, gy, margin_cells=10)
-
-    # -------------------------
-    # Visualization
-    # -------------------------
-    if show_animation:
-        plt.figure()
-        # draw hard obstacles
-        obs = np.argwhere(planner.obstacle_map)  # (x,y)
-        if obs.size:
-            wx = [
-                planner.calc_grid_position(
-                    int(x),
-                    planner.min_x) for x,
-                y in obs]
-            wy = [
-                planner.calc_grid_position(
-                    int(y),
-                    planner.min_y) for x,
-                y in obs]
-            plt.plot(wx, wy, ".k", markersize=2)
-
-        # draw boundaries
-        bnd = np.argwhere(planner.boundary_map)
-        if bnd.size:
-            bx = [
-                planner.calc_grid_position(
-                    int(x),
-                    planner.min_x) for x,
-                y in bnd]
-            by = [
-                planner.calc_grid_position(
-                    int(y),
-                    planner.min_y) for x,
-                y in bnd]
-            plt.plot(bx, by, ".y", markersize=2)
-
-        plt.plot(sx, sy, "og")
-        plt.plot(gx, gy, "xb")
-        plt.grid(True)
-        plt.axis("equal")
-
-    # Plan
-    rx, ry = planner.planning(sx, sy, gx, gy)
-
-    # print("rx:", rx)
-    # print("ry:", ry)
-
-    if show_animation:
-        if rx and ry:
-            plt.plot(rx, ry, "-r", linewidth=2)
-        plt.pause(0.01)
-        plt.show()
+    # --- If you want to send to robot: convert each waypoint to world mm
+    world_waypoints = thetaStar.path_find()
+    print("world waypoints (mm):")
+    for w in world_waypoints:
+        print(w)
 
 
 if __name__ == "__main__":

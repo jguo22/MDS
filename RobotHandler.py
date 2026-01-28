@@ -2,20 +2,19 @@ import time
 import math
 import numpy as np
 from enum import Enum, auto
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from spatialmath import SE2
 from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
-import navHelpers
 from vision.segment import segmentImage
 from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
 from vision.can_utils import getCans
 from vision.relativeCoordinates import relative_to_world, world_to_relative
 from profiler import Profiler
-from thetaStar import ThetaStarPlanner
+from thetaStar import ThetaStar
 from streamer import Streamer
-from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH
+from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH, TEMP_STACK_OFFSET
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -28,6 +27,7 @@ class RobotState(Enum):
     MidgameGrabbing = auto()
     MidgameGoToZone = auto()
     MidgameStacking = auto()
+    FinishedStacking = auto()
 
 
 class RobotHandler():
@@ -38,14 +38,15 @@ class RobotHandler():
 
         # BEST GUESS MEMORY VARIABLES
         # four vertices of scoring zones in world coords
-        # np.array([[x1, y1], [x2, y2], [x3, y3], [x4, y4]])
-        self.zones = [None, None, None, None, None, None]
+        # list of zones, each zone is [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]]
+        self.zones: List[Optional[np.ndarray]] = [
+            None, None, None, None, None, None]
         self.zone_confidences = [0, 0, 0, 0, 0, 0]
         # Store planned path to cans
         self.cans: List[Tuple[float, float]] = []
         self.can_colors: List[int] = []
-        # x, y, stack size, color
-        self.stacked_cans: List[Tuple[float, float, int, int]] = []
+        # x, y, stack size, color, id
+        self.stacked_cans: List[Tuple[float, float, int, int, int]] = []
         self.borders: List[Tuple[int, int]] = []
 
         # VARIABLES FOR CURRENT STATE
@@ -53,8 +54,9 @@ class RobotHandler():
         self.current_can: Tuple[float, float, int] = (0, 0, -1)
         # zone to go to
         self.targetZone: int = -1
-        # target of stacking state: x, y, height
-        self.targetStack: Tuple[float, float, float] = (0, 0, 0)
+        # target of stacking state: stack id
+        self.targetStackId: int = -1
+        self.lastStackId: int = -1
 
         # random
         self.startTime = time.time()
@@ -62,7 +64,7 @@ class RobotHandler():
         self.lastTimeSentPath = 0
 
         self.robot_commander = robot_commander
-        self.thetaStar = ThetaStarPlanner()
+        self.thetaStar = ThetaStar()
         self.profiler = Profiler(False)
         self.telemetry = Streamer()
 
@@ -117,7 +119,7 @@ class RobotHandler():
             for i in range(len(self.cans)):
                 not_repeat = True
                 for j in range(len(locations)):
-                    if distance(
+                    if getDistance(
                             self.cans[i],
                             locations[j]) < CAN_DIAMETER:
                         not_repeat = False
@@ -128,6 +130,23 @@ class RobotHandler():
 
             self.cans = locations
             self.can_colors = colors
+
+            # TESTING PURPOSES
+            self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
+                                               [922.48, -271.63],
+                                               [1391.22, -262.14],
+                                               [1382.95, 269.04]])
+            self.zone_confidences[GREEN_ZONE] = 2
+            self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
+                                             [1791.50, 311.42],
+                                             [1438.28, 7.33],
+                                             [1710.01, -324.33]])
+            self.zone_confidences[RED_ZONE] = 2
+            self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
+                                                [1832.41, -610.53],
+                                                [1732.2, -675.07],
+                                                [1811.42, -762.24]])
+            self.zone_confidences[GOLDEN_ZONE] = 2
 
         self.profiler.record("scanAndSetZones")
 
@@ -148,6 +167,8 @@ class RobotHandler():
             self.handleMidgameGoToZone()
         elif self.state == RobotState.MidgameStacking:
             self.handleMidgameStacking()
+        elif self.state == RobotState.FinishedStacking:
+            self.handleFinishedStacking()
         else:
             print("ERROR: INVALID STATE")
 
@@ -286,76 +307,85 @@ class RobotHandler():
             return
 
         goal = None
-        for x, y, size, color in self.stacked_cans:
+        for stack in self.stacked_cans:
+            x, y, size, color, id = stack
             if color == self.targetZone:
                 if isPointInPoly((x, y), self.zones[self.targetZone]):
                     goal = (x, y)
+                    self.targetStackId = id
+                    break
                 else:
                     print("WARNING: CAN STACK NOT IN ZONE")
         if goal is None:
             goal = getSquareCenter(self.zones[self.targetZone])
 
         if self.isPointClose(*goal):
+            # TODO: this might be not robust
+            self.robot_commander.approach_can_with_ds()
+            self.robot_commander.pickup_can()
             self.handleMidgameStacking()
         else:
             self.thetaStarAndSend(*goal)
 
     def handleMidgameStacking(self):
-        """Handle MidgameStacking state"""
+        """
+            Once the robot is already holding a can
+            Call the function to stack it in one superframe
+        """
         self.state = RobotState.MidgameStacking
 
-        cx, cy, height = self.targetStack
+        targetStack = None
+        for stack in self.stacked_cans:
+            stackId = stack[4]
+            if self.targetStackId == stackId:
+                targetStack = stack
+                break
 
-        if self.isPointClose(cx, cy):
-            # TODO: logic for 2+ stack
-            self.robot_commander.approach_can_with_ds()
-            self.robot_commander.release_can()
+        if targetStack is None:
+            x, y = getSquareCenter(self.zones[self.targetZone])
+            targetStack = (x, y, 0, self.targetZone, self.lastStackId + 1)
+            self.lastStackId += 1
 
-            # update stack
-            spot = relative_to_world([50, 0])
+        # get the target
+        cx, cy, color, height, id = targetStack
 
-            self.state = RobotState.MidgameGoToCan
+        # calculate offsetted position
+        zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
+        dx = zone_x - cx
+        dy = zone_y - cy
+        distance = math.sqrt(dx * dx + dy * dy)
+
+        # Move 200mm towards zone center (or less if zone center is closer)
+        if distance > 0:
+            temp_pos = (cx + dx / distance * TEMP_STACK_OFFSET,
+                        cy + dy / distance * TEMP_STACK_OFFSET)
         else:
-            self.thetaStarAndSend(cx, cy)
-            self.state = RobotState.MidgameGoToZone
+            # Stack is already at zone center, offset in x direction
+            temp_pos = (cx + TEMP_STACK_OFFSET, cy)
 
-    def stack():
-        global can_in_center_pos, stacked_cans
-        # Assume robot is gripping can
-        nav.override_paths_world_xy(
-            *offset_pos if can_in_center_pos else center_pos,
-            use_claw=True)
-        time.sleep(4)
-        nav.ravenWrapper.lower_elevator()
-        time.sleep(1)
-        nav.ravenWrapper.open_gripper()
-        time.sleep(1)
-        nav.ravenWrapper.raise_elevator()
-        time.sleep(1)
-        nav.addPath(NavMove(-1, -1, 3000))
-        time.sleep(1.5)
-        if (stacked_cans > 0):
-            nav.override_rotate_world_xy(
-                *center_pos if can_in_center_pos else offset_pos)
-            time.sleep(1)
-            approach_can_with_ds()
-            nav.ravenWrapper.lower_elevator()
-            time.sleep(1)
-            nav.ravenWrapper.close_gripper()
-            time.sleep(0.3)
-            nav.ravenWrapper.raise_elevator()
-            time.sleep(0.5)
-            nav.addPath(NavMove(-1, -1, 3000))
-            time.sleep(2)
-            nav.override_rotate_world_xy(
-                *offset_pos if can_in_center_pos else center_pos)
-            time.sleep(1)
-            approach_can_with_ds()
-            nav.ravenWrapper.open_gripper()
+        stack_pos = (cx, cy)
+        self.robot_commander.stack(temp_pos, stack_pos, height)
 
-        can_in_center_pos = not can_in_center_pos
-        stacked_cans += 1
-        time.sleep(2)
+        self.state = RobotState.FinishedStacking
+
+    def handleFinishedStacking(self):
+        # get position of stacked cans, which should be right in front after
+        # stacking
+        cx, cy = relative_to_world(
+            (CLAW_OFFSET + CAN_DIAMETER / 2, 0), self.robot_pose)
+
+        # update list of stacked cans
+        for i in range(len(self.stacked_cans)):
+            _x, _y, color, prev_height, id = self.stacked_cans[i]
+            if self.targetStackId == id:
+                self.stacked_cans[i] = (cx, cy, color, prev_height + 1, id)
+                break
+
+        self.thetaStar.addCan(cx, cy)
+
+        self.robot_commander.override_movement([-1, -1, 3000])
+        self.robot_commander.waitFinishedMoving()
+        self.state = RobotState.MidgameGoToCan
 
     # ------------------------ HELPER FUNCTIONS .----------------------------
 
@@ -511,8 +541,8 @@ class RobotHandler():
         return in_rectangle
 
     def send_waypoints(self, waypoints: List[Tuple[float, float]]):
-        x = self.robot_pose.x
-        y = self.robot_pose.y
+        x = float(self.robot_pose.x)
+        y = float(self.robot_pose.y)
         args = [x, y]
         for point in waypoints:
             args.append(point[0])
@@ -523,17 +553,18 @@ class RobotHandler():
     def thetaStarAndSend(self, x: float, y: float):
         robot_x = self.robot_pose.x
         robot_y = self.robot_pose.y
-        self.thetaStar.build_map(robot_x, robot_y, x, y)
-        rx, ry = self.thetaStar.planning(robot_x, robot_y, x, y)
+
+        self.thetaStar.set_start(robot_x, robot_y)
+        self.thetaStar.set_goal(x, y)
+        rx, ry = self.thetaStar.path_find()
+
         waypoints = list(zip(rx, ry))
         self.send_waypoints(waypoints)
 
     def updateTelemetry(self):
         # self.telemetry.set_img(cv2.Mat(self.frame_top))
         scaling = 0.001
-        x = self.robot_pose.x
-        y = self.robot_pose.y
-        theta = self.robot_pose.theta()
+        x, y, theta = unpackPose(self.robot_pose)
         self.telemetry.update_odom_state(x * scaling, y * scaling, theta)
 
         circles = []
@@ -597,9 +628,19 @@ class RobotHandler():
         return result
 
 
-def distance(point1, point2):
+def getDistance(point1, point2):
     x1, y1 = point1
     x2, y2 = point2
     dx = x1 - x2
     dy = y1 - y2
     return math.sqrt(dx * dx + dy * dy)
+
+
+def unpackPose(pose: SE2) -> Tuple[float, float, float]:
+    x = float(pose.x)
+    y = float(pose.y)
+    theta = pose.theta()
+    if type(theta) is float:
+        return x, y, theta
+    else:
+        return x, y, theta[0]

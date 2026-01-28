@@ -4,6 +4,7 @@ Zone detection and quadrilateral utilities.
 import cv2 as cv
 import numpy as np
 from shapely.geometry import Polygon
+from typing import Tuple
 
 from colors import GOLDEN_ZONE, ZONE_CLASS_NAMES
 from config import BIG_ZONE_SIDE_LENGTH, SMALL_ZONE_SIDE_LENGTH
@@ -14,7 +15,7 @@ from .relativeCoordinates import world_to_pixel
 from spatialmath import SE2
 
 
-def getSquareCenter(square):
+def getSquareCenter(square) -> Tuple[float, float]:
     """
     Calculates the center point of a square.
 
@@ -345,7 +346,7 @@ def getZones(result, image, is_top=True):
 
         # Skip if square fitting failed
         if square is None:
-            print(f"  -> Square fitting failed")
+            print("  -> Square fitting failed")
             continue
 
         print(f"  -> Square fitted with IoU={iou:.2f}")

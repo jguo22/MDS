@@ -126,3 +126,34 @@ class IRobotCommander(ABC):
             True if successfully approached can, False if no can detected
         """
         pass
+
+    @abstractmethod
+    def stack(
+            self,
+            temp_pos: Tuple[float, float],
+            stack_pos: Tuple[float, float],
+            stacked_cans: int) -> bool:
+        """
+        Stack can at temporary position then stack with existing cans.
+
+        Args:
+            temp_pos: (x, y) temporary position to place can in mm
+            stack_pos: (x, y) position of stack in mm
+            stacked_cans: Number of cans already stacked
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def waitFinishedMoving(self) -> bool:
+        """
+        Wait for current movement to complete.
+
+        Blocks until the robot's navigation system reports no movement.
+
+        Returns:
+            True if successful
+        """
+        pass

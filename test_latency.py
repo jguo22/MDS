@@ -217,9 +217,9 @@ def test_latency_client(
                 print(f"Test mode:       Image ({image_size}x{image_size})")
                 print(f"Data size:       {data_size_kb:.1f} KB per frame")
                 print(f"JPEG quality:    {jpeg_quality}")
-                print(f"Note:            Server sends small ACK, not full frame echo")
+                print("Note:            Server sends small ACK, not full frame echo")
             else:
-                print(f"Test mode:       Command messages (full echo)")
+                print("Test mode:       Command messages (full echo)")
             print(f"Tests completed: {len(latencies)}/{num_tests}")
             print(f"Min:             {min(latencies):.2f}ms")
             print(f"Max:             {max(latencies):.2f}ms")
@@ -231,7 +231,7 @@ def test_latency_client(
             if use_images:
                 # For images: measure is send time + small ACK time (mostly
                 # one-way)
-                print(f"Interpretation:  ~One-way send latency + small ACK")
+                print("Interpretation:  ~One-way send latency + small ACK")
                 # Calculate throughput based on actual time
                 avg_latency_s = statistics.mean(latencies) / 1000
                 throughput_mbps = (data_size_kb * 8 / 1024) / avg_latency_s
@@ -259,7 +259,7 @@ def main():
         '--port',
         type=int,
         default=None,
-        help=f'Port to use (default: COMMAND_PORT for small messages, VIDEO_PORT for images)')
+        help='Port to use (default: COMMAND_PORT for small messages, VIDEO_PORT for images)')
     parser.add_argument('--num-tests', type=int, default=100,
                         help='Number of ping-pong tests (default: 100)')
     parser.add_argument(

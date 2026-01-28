@@ -1,7 +1,5 @@
 from typing import Optional
 import numpy as np
-import cv2
-import time
 
 
 class DummyCameraCapture:
@@ -29,10 +27,10 @@ class DummyCameraCapture:
         self._is_open = True
         self._frame_count = 0
         print(f"Dummy camera opened: {self.source}")
-        print(f"Actual FPS: 30")
+        print("Actual FPS: 30")
         print(f"Actual Width: {self.width}")
         print(f"Actual Height: {self.height}")
-        print(f"Actual Buffer: 1")
+        print("Actual Buffer: 1")
         return True
 
     def read(self) -> Optional[np.ndarray]:

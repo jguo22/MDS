@@ -219,3 +219,55 @@ class RemoteRobotCommander(IRobotCommander):
             message_types.APPROACH_CAN_DS,
             []
         )
+
+    def stack(
+            self,
+            temp_pos: Tuple[float, float],
+            stack_pos: Tuple[float, float],
+            stacked_cans: int) -> bool:
+        """
+        Stack can at temporary position then stack with existing cans.
+
+        Args:
+            temp_pos: (x, y) temporary position to place can in mm
+            stack_pos: (x, y) position of stack in mm
+            stacked_cans: Number of cans already stacked
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print(
+            f'Sending stack command: temp_pos={temp_pos}, stack_pos={stack_pos}, stacked_cans={stacked_cans}')
+        args = [
+            temp_pos[0],
+            temp_pos[1],
+            stack_pos[0],
+            stack_pos[1],
+            float(stacked_cans)]
+        return protocol.send_command(
+            self.command_socket,
+            message_types.STACK,
+            args
+        )
+
+    def waitFinishedMoving(self) -> bool:
+        """
+        Wait for current movement to complete.
+
+        Blocks until the robot's navigation system reports no movement.
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending wait movement finished command')
+        return protocol.send_command(
+            self.command_socket,
+            message_types.WAIT_MOVEMENT_FINISHED,
+            []
+        )

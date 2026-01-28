@@ -1,5 +1,4 @@
 import numpy as np
-import shutil
 import cv2 as cv
 import glob
 

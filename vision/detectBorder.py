@@ -1,7 +1,5 @@
 import cv2
 import numpy as np
-from vision.segment import segmentImage
-from vision.zone_utils import getZones
 
 
 def detect_boundary_mask(bgr_img):
