@@ -3,8 +3,8 @@ import time
 import threading
 from vision.relativeCoordinates import world_to_relative
 from spatialmath import SE2
-from navHelpers import get_forward_mm, get_rotate
-from config import CLAW_OFFSET, TICK_ROTATION, NAV_FRAME_TIME, ANGLE_D, ANGLE_PROP, TURN_CONSTANT
+from navHelpers import get_arc, get_forward_mm, get_rotate
+from config import CLAW_OFFSET, MIN_ROTATION, TICK_ROTATION, NAV_FRAME_TIME, ANGLE_D, ANGLE_PROP, TURN_CONSTANT
 from RavenWrapper import RAVEN_WRAPPER, LEFT_MOTOR, RIGHT_MOTOR
 from IMUWrapper import IMUWrapper
 
@@ -220,33 +220,35 @@ class Nav:
             world_x: Target x position in world frame (mm)
             world_y: Target y position in world frame (mm)
         """
-        x, y = self.get_relative_position(world_x, world_y)
+        dx, dy = self.get_relative_position(world_x, world_y)
 
         # Calculate angle to rotate to face the target
         # atan2(y, x) gives the angle from robot's forward axis to the target
-        target_angle = math.atan2(y, x)
+        target_angle = math.atan2(dy, dx)
 
         # Calculate distance to target
-        target_distance = math.sqrt(x**2 + y**2)
+        target_distance = math.sqrt(dx**2 + dy**2)
 
         # Create movement path: rotate, then forward
         movements = []
 
-        movements.append(
-            NavMove(
-                *get_rotate(target_angle),
-                False,
-                correct_angle=True))
+        if abs(target_angle) > MIN_ROTATION:
+            movements.append(
+                NavMove(
+                    *get_rotate(target_angle),
+                    False,
+                    correct_angle=True))
 
-        distance = get_forward_mm(target_distance)[2]
+            distance = get_forward_mm(target_distance)[2]
 
-        movements.append(
-            NavMove(1, 1,
-                    distance if not use_claw else distance - CLAW_OFFSET,
-                    False))
-
-        # Override current path with new movements
-        self.overridePaths(movements)
+            movements.append(
+                NavMove(1, 1,
+                        distance if not use_claw else distance - CLAW_OFFSET,
+                        False))
+            # Override current path with new movements
+            self.overridePaths(movements)
+        else:
+            self.overridePaths([NavMove(*get_arc(dx, dy))])
 
     def get_world_claw_position(self):
         """

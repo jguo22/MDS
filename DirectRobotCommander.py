@@ -11,12 +11,12 @@ import time
 from spatialmath import SE2
 from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
-from config import BACKING_TICKS, BASE_D
+from config import BACKING_TICKS, BASE_D, MIN_ROTATION
 from nav import Nav, NavMove
 from distanceSensorWrapper import DistanceSensorWrapper
 from RavenWrapper import RAVEN_WRAPPER
 from earlyGame import EarlyGame
-from navHelpers import get_forward_mm, get_rotate
+from navHelpers import get_arc, get_forward_mm, get_rotate
 from vision.relativeCoordinates import get_movement_plan
 
 
@@ -210,38 +210,8 @@ class DirectRobotCommander(IRobotCommander):
         Returns:
             True if successful
         """
-        try:
-            # Get current robot position from nav odometry
-            current_x, current_y = RAVEN_WRAPPER.get_odometry()
-            current_heading = self.imu.get_heading()
-
-            # Calculate relative position to target
-            dx = world_x - current_x
-            dy = world_y - current_y
-            distance = math.sqrt(dx * dx + dy * dy)
-
-            # Calculate target heading in world frame
-            target_heading = math.atan2(dy, dx)
-
-            # Calculate rotation needed from current heading
-            rotation_angle = target_heading - current_heading
-
-            rotate_move = get_rotate(rotation_angle)
-            forward_move = get_forward_mm(distance)
-
-            print(
-                f'World xy movement: target=({world_x}, {world_y}) current=({
-                    current_x: .1f}, {
-                    current_y: .1f}) ' f'rotate={
-                    rotation_angle: .3f}rad distance={
-                    distance: .1f}mm')
-
-            movement_args = list(rotate_move) + list(forward_move)
-            return self.override_movement(movement_args)
-
-        except Exception as e:
-            print(f"Error in override_world_xy: {e}")
-            return False
+        self.nav.override_paths_world_xy(world_x, world_y)
+        return True
 
     def pickup_can(self) -> bool:
         RAVEN_WRAPPER.open_gripper()

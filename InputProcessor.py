@@ -35,6 +35,8 @@ class InputProcessor():
         print("  pickup   - Pick up can with gripper")
         print("  release  - Release can from gripper")
         print("  start    - Start autonomous robot operation")
+        print("  pause    - Pause autonomous operation")
+        print("  resume   - Resume autonomous operation")
         print("  quit     - Exit\n")
         while True:
             try:
@@ -51,6 +53,22 @@ class InputProcessor():
                     if self.robotHandler is not None:
                         self.robotHandler.started = True
                         print("  → Robot autonomous operation STARTED")
+                    else:
+                        print("  → Error: RobotHandler not available")
+
+                # Pause autonomous operation
+                elif user_input.lower() == 'pause':
+                    if self.robotHandler is not None:
+                        self.robotHandler.paused = True
+                        print("  → Robot autonomous operation PAUSED")
+                    else:
+                        print("  → Error: RobotHandler not available")
+
+                # Resume autonomous operation
+                elif user_input.lower() == 'resume':
+                    if self.robotHandler is not None:
+                        self.robotHandler.paused = False
+                        print("  → Robot autonomous operation RESUMED")
                     else:
                         print("  → Error: RobotHandler not available")
 
@@ -101,7 +119,7 @@ class InputProcessor():
                         print("  → ERROR: Failed to send relative movement (no connection?)")
 
                 else:
-                    print("Invalid command. Use: r x y (relative), w x y (world), pickup, or release")
+                    print("Invalid command. Use: r x y (relative), w x y (world), pickup, release, start, pause, or resume")
 
             except ValueError:
                 print("Invalid numbers. Try again.")

@@ -35,6 +35,7 @@ class RobotHandler():
         # state variables
         self.state = RobotState.StartScan
         self.started = False
+        self.paused = False
 
         # BEST GUESS MEMORY VARIABLES
         # four vertices of scoring zones in world coords
@@ -95,6 +96,11 @@ class RobotHandler():
         self.frame_id = frame_info.frame_id
         self.robot_pose = SE2(frame_info.x, frame_info.y, frame_info.theta)
         self.distanceSensed = frame_info.distanceSensed
+
+        # Skip processing if paused
+        if self.paused:
+            self.profiler.end_frame()
+            return
 
         result_top = segmentImage(self.frame_top)
         # result_bottom = segmentImage(self.frame_bottom)
@@ -266,7 +272,8 @@ class RobotHandler():
             self.handleMidgameGrabbing()
         else:
             # move to can using theta*
-            self.thetaStarAndSend(can_x, can_y)
+            self.robot_commander.override_world_xy(can_x, can_y)
+            # self.thetaStarAndSend(can_x, can_y)
 
     def handleMidgameGrabbing(self):
         """
