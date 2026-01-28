@@ -98,10 +98,16 @@ class DirectRobotCommander(IRobotCommander):
                         movement_args[3 * i + 1],
                         movement_args[3 * i + 2],
                         False))
+            print(f"override_movement: Created {len(moves)} moves")
+            for idx, move in enumerate(moves):
+                print(f"  Move {idx}: left={move.left:.2f}, right={move.right:.2f}, dist={move.dist:.1f}, smooth={move.smooth}")
             self.nav.overridePaths(moves)
+            print("override_movement: Called nav.overridePaths()")
             return True
         except Exception as e:
             print(f"Error in override_movement: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def override_waypoints(self, movement_args: list[float]) -> bool:
@@ -162,6 +168,7 @@ class DirectRobotCommander(IRobotCommander):
             True if successful
         """
         try:
+            print(f'override_relative_xy called: x={x}, y={y}')
             distance = math.sqrt(x * x + y * y)
 
             # ROS coordinates: x is forward, y is left
@@ -171,10 +178,12 @@ class DirectRobotCommander(IRobotCommander):
             rotate_move = get_rotate(theta)
             forward_move = get_forward_mm(distance)
 
-            print(
-                f'Relative xy movement: x={x} y={y} theta={theta:.3f} distance={distance:.1f}')
+            print(f'Relative xy: theta={theta:.3f}rad ({math.degrees(theta):.1f}deg), distance={distance:.1f}mm')
+            print(f'  rotate_move={rotate_move}')
+            print(f'  forward_move={forward_move}')
 
             movement_args = list(rotate_move) + list(forward_move)
+            print(f'  movement_args={movement_args}')
             return self.override_movement(movement_args)
 
         except Exception as e:

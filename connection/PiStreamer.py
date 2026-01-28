@@ -158,10 +158,7 @@ class PiStreamer():
             self.command_client_socket.settimeout(config.SOCKET_TIMEOUT)
             self.command_client_socket.connect(
                 (self.host, self.command_port))
-            print(
-                f"Connected to command server at {
-                    self.host}:{
-                    self.command_port}")
+            print(f"Connected to command server at {self.host}:{self.command_port}")
 
             # Start command receiver thread
             self.running = True
@@ -206,15 +203,11 @@ class PiStreamer():
                     try:
                         self.command_callback(msg_type, args)
                     except Exception as e:
-                        print(
-                            f"Error in movement callback: {
-                                type(e).__name__}: {e}")
+                        print(f"Error in movement callback: {type(e).__name__}: {e}")
                         traceback.print_exc()
 
             except Exception as e:
-                print(
-                    f"Unexpected error in command receiver: {
-                        type(e).__name__}: {e}")
+                print(f"Unexpected error in command receiver: {type(e).__name__}: {e}")
                 traceback.print_exc()
                 # don't shut down entire robot from just one frame of failure
                 continue
@@ -241,10 +234,7 @@ class PiStreamer():
         frame_interval = 1.0 / max_fps
 
         print("Streaming started. Press Ctrl+C to stop.")
-        print(
-            f"Target FPS: {max_fps} (frame interval: {
-                frame_interval *
-                1000:.1f}ms)")
+        print(f"Target FPS: {max_fps} (frame interval: {frame_interval * 1000:.1f}ms)")
 
         while self.running:
             try:
