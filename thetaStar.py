@@ -189,13 +189,13 @@ class ThetaStarPlanner:
         self._compute_regions()
 
         # Optional debug prints
-        print("min_x:", self.min_x)
-        print("min_y:", self.min_y)
-        print("max_x:", self.max_x)
-        print("max_y:", self.max_y)
-        print("x_width:", self.x_width)
-        print("y_width:", self.y_width)
-        print("regions:", int(self.region_map.max()))
+        # print("min_x:", self.min_x)
+        # print("min_y:", self.min_y)
+        # print("max_x:", self.max_x)
+        # print("max_y:", self.max_y)
+        # print("x_width:", self.x_width)
+        # print("y_width:", self.y_width)
+        # print("regions:", int(self.region_map.max()))
 
     def _rasterize_hard_obstacles(self):
         if not self._hard_obstacles:
@@ -686,8 +686,8 @@ def main():
     # Plan
     rx, ry = planner.planning(sx, sy, gx, gy)
 
-    print("rx:", rx)
-    print("ry:", ry)
+    # print("rx:", rx)
+    # print("ry:", ry)
 
     if show_animation:
         if rx and ry:

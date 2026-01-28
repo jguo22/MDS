@@ -109,11 +109,11 @@ class RobotHandler():
             # (result_bottom, self.frame_bottom, False)
         ]:
             self.scanAndSetZones(result, frame, is_top)
-            locations, colors = getCans(result, frame)
-            locations = [
-                relative_to_world(
-                    location,
-                    self.robot_pose) for location in locations]
+            locations, color_strings = getCans(result, frame)
+            colors = canNamesToNumbers(color_strings)
+
+            locations = [relative_to_world(location, self.robot_pose)
+                         for location in locations]
 
             for i in range(len(self.cans)):
                 not_repeat = True
@@ -134,7 +134,7 @@ class RobotHandler():
 
         # Dispatch to appropriate state handler
         if self.state == RobotState.StartScan:
-            self.handleStartScan(self.frame_id, result_top, self.frame_top)
+            self.handleStartScan(self.frame_id)
         elif self.state == RobotState.StartGather:
             self.handleStartGather()
         elif self.state == RobotState.MidgameSearch:
@@ -154,34 +154,17 @@ class RobotHandler():
 
         self.profiler.record("handleState")
 
-        self.telemetry.set_img(cv2.Mat(self.frame_top))
-        scaling = 0.001
-        self.telemetry.update_odom_state(
-            frame_info.x * scaling, frame_info.y * scaling, frame_info.theta)
-        circles = []
-        for i in range(len(self.cans)):
-            cx, cy = self.cans[i]
-            cx *= scaling
-            cy *= scaling
-            color = self.can_colors[i]
-            if color == GREEN_CAN:
-                circles.append((cx, cy, "green"))
-            if color == RED_CAN:
-                circles.append((cx, cy, "red"))
-            if color == GOLDEN_CAN:
-                circles.append((cx, cy, "gold"))
-        self.telemetry.update_circles(circles)
-
-        data = self.get_picklable_dict()
-        self.telemetry.set_data(data)
-
+        self.updateTelemetry()
         self.profiler.record("telemetry")
+
+        time.sleep(5)
+        self.profiler.record("sleep")
 
         self.profiler.end_frame()
 
     # ------------------------ STATE FUNCTIONS .----------------------------
 
-    def handleStartScan(self, frame_id: int, result, frame: np.ndarray):
+    def handleStartScan(self, frame_id: int):
         """Handle StartScan state: detect cans and plan initial path"""
         self.state = RobotState.StartScan
         if self.startFrame == -1:
@@ -193,6 +176,9 @@ class RobotHandler():
     def handleStartGather(self):
         """Handle StartGather state: send waypoints and check if cans reached"""
         self.state = RobotState.StartGather
+
+        self.handleMidgameGoToCan()
+        return
         # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
         # if time.time() - self.lastTimeSentPath > 100:
         #     self.lastTimeSentPath = time.time()
@@ -237,6 +223,7 @@ class RobotHandler():
     def handleMidgameDecide(self):
         """Handle Midgame state: placeholder for midgame logic"""
         self.state = RobotState.MidgameGrabbing
+        print("NO MORE CANS. PLACEHOLDER")
 
     def handleMidgameGoToCan(self):
         """
@@ -500,7 +487,9 @@ class RobotHandler():
         self.lastTimeSentPath = time.time()
 
     def thetaStarAndSend(self, x: float, y: float):
-        robot_x, robot_y, theta = self.robot_pose
+        robot_x = self.robot_pose.x
+        robot_y = self.robot_pose.y
+        self.thetaStar.build_map(robot_x, robot_y, x, y)
         rx, ry = self.thetaStar.planning(robot_x, robot_y, x, y)
         waypoints = list(zip(rx, ry))
         self.send_waypoints(waypoints)
@@ -510,6 +499,33 @@ class RobotHandler():
         distanceToMove = min(self.distanceSensed - CAN_DIAMETER / 2, 0)
         movement_args = list(navHelpers.get_forward_mm(distanceToMove))
         self.robot_commander.override_movement(movement_args)
+
+    def updateTelemetry(self):
+        # self.telemetry.set_img(cv2.Mat(self.frame_top))
+        scaling = 0.001
+        x = self.robot_pose.x
+        y = self.robot_pose.y
+        theta = self.robot_pose.theta()
+        self.telemetry.update_odom_state(x * scaling, y * scaling, theta)
+
+        circles = []
+        for i in range(len(self.cans)):
+            cx, cy = self.cans[i]
+            cx *= scaling
+            cy *= scaling
+            color = self.can_colors[i]
+            if color == GREEN_CAN:
+                circles.append((cx, cy, "green"))
+            elif color == RED_CAN:
+                circles.append((cx, cy, "red"))
+            elif color == GOLDEN_CAN:
+                circles.append((cx, cy, "gold"))
+            else:
+                print("INVALID COLOR")
+        self.telemetry.update_circles(circles)
+
+        data = self.get_picklable_dict()
+        self.telemetry.set_data(data)
 
     def get_picklable_dict(self):
         """Returns a dict with unpicklable objects removed and enums converted to strings."""

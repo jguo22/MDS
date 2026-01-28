@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from typing import List, Tuple
 from colors import CAN_CLASS_NAMES
 from config import CAN_DIAMETER, CAN_CONFIDENCE_THRESHOLD, CAN_MIN_AREA_PIXELS
 from .pixelTo3D import transform_uv_to_xy
@@ -40,7 +41,8 @@ def getBottomCenterPixel(mask):
     return (center_x, max_y)
 
 
-def getCans(result, image, is_top=True):
+def getCans(result, image,
+            is_top=True) -> Tuple[List[Tuple[float, float]], List[str]]:
     """
     Extracts can locations from YOLO results and transforms to xy coordinates.
 
@@ -50,7 +52,7 @@ def getCans(result, image, is_top=True):
 
     Returns:
         tuple: (can_locations_xy, class_names)
-            - can_locations_xy: List of [x, y] in mm (ground plane coordinates)
+            - can_locations_xy: List of (x, y) in mm (ground plane coordinates)
             - class_names: List of strings with class names for each can
     """
     can_locations_xy = []
@@ -104,7 +106,7 @@ def getCans(result, image, is_top=True):
         x += CAN_DIAMETER / 2 * math.cos(theta)
         y += CAN_DIAMETER / 2 * math.sin(theta)
         # add the info
-        can_locations_xy.append([x, y])
+        can_locations_xy.append((x, y))
         class_names.append(class_name)
 
     return can_locations_xy, class_names

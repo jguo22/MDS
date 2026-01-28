@@ -66,6 +66,13 @@ class ComputerReceiver(IRobotCommander):
         self.on_frame: Callable[[FrameInfo], None] = lambda _: None
         self._lock = threading.Lock()
 
+        # Latest frame buffer for skip-ahead processing
+        self.latest_frame: Optional[FrameInfo] = None
+        self.frame_lock = threading.Lock()
+        self.receive_thread: Optional[threading.Thread] = None
+        self.should_stop = False
+        self.frames_skipped = 0
+
         # Profiler for receive loop performance
         self.profiler = Profiler(verbose=False)
 
@@ -149,11 +156,50 @@ class ComputerReceiver(IRobotCommander):
         return protocol.send_command(
             self.command_client_socket, message_types.CLOSE, [])
 
+    def _receive_frames_thread(self):
+        """Background thread that continuously receives frames and updates latest_frame."""
+        failed_frames = 0
+        while not self.should_stop:
+            try:
+                if not self.video_client_socket:
+                    time.sleep(0.1)
+                    continue
+
+                # Receive frame info
+                frame_info = protocol.recv_frame_info(self.video_client_socket)
+
+                # Check for graceful disconnect
+                if frame_info == 0:
+                    print("Pi disconnected gracefully (receive thread)")
+                    break
+
+                if frame_info is None:
+                    failed_frames += 1
+                    if (failed_frames & (failed_frames - 1) == 0):
+                        print(f"Didn't Receive Frame (Connection Lost) {failed_frames}")
+                    time.sleep(0.5)
+                    continue
+                else:
+                    failed_frames = 0
+
+                # Update latest frame
+                with self.frame_lock:
+                    if self.latest_frame is not None:
+                        self.frames_skipped += 1
+                    self.latest_frame = frame_info
+
+            except Exception as e:
+                if not self.should_stop:
+                    print(f"Error in receive thread: {e}")
+                    traceback.print_exc()
+                time.sleep(0.5)
+
     def receive_loop(self, show_video: bool = True,
                      window_name_top: str = "Top Camera",
                      window_name_bottom: str = "Bottom Camera"):
         """
         Main loop to receive and process frames.
+        Always processes the latest frame, skipping old frames if processing is slow.
         Runs until keyboard interrupt
 
         Args:
@@ -165,92 +211,110 @@ class ComputerReceiver(IRobotCommander):
             print("No video connection")
             return
 
+        # Start background thread to receive frames
+        self.should_stop = False
+        self.receive_thread = threading.Thread(target=self._receive_frames_thread, daemon=True)
+        self.receive_thread.start()
+
         fps_start = time.time()
         frame_count = 0
+        last_frame_id = -1
+        last_skipped_count = 0
 
         print("Receiving frames. Press 'q' to quit.")
         print("Press 'p' to save profiler data.")
-        failed_frames: int = 0
-        while True:
-            try:
-                self.profiler.start_frame()
 
-                # Receive frame info
-                frame_info = protocol.recv_frame_info(self.video_client_socket)
-
-                # Check for graceful disconnect
-                if frame_info == 0:
-                    print("Pi disconnected gracefully")
-                    break
-
-                if frame_info is None:
-                    failed_frames += 1
-                    if (failed_frames & (failed_frames - 1) == 0):
-                        print(
-                            f"Didn't Receive Frame (Connection Lost) {failed_frames}")
-                    time.sleep(0.5)
-                    continue
-                else:
-                    failed_frames = 0
-
-                self.profiler.record("recv_frame_info")
-
-                # Process frame with callback
+        try:
+            while True:
                 try:
-                    self.on_frame(frame_info)
-                    self.profiler.record("frame_callback")
-                except Exception as e:
-                    print("Error in frame callback")
-                    print(e)
-                    traceback.print_exc()
+                    self.profiler.start_frame()
 
-                # Calculate FPS
-                frame_count += 1
-                elapsed = time.time() - fps_start
-                if elapsed >= 1.0:
-                    fps = frame_count / elapsed
-                    frame_count = 0
-                    fps_start = time.time()
+                    # Get the latest frame
+                    frame_info = None
+                    with self.frame_lock:
+                        if self.latest_frame is not None:
+                            frame_info = self.latest_frame
+                            self.latest_frame = None  # Clear it so we know when a new one arrives
 
+                    # If no new frame available, wait a bit
+                    if frame_info is None:
+                        time.sleep(0.01)
+                        continue
+
+                    # Check if we skipped frames
+                    if self.frames_skipped > last_skipped_count:
+                        frames_skipped_this_cycle = self.frames_skipped - last_skipped_count
+                        print(f"Skipped {frames_skipped_this_cycle} frames (total: {self.frames_skipped})")
+                        last_skipped_count = self.frames_skipped
+
+                    last_frame_id = frame_info.frame_id
+
+                    self.profiler.record("get_latest_frame")
+
+                    # Process frame with callback
+                    try:
+                        self.on_frame(frame_info)
+                        self.profiler.record("frame_callback")
+                    except Exception as e:
+                        print("Error in frame callback")
+                        print(e)
+                        traceback.print_exc()
+
+                    # Calculate FPS
+                    frame_count += 1
+                    elapsed = time.time() - fps_start
+                    if elapsed >= 1.0:
+                        fps = frame_count / elapsed
+                        frame_count = 0
+                        fps_start = time.time()
+
+                        if show_video:
+                            cv2.setWindowTitle(
+                                window_name_top, f"{window_name_top} - {fps:.1f} FPS")
+
+                    # Display both frames
                     if show_video:
-                        cv2.setWindowTitle(
-                            window_name_top, f"{window_name_top} - {fps:.1f} FPS")
+                        cv2.imshow(window_name_top, frame_info.frame_top)
+                        cv2.imshow(window_name_bottom, frame_info.frame_bottom)
+                        self.profiler.record("imshow")
+                        key = cv2.waitKey(1) & 0xFF
+                        self.profiler.record("waitKey")
 
-                # Display both frames
-                if show_video:
-                    cv2.imshow(window_name_top, frame_info.frame_top)
-                    cv2.imshow(window_name_bottom, frame_info.frame_bottom)
-                    self.profiler.record("imshow")
-                    key = cv2.waitKey(1) & 0xFF
-                    self.profiler.record("waitKey")
+                        if key == ord('q'):
+                            break
+                        elif key == ord('s'):
+                            cv2.imwrite(
+                                f"capture_top_{frame_info.frame_id}.jpg",
+                                frame_info.frame_top)
+                            cv2.imwrite(
+                                f"capture_bottom_{frame_info.frame_id}.jpg",
+                                frame_info.frame_bottom)
+                            print(
+                                f"Saved capture_top_{frame_info.frame_id}.jpg and capture_bottom_{frame_info.frame_id}.jpg")
+                        elif key == ord('p'):
+                            print("Saving profiler data...")
+                            self.profiler.save_profile()
+                            print("Profiler data saved!")
 
-                    if key == ord('q'):
-                        break
-                    elif key == ord('s'):
-                        cv2.imwrite(
-                            f"capture_top_{frame_info.frame_id}.jpg",
-                            frame_info.frame_top)
-                        cv2.imwrite(
-                            f"capture_bottom_{frame_info.frame_id}.jpg",
-                            frame_info.frame_bottom)
-                        print(
-                            f"Saved capture_top_{frame_info.frame_id}.jpg and capture_bottom_{frame_info.frame_id}.jpg")
-                    elif key == ord('p'):
-                        print("Saving profiler data...")
-                        self.profiler.save_profile()
-                        print("Profiler data saved!")
-
-                self.profiler.end_frame()
-            except KeyboardInterrupt:
-                print("\nStopped by user")
-                self.close_client_connections()
-                if show_video:
-                    cv2.destroyAllWindows()
-                raise KeyboardInterrupt
-            except Exception as e:
-                print(
-                    f"Unexpected error in receive video loop: {type(e).__name__}: {e}")
-                traceback.print_exc()
+                    self.profiler.end_frame()
+                except KeyboardInterrupt:
+                    print("\nStopped by user")
+                    self.should_stop = True
+                    if self.receive_thread:
+                        self.receive_thread.join(timeout=2.0)
+                    self.close_client_connections()
+                    if show_video:
+                        cv2.destroyAllWindows()
+                    raise KeyboardInterrupt
+                except Exception as e:
+                    print(
+                        f"Unexpected error in receive video loop: {type(e).__name__}: {e}")
+                    traceback.print_exc()
+        finally:
+            # Ensure thread is stopped
+            self.should_stop = True
+            if self.receive_thread:
+                self.receive_thread.join(timeout=2.0)
 
     def close_client_connections(self) -> None:
         """
