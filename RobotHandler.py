@@ -103,6 +103,8 @@ class RobotHandler():
 
         # Skip processing if paused
         if self.paused:
+            if self.frame_id % 30 == 0:  # Print every 30 frames (~1 second)
+                print("⏸️  PAUSED (type 'resume' to continue)")
             self.profiler.end_frame()
             return
 
@@ -111,7 +113,8 @@ class RobotHandler():
             # Check if the command we're waiting for has completed
             if frame_info.lastCompletedCommandId >= self.waiting_for_command_id:
                 # Command completed, clear waiting state
-                print(f"✓ Command {self.waiting_for_command_id} completed (frame {self.frame_id})")
+                print(
+                    f"✓ Command {self.waiting_for_command_id} completed (frame {self.frame_id})")
                 self.waiting_for_command_id = 0
             else:
                 # Still waiting, skip state processing
@@ -204,7 +207,8 @@ class RobotHandler():
         for i in range(len(self.cans)):
             old_can = self.cans[i]
             old_color = self.can_colors[i]
-            old_miss_count = self.can_miss_counts[i] if i < len(self.can_miss_counts) else 0
+            old_miss_count = self.can_miss_counts[i] if i < len(
+                self.can_miss_counts) else 0
 
             # Skip if already in confirmed list (was detected this frame)
             if any(getDistance(old_can, new_can) < CAN_DIAMETER / 2
@@ -217,7 +221,8 @@ class RobotHandler():
             visible_bottom = is_world_point_visible(
                 old_can[0], old_can[1], self.robot_pose, False)
 
-            # If not visible in either camera, keep with same miss count (out of view)
+            # If not visible in either camera, keep with same miss count (out
+            # of view)
             if not visible_top and not visible_bottom:
                 confirmed_cans.append(old_can)
                 confirmed_colors.append(old_color)
@@ -278,7 +283,7 @@ class RobotHandler():
         self.updateTelemetry()
         self.profiler.record("telemetry")
 
-        time.sleep(0)
+        time.sleep(5)
         self.profiler.record("sleep")
 
         self.profiler.end_frame()
@@ -381,7 +386,8 @@ class RobotHandler():
 
             # logic for grabbing it
             self.current_can = (can_x, can_y, can_color)
-            print(f"State: {self.state.name} → MidgameGrabbing (can at {can_x:.0f}, {can_y:.0f})")
+            print(
+                f"State: {self.state.name} → MidgameGrabbing (can at {can_x:.0f}, {can_y:.0f})")
             self.handleMidgameGrabbing()
         else:
             # move to can using theta*
@@ -402,7 +408,8 @@ class RobotHandler():
                 self.robot_commander.pickup_tipped_can()
                 self.robot_commander.release_can()
                 self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-                print(f"State: {self.state.name} → MidgameGoToCan (tipped can released)")
+                print(
+                    f"State: {self.state.name} → MidgameGoToCan (tipped can released)")
                 self.state = RobotState.MidgameGoToCan
             else:
                 print("→ approach_can_with_ds, pickup_can")
@@ -422,7 +429,8 @@ class RobotHandler():
             self.state = RobotState.PostGrab
         else:
             self.thetaStarAndSend(cx, cy)
-            print(f"State: {self.state.name} → MidgameGoToCan (navigating to can)")
+            print(
+                f"State: {self.state.name} → MidgameGoToCan (navigating to can)")
             self.state = RobotState.MidgameGoToCan
 
     def handlePostGrab(self):
@@ -430,7 +438,8 @@ class RobotHandler():
 
         can_color = self.current_can[2]
         if can_color not in [GREEN_CAN, RED_CAN, GOLDEN_CAN]:
-            print(f"State: {self.state.name} → MidgameGoToCan (invalid can color)")
+            print(
+                f"State: {self.state.name} → MidgameGoToCan (invalid can color)")
             self.state = RobotState.MidgameGoToCan
             return
 
@@ -445,7 +454,8 @@ class RobotHandler():
             else:  # GOLDEN_CAN
                 self.targetZone = GOLDEN_ZONE
                 zone_name = "GOLDEN"
-            print(f"State: {self.state.name} → MidgameStacking (target: {zone_name})")
+            print(
+                f"State: {self.state.name} → MidgameStacking (target: {zone_name})")
             self.handleMidgameStacking()
         else:
             print(f"→ release_can")
@@ -506,7 +516,7 @@ class RobotHandler():
             print(f"→ stack({temp_pos}, {stack_pos}, {size})")
             self.robot_commander.stack(temp_pos, stack_pos, size)
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-        print(f"⏳ Waiting for command {self.waiting_for_command_id}")
+        # print(f"⏳ Waiting for command {self.waiting_for_command_id}")
         print(f"State: {self.state.name} → FinishedStacking")
         self.state = RobotState.FinishedStacking
 

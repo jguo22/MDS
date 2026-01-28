@@ -206,9 +206,9 @@ class DirectRobotCommander(IRobotCommander):
     def pickup_can(self) -> bool:
         RAVEN_WRAPPER.open_gripper()
         RAVEN_WRAPPER.lower_elevator(2)
-        RAVEN_WRAPPER.raise_elevator(0.6)
+        RAVEN_WRAPPER.raise_elevator(0.3)
         RAVEN_WRAPPER.close_gripper()
-        RAVEN_WRAPPER.raise_elevator(1.5)
+        RAVEN_WRAPPER.raise_elevator(1.8)
         return True
 
     def pickup_tipped_can(self) -> bool:
