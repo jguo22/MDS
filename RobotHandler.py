@@ -23,8 +23,8 @@ from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED
 class RobotState(Enum):
     StartScan = auto()
     StartGather = auto()
-    MidgameSearch = auto()
-    MidgameDecide = auto()
+    SearchForZone = auto()
+    SearchForCan = auto()
     MidgameGoToCan = auto()
     MidgameGrabbing = auto()
     MidgameStacking = auto()
@@ -56,9 +56,10 @@ class RobotHandler():
         # Can detection confidence tracking: rounded (x,y) -> consecutive
         # frames detected
         self.can_detections: dict[Tuple[int, int], int] = {}
-        self.DETECTION_THRESHOLD = 5  # Require 5 frames to confirm
+        self.DETECTION_THRESHOLD = 3  # Require N consecutive frames to confirm
         # x, y, stack size, color, id
         self.stacked_cans: List[Tuple[float, float, int, int, int]] = []
+        self.MAX_STACK_SIZE = 2
         self.borders: List[Tuple[int, int]] = []
 
         # VARIABLES FOR CURRENT STATE
@@ -103,8 +104,8 @@ class RobotHandler():
 
         # Skip processing if paused
         if self.paused:
-            if self.frame_id % 30 == 0:  # Print every 30 frames (~1 second)
-                print("⏸️  PAUSED (type 'resume' to continue)")
+            # if self.frame_id % 30 == 0:  # Print every 30 frames (~1 second)
+            #     print("⏸️  PAUSED (type 'resume' to continue)")
             self.profiler.end_frame()
             return
 
@@ -132,6 +133,71 @@ class RobotHandler():
         self.result_bottom = segmentImage(self.frame_bottom)
         self.profiler.record("segmentImage")
 
+        for result, frame, is_top in [
+            (self.result_top, self.frame_top, True),
+            (self.result_bottom, self.frame_bottom, False)
+        ]:
+            self.scanAndSetZones(result, frame, is_top)
+
+        self.updateCanDetections()
+
+        # TESTING PURPOSES
+        self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
+                                           [922.48, -271.63],
+                                           [1391.22, -262.14],
+                                           [1382.95, 269.04]])
+        self.zone_confidences[GREEN_ZONE] = 2
+        self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
+                                         [1791.50, 311.42],
+                                         [1438.28, 7.33],
+                                         [1710.01, -324.33]])
+        self.zone_confidences[RED_ZONE] = 2
+        self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
+                                            [1832.41, -610.53],
+                                            [1732.2, -675.07],
+                                            [1811.42, -762.24]])
+        self.zone_confidences[GOLDEN_ZONE] = 2
+
+        self.profiler.record("scanAndSetZones")
+
+        # Dispatch to appropriate state handler
+        if self.state == RobotState.StartScan:
+            self.handleStartScan(self.frame_id)
+        elif self.state == RobotState.StartGather:
+            self.handleStartGather()
+        elif self.state == RobotState.SearchForZone:
+            self.handleSearchForZone()
+        elif self.state == RobotState.SearchForCan:
+            self.handleSearchForCan()
+        elif self.state == RobotState.MidgameGoToCan:
+            self.handleMidgameGoToCan()
+        elif self.state == RobotState.MidgameGrabbing:
+            self.handleMidgameGrabbing()
+        elif self.state == RobotState.MidgameStacking:
+            self.handleMidgameStacking()
+        elif self.state == RobotState.FinishedStacking:
+            self.handleFinishedStacking()
+        elif self.state == RobotState.PostGrab:
+            self.handlePostGrab()
+
+        self.profiler.record("handleState")
+
+        self.updateTelemetry()
+        self.profiler.record("telemetry")
+
+        self.paused = True
+        # time.sleep(5)
+        self.profiler.record("sleep")
+
+        self.profiler.end_frame()
+
+    def updateCanDetections(self) -> None:
+        """
+        Detect cans from both camera segmentations, then update:
+        - self.cans / self.can_colors
+        - self.can_detections (stability tracking)
+        - self.can_miss_counts (persistence when temporarily missed)
+        """
         # Collect all detections from both cameras
         all_locations: List[Tuple[float, float]] = []
         all_colors: List[int] = []
@@ -140,8 +206,8 @@ class RobotHandler():
             (self.result_top, self.frame_top, True),
             (self.result_bottom, self.frame_bottom, False)
         ]:
-            self.scanAndSetZones(result, frame, is_top)
             locations, color_strings = getCans(result, frame, is_top)
+            print(locations)
             colors = canNamesToNumbers(color_strings)
 
             # Transform to world coordinates
@@ -239,55 +305,6 @@ class RobotHandler():
         self.can_colors = confirmed_colors
         self.can_miss_counts = confirmed_miss_counts
 
-        # TESTING PURPOSES
-        self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
-                                           [922.48, -271.63],
-                                           [1391.22, -262.14],
-                                           [1382.95, 269.04]])
-        self.zone_confidences[GREEN_ZONE] = 2
-        self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
-                                         [1791.50, 311.42],
-                                         [1438.28, 7.33],
-                                         [1710.01, -324.33]])
-        self.zone_confidences[RED_ZONE] = 2
-        self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
-                                            [1832.41, -610.53],
-                                            [1732.2, -675.07],
-                                            [1811.42, -762.24]])
-        self.zone_confidences[GOLDEN_ZONE] = 2
-
-        self.profiler.record("scanAndSetZones")
-
-        # Dispatch to appropriate state handler
-        if self.state == RobotState.StartScan:
-            self.handleStartScan(self.frame_id)
-        elif self.state == RobotState.StartGather:
-            self.handleStartGather()
-        elif self.state == RobotState.MidgameSearch:
-            self.handleMidgameSearch()
-        elif self.state == RobotState.MidgameDecide:
-            self.handleMidgameDecide()
-        elif self.state == RobotState.MidgameGoToCan:
-            self.handleMidgameGoToCan()
-        elif self.state == RobotState.MidgameGrabbing:
-            self.handleMidgameGrabbing()
-        elif self.state == RobotState.MidgameStacking:
-            self.handleMidgameStacking()
-        elif self.state == RobotState.FinishedStacking:
-            self.handleFinishedStacking()
-        elif self.state == RobotState.PostGrab:
-            self.handlePostGrab()
-
-        self.profiler.record("handleState")
-
-        self.updateTelemetry()
-        self.profiler.record("telemetry")
-
-        time.sleep(5)
-        self.profiler.record("sleep")
-
-        self.profiler.end_frame()
-
     # ------------------------ STATE FUNCTIONS .----------------------------
 
     def handleStartScan(self, frame_id: int):
@@ -340,9 +357,9 @@ class RobotHandler():
             self.robot_commander.send_early_game(
                 golden_can, sorted_cans[0], sorted_cans[-1])
 
-    def handleMidgameSearch(self):
-        """Handle Search state: rotate slowly until target zone is found"""
-        self.state = RobotState.MidgameSearch
+    def handleSearchForZone(self):
+        """Handle SearchForZone state: rotate slowly until target zone is found"""
+        self.state = RobotState.SearchForZone
         # Check if target zone has been found
         if self.zones[self.targetZone] is None:
             # Rotate slowly (45 degrees every second)
@@ -353,10 +370,20 @@ class RobotHandler():
             print(f"State: {self.state.name} → MidgameStacking (zone found)")
             self.state = RobotState.MidgameStacking
 
-    def handleMidgameDecide(self):
-        """Handle Midgame state: placeholder for midgame logic"""
-        print(f"State: {self.state.name} → MidgameGrabbing (no cans left)")
-        self.state = RobotState.MidgameGrabbing
+    def handleSearchForCan(self):
+        """
+        Spin in place until we see at least one can, then go to the nearest can.
+        """
+        self.state = RobotState.SearchForCan
+        if len(self.cans) == 0:
+            # Rotate slowly while searching
+            rotate_cmd = list(get_rotate(math.pi / 4 / FPS))
+            print("→ override_movement(search_for_can_rotate)")
+            self.robot_commander.override_movement(rotate_cmd)
+            return
+
+        print(f"State: {self.state.name} → MidgameGoToCan (cans found)")
+        self.handleMidgameGoToCan()
 
     def handleMidgameGoToCan(self):
         """
@@ -364,8 +391,40 @@ class RobotHandler():
         """
         self.state = RobotState.MidgameGoToCan
         if len(self.cans) == 0:
-            self.handleMidgameDecide()
+            print(f"State: {self.state.name} → SearchForCan (no cans left)")
+            self.state = RobotState.SearchForCan
+            self.handleSearchForCan()
             return
+
+        # Filter out cans that are effectively already part of / too close to a known stack
+        # (prevents repeatedly targeting stacked cans as "loose" cans)
+        if len(self.stacked_cans) > 0:
+            filtered_cans: List[Tuple[float, float]] = []
+            filtered_colors: List[int] = []
+
+            for can, color in zip(self.cans, self.can_colors):
+                too_close_to_stack = False
+                for stack_x, stack_y, stack_size, stack_color, stack_id in self.stacked_cans:
+                    # Only consider stacks that actually exist (size > 0)
+                    if stack_size <= 0:
+                        continue
+                    if getDistance(can, (stack_x, stack_y)) <= CAN_DIAMETER:
+                        too_close_to_stack = True
+                        break
+
+                if not too_close_to_stack:
+                    filtered_cans.append(can)
+                    filtered_colors.append(color)
+
+            self.cans = filtered_cans
+            self.can_colors = filtered_colors
+
+            if len(self.cans) == 0:
+                print(
+                    f"State: {self.state.name} → SearchForCan (only stacked cans visible)")
+                self.state = RobotState.SearchForCan
+                self.handleSearchForCan()
+                return
 
         # Sort cans by distance from robot (nearest first)
         robot_x, robot_y = self.robot_pose.x, self.robot_pose.y
@@ -478,6 +537,8 @@ class RobotHandler():
         for stack in self.stacked_cans:
             x, y, size, color, id = stack
             if size == 0:
+                continue
+            if size >= self.MAX_STACK_SIZE:
                 continue
             if color == self.targetZone:
                 if isPointInPoly((x, y), self.zones[self.targetZone]):
@@ -909,6 +970,16 @@ class RobotHandler():
             # Convert numpy arrays to lists
             elif isinstance(v, np.ndarray):
                 result[k] = v.tolist()
+            # Convert dicts with non-JSON keys (e.g., tuple keys) into JSON-safe dicts
+            elif isinstance(v, dict):
+                safe_dict = {}
+                for dk, dv in v.items():
+                    if isinstance(dk, tuple):
+                        safe_key = ",".join(str(x) for x in dk)
+                    else:
+                        safe_key = dk
+                    safe_dict[safe_key] = dv
+                result[k] = safe_dict
             # Convert lists of numpy arrays to lists of lists
             elif isinstance(v, list):
                 result[k] = [
