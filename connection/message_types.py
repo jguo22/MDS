@@ -16,6 +16,8 @@ APPROACH_CAN_DS = 9  # Approach can using distance sensor (no arguments)
 STACK = 10
 WAIT_MOVEMENT_FINISHED = 11  # Wait for movement to complete (no arguments)
 RESET_GRIPPER = 12  # Reset gripper servo (no arguments)
+SET_DOWN_CAN = 13  # Set down can at current position (no arguments)
+BACKUP = 14  # Back up robot a short distance (no arguments)
 
 messageTypes = [
     CLOSE,
@@ -30,5 +32,7 @@ messageTypes = [
     APPROACH_CAN_DS,
     STACK,
     WAIT_MOVEMENT_FINISHED,
-    RESET_GRIPPER
+    RESET_GRIPPER,
+    SET_DOWN_CAN,
+    BACKUP
 ]

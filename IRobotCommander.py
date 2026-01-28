@@ -179,6 +179,26 @@ class IRobotCommander(ABC):
         pass
 
     @abstractmethod
+    def set_down_can(self) -> bool:
+        """
+        Set down a can at the current position.
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def backup(self) -> bool:
+        """
+        Back up the robot a short distance.
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
     def get_last_command_id(self) -> int:
         """
         Get the ID of the last command sent (for network tracking only).

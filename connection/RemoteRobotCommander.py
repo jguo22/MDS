@@ -344,6 +344,44 @@ class RemoteRobotCommander(IRobotCommander):
             command_id=0
         )
 
+    def set_down_can(self) -> bool:
+        """
+        Set down a can at the current position.
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending set down can command')
+        command_id = self._get_command_id()
+        return protocol.send_command(
+            self.command_socket,
+            message_types.SET_DOWN_CAN,
+            [],
+            command_id=command_id
+        )
+
+    def backup(self) -> bool:
+        """
+        Back up the robot a short distance.
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending backup command')
+        command_id = self._get_command_id()
+        return protocol.send_command(
+            self.command_socket,
+            message_types.BACKUP,
+            [],
+            command_id=command_id
+        )
+
     def complete_command_immediately(self, command_id: int) -> None:
         """
         Mark a command as complete.

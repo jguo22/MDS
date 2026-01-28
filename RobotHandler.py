@@ -9,14 +9,14 @@ from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
 from vision.pixelTo3D import is_world_point_visible
 from vision.segment import segmentImage
-from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
+from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones
 from vision.can_utils import getCans, is_hull_overlap_with_target_rect
 from vision.relativeCoordinates import relative_to_world, world_to_relative
 from vision.mask_utils import maskToConvexHull, yoloMaskToBinary
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
+from config import BACKING_TICKS, FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -27,7 +27,9 @@ class RobotState(Enum):
     SearchForCan = auto()
     MidgameGoToCan = auto()
     MidgameGrabbing = auto()
-    MidgameStacking = auto()
+    PlaceInZone = auto()
+    PickupStack = auto()
+    AddStack = auto()
     FinishedStacking = auto()
     PostGrab = auto()
 
@@ -57,8 +59,8 @@ class RobotHandler():
         # frames detected
         self.can_detections: dict[Tuple[int, int], int] = {}
         self.DETECTION_THRESHOLD = 3  # Require N consecutive frames to confirm
-        # x, y, stack size, color, id
-        self.stacked_cans: List[Tuple[float, float, int, int, int]] = []
+        # x, y, stack size, color
+        self.stacked_cans: List[Tuple[float, float, int, int]] = []
         self.MAX_STACK_SIZE = 2
         self.borders: List[Tuple[int, int]] = []
 
@@ -69,7 +71,7 @@ class RobotHandler():
         self.targetZone: int = -1
         # target of stacking state: stack id
         self.targetStackId: int = -1
-        self.lastStackId: int = -1
+        self.newStackPosition: Optional[Tuple[float, float]] = None
 
         # random
         self.startTime = time.time()
@@ -173,8 +175,12 @@ class RobotHandler():
             self.handleMidgameGoToCan()
         elif self.state == RobotState.MidgameGrabbing:
             self.handleMidgameGrabbing()
-        elif self.state == RobotState.MidgameStacking:
-            self.handleMidgameStacking()
+        elif self.state == RobotState.PlaceInZone:
+            self.handlePlaceInZone()
+        elif self.state == RobotState.PickupStack:
+            self.handlePickUpStack()
+        elif self.state == RobotState.AddStack:
+            self.handleAddStack()
         elif self.state == RobotState.FinishedStacking:
             self.handleFinishedStacking()
         elif self.state == RobotState.PostGrab:
@@ -367,8 +373,8 @@ class RobotHandler():
             print("→ override_movement(rotate)")
             self.robot_commander.override_movement(rotate_cmd)
         else:
-            print(f"State: {self.state.name} → MidgameStacking (zone found)")
-            self.state = RobotState.MidgameStacking
+            print(f"State: {self.state.name} → PlaceInZone (zone found)")
+            self.state = RobotState.PlaceInZone
 
     def handleSearchForCan(self):
         """
@@ -404,7 +410,7 @@ class RobotHandler():
 
             for can, color in zip(self.cans, self.can_colors):
                 too_close_to_stack = False
-                for stack_x, stack_y, stack_size, stack_color, stack_id in self.stacked_cans:
+                for stack_x, stack_y, stack_size, _ in self.stacked_cans:
                     # Only consider stacks that actually exist (size > 0)
                     if stack_size <= 0:
                         continue
@@ -433,8 +439,8 @@ class RobotHandler():
             zip(self.cans, self.can_colors),
             key=lambda pair: getDistance(robot_pos, pair[0])
         )
-        self.cans = [can for can, color in sorted_pairs]
-        self.can_colors = [color for can, color in sorted_pairs]
+        self.cans = [can for can, _ in sorted_pairs]
+        self.can_colors = [color for _, color in sorted_pairs]
 
         # this allows for dynamic update of which can to go to
         can_x, can_y = self.cans[0]
@@ -514,94 +520,149 @@ class RobotHandler():
                 self.targetZone = GOLDEN_ZONE
                 zone_name = "GOLDEN"
             print(
-                f"State: {self.state.name} → MidgameStacking (target: {zone_name})")
-            self.handleMidgameStacking()
+                f"State: {self.state.name} → PlaceInZone (target: {zone_name})")
+            self.targetStackId = -1
+            self.handlePlaceInZone()
         else:
-            print(f"→ release_can")
+            print("→ release_can")
             print(f"State: {self.state.name} → MidgameGoToCan (bad pickup)")
             self.robot_commander.release_can()
             self.current_can = (0, 0, -1)
             self.handleMidgameGoToCan()
 
-    def handleMidgameStacking(self):
+    def handlePlaceInZone(self):
         """
             Once the robot is already holding a can
-            Call the function to stack it in one superframe
         """
-        self.state = RobotState.MidgameStacking
+        self.state = RobotState.PlaceInZone
 
-        # get the target stack and save the id so we don't switch around
-        # between frames
-        self.targetStackId = -1
+        if self.newStackPosition is None:
+            # pick some point that is good enough distance away
+            zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
+
+            # use self.targetStackId to remember which stack
+            # remember to set to -1 when starting stacking phase
+            targetStack = None
+            if self.targetStackId == -1:
+                # find a stack based on the color zone
+                self.targetStackId = -1
+                for i, stack in enumerate(self.stacked_cans):
+                    x, y, size, color = stack
+                    if size < self.MAX_STACK_SIZE and color == self.targetZone:
+                        # choose this stack
+                        self.targetStackId = i
+                        targetStack = stack
+                        break
+                if targetStack is None:
+                    # make new stack
+                    targetStack = (zone_x, zone_y, 0, self.targetZone)
+                    self.stacked_cans.append(targetStack)
+                    self.targetStackId = len(self.stacked_cans) - 1
+            else:
+                targetStack = self.stacked_cans[self.targetStackId]
+
+            # get the target
+            cx, cy, size, color = targetStack
+
+            # calculate offsetted position
+            dx = zone_x - cx
+            dy = zone_y - cy
+            distance = math.sqrt(dx * dx + dy * dy)
+
+            # Move 200mm towards zone center (or less if zone center is closer)
+            if distance > 0.01:
+                new_pos = (cx + dx / distance * TEMP_STACK_OFFSET,
+                           cy + dy / distance * TEMP_STACK_OFFSET)
+            else:
+                # Stack is already at zone center, offset in x direction
+                new_pos = (cx + TEMP_STACK_OFFSET, cy)
+            self.newStackPosition = new_pos
+
+        gx, gy = self.newStackPosition
+        if self.isPointInGripper(gx, gy):
+            self.robot_commander.set_down_can()
+            self.robot_commander.backup()
+            self.robot_commander.waitFinishedMoving()
+            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+            self.state = RobotState.PickupStack
+        else:
+            self.thetaStarAndSend(gx, gy)
+
+    def handlePickUpStack(self):
+        self.state = RobotState.PickupStack
+
         targetStack = None
-        for stack in self.stacked_cans:
-            x, y, size, color, id = stack
-            if size == 0:
-                continue
-            if size >= self.MAX_STACK_SIZE:
-                continue
-            if color == self.targetZone:
-                if isPointInPoly((x, y), self.zones[self.targetZone]):
-                    targetStack = (x, y, size, self.targetZone, id)
-                    self.targetStackId = id
+        if self.targetStackId == -1:
+            # find a stack based on the color zone
+            self.targetStackId = -1
+            for i, stack in enumerate(self.stacked_cans):
+                x, y, size, color = stack
+                if size < self.MAX_STACK_SIZE and color == self.targetZone:
+                    # choose this stack
+                    self.targetStackId = i
+                    targetStack = stack
                     break
-        if targetStack is None:
-            x, y = getSquareCenter(self.zones[self.targetZone])
-            targetStack = (x, y, 0, self.targetZone, self.lastStackId + 1)
-            self.lastStackId += 1
-
-        # get the target
-        cx, cy, color, size, id = targetStack
-
-        # calculate offsetted position
-        zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
-        dx = zone_x - cx
-        dy = zone_y - cy
-        distance = math.sqrt(dx * dx + dy * dy)
-
-        # Move 200mm towards zone center (or less if zone center is closer)
-        if distance > 0.01:
-            temp_pos = (cx + dx / distance * TEMP_STACK_OFFSET,
-                        cy + dy / distance * TEMP_STACK_OFFSET)
+            if targetStack is None:
+                # make new stack
+                zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
+                targetStack = (zone_x, zone_y, 0, self.targetZone)
+                self.stacked_cans.append(targetStack)
+                self.targetStackId = len(self.stacked_cans) - 1
         else:
-            # Stack is already at zone center, offset in x direction
-            temp_pos = (cx + TEMP_STACK_OFFSET, cy)
+            targetStack = self.stacked_cans[self.targetStackId]
 
-        stack_pos = (cx, cy)
-        # Ensure previous nav commands are complete before stacking
-        self.robot_commander.waitFinishedMoving()
-        if size == 0:
-            print(f"→ stack({stack_pos}, {stack_pos}, {size})")
-            self.robot_commander.stack(stack_pos, stack_pos, size)
+        gx, gy, size, color = targetStack
+        if self.isPointInGripper(gx, gy):
+            self.robot_commander.approach_can_with_ds()
+            self.robot_commander.pickup_can()
+            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+            self.state = RobotState.AddStack
         else:
-            print(f"→ stack({temp_pos}, {stack_pos}, {size})")
-            self.robot_commander.stack(temp_pos, stack_pos, size)
-        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-        # print(f"⏳ Waiting for command {self.waiting_for_command_id}")
-        print(f"State: {self.state.name} → FinishedStacking")
-        self.state = RobotState.FinishedStacking
+            self.thetaStarAndSend(gx, gy)
+
+    def handleAddStack(self):
+        """
+            Assuming holding a stack right now
+        """
+        self.state = RobotState.AddStack
+
+        assert (self.newStackPosition is not None)
+
+        gx, gy = self.newStackPosition
+        if self.isPointClose(gx, gy):
+            self.robot_commander.approach_can_with_ds()
+            self.robot_commander.release_can()
+            self.state = RobotState.FinishedStacking
+        else:
+            self.thetaStarAndSend(gx, gy)
 
     def handleFinishedStacking(self):
+        self.state = RobotState.FinishedStacking
         # get position of stacked cans, which should be right in front after
         # stacking
         cx, cy = relative_to_world(
             (CLAW_OFFSET + CAN_DIAMETER / 2, 0), self.robot_pose)
 
         # update list of stacked cans
+        updated = False
         for i in range(len(self.stacked_cans)):
-            _, _, color, prev_size, id = self.stacked_cans[i]
-            if self.targetStackId == id:
-                self.stacked_cans[i] = (cx, cy, color, prev_size + 1, id)
+            _, _, prev_size, color = self.stacked_cans[i]
+            if self.targetStackId == i:
+                self.stacked_cans[i] = (cx, cy, prev_size + 1, color)
+                updated = True
                 break
+        if not updated:
+            print("WARNING: NO STACK FOUND TO UPDATE AFTER FINISH STACK")
 
         self.thetaStar.addCan(cx, cy)
 
         print("→ override_movement([-1, -1, 3000])")
-        self.robot_commander.override_movement([-1, -1, 3000])
+        self.robot_commander.override_movement([-1, -1, BACKING_TICKS])
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
         print(f"⏳ Waiting for command {self.waiting_for_command_id}")
         print(f"State: {self.state.name} → MidgameGoToCan")
         self.state = RobotState.MidgameGoToCan
+
     # ------------------------ HELPER FUNCTIONS .----------------------------
 
     def scanAndSetZones(self, result, image, is_top):
@@ -665,6 +726,7 @@ class RobotHandler():
         # camera result when this helper is used from handleFrame.
         image = self.frame_bottom
 
+        print(len(self.result_bottom.masks))
         for mask_orig in self.result_bottom.masks:
             try:
                 # Convert YOLO mask object to a binary numpy mask in image
@@ -970,7 +1032,8 @@ class RobotHandler():
             # Convert numpy arrays to lists
             elif isinstance(v, np.ndarray):
                 result[k] = v.tolist()
-            # Convert dicts with non-JSON keys (e.g., tuple keys) into JSON-safe dicts
+            # Convert dicts with non-JSON keys (e.g., tuple keys) into
+            # JSON-safe dicts
             elif isinstance(v, dict):
                 safe_dict = {}
                 for dk, dv in v.items():

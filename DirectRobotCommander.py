@@ -204,18 +204,34 @@ class DirectRobotCommander(IRobotCommander):
         return True
 
     def pickup_can(self) -> bool:
-        RAVEN_WRAPPER.open_gripper()
-        RAVEN_WRAPPER.lower_elevator(2)
         RAVEN_WRAPPER.close_gripper()
-        RAVEN_WRAPPER.raise_elevator(2.1)
+        RAVEN_WRAPPER.raise_elevator(1.7)
         return True
 
     def pickup_tipped_can(self) -> bool:
-        RAVEN_WRAPPER.open_gripper()
-        RAVEN_WRAPPER.lower_elevator(2)
         RAVEN_WRAPPER.close_gripper()
-        RAVEN_WRAPPER.raise_elevator(2.1)
+        RAVEN_WRAPPER.raise_elevator(1.7)
         return True
+
+    def set_down_can(self) -> bool:
+        RAVEN_WRAPPER.raise_elevator(1.5)
+        RAVEN_WRAPPER.open_gripper()
+        return True
+
+    def backup(self) -> bool:
+        """
+        Back up the robot a short distance.
+
+        Returns:
+            True if successful
+        """
+        try:
+            self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
+            return True
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return False
 
     def release_can(self) -> bool:
         """
