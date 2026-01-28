@@ -11,7 +11,7 @@ import time
 from spatialmath import SE2
 from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
-from config import BACKING_TICKS, BASE_D
+from config import BACKING_TICKS, BASE_D, CAN_DIAMETER, CLAW_OFFSET, DS_TO_CLAW
 from nav import Nav, NavMove
 from distanceSensorWrapper import DistanceSensorWrapper
 from RavenWrapper import RAVEN_WRAPPER
@@ -214,7 +214,7 @@ class DirectRobotCommander(IRobotCommander):
         return True
 
     def set_down_can(self) -> bool:
-        RAVEN_WRAPPER.lower_elevator(1.5)
+        RAVEN_WRAPPER.raise_elevator(1.5)
         RAVEN_WRAPPER.open_gripper()
         return True
 
@@ -263,13 +263,13 @@ class DirectRobotCommander(IRobotCommander):
         """
         try:
             for _ in range(3):
-                if self.distance_sensor.get_distance() > 92:
-                    distance = self.distance_sensor.get_distance()
+                distance = self.distance_sensor.get_distance()
+                if distance > DS_TO_CLAW + 8:
                     if distance > 800:
                         return False
 
                     # Move forward by (current_distance - 85mm)
-                    move_distance = distance - 85
+                    move_distance = distance - DS_TO_CLAW
                     self.nav.overridePaths(
                         [NavMove(*get_forward_mm(move_distance), smooth=False)])
                     self.waitFinishedMoving()

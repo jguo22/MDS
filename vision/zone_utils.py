@@ -15,25 +15,32 @@ from .relativeCoordinates import world_to_pixel
 from spatialmath import SE2
 
 
-def getSquareCenter(square) -> Tuple[float, float]:
+def getPolygonCenter(polygon) -> Tuple[float, float]:
     """
-    Calculates the center point of a square.
+    Calculates the center point (centroid) of a polygon.
 
     Args:
-        square: Square vertices as numpy array with shape (4, 1, 2) or (4, 2)
-              Format: [[x1, y1]], [[x2, y2]], [[x3, y3]], [[x4, y4]]
+        polygon: Polygon vertices as numpy array with shape (N, 1, 2) or (N, 2)
+              Format: [[x1, y1], [x2, y2], ..., [xN, yN]]
+              where N is the number of vertices
 
     Returns:
-        tuple: (center_x, center_y) as integers
+        tuple: (center_x, center_y) as floats representing the centroid
     """
-    # Reshape from (4, 1, 2) to (4, 2) for easier processing
-    points = square.reshape(4, 2)
+    # Reshape from (N, 1, 2) to (N, 2) for easier processing
+    points = polygon.reshape(-1, 2)
 
     # Calculate mean of all x and y coordinates
     center_x = np.mean(points[:, 0])
     center_y = np.mean(points[:, 1])
 
     return (center_x, center_y)
+
+
+# Backwards compatibility alias
+def getSquareCenter(square) -> Tuple[float, float]:
+    """Deprecated: Use getPolygonCenter instead."""
+    return getPolygonCenter(square)
 
 
 def isPointInPoly(point, polygon):

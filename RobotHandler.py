@@ -9,14 +9,14 @@ from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
 from vision.pixelTo3D import is_world_point_visible
 from vision.segment import segmentImage
-from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones
+from vision.zone_utils import doPolygonsIntersect, getPolygonCenter, getZones
 from vision.can_utils import getCans, is_hull_overlap_with_target_rect
 from vision.relativeCoordinates import relative_to_world, world_to_relative
 from vision.mask_utils import maskToConvexHull, yoloMaskToBinary
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import BACKING_TICKS, FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
+from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -44,8 +44,8 @@ class RobotHandler():
         self.waiting_for_command_id = 0
 
         # BEST GUESS MEMORY VARIABLES
-        # four vertices of scoring zones in world coords
-        # list of zones, each zone is [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]]
+        # Polygon vertices of scoring zones in world coords (mm)
+        # list of zones, each zone is [[x1, y1], [x2, y2], ..., [xN, yN]]
         self.zones: List[Optional[np.ndarray]] = [
             None, None, None, None, None, None]
         self.zone_confidences = [0, 0, 0, 0, 0, 0]
@@ -191,7 +191,7 @@ class RobotHandler():
         self.updateTelemetry()
         self.profiler.record("telemetry")
 
-        self.paused = True
+        # self.paused = True
         # time.sleep(5)
         self.profiler.record("sleep")
 
@@ -383,7 +383,7 @@ class RobotHandler():
         self.state = RobotState.SearchForCan
         if len(self.cans) == 0:
             # Rotate slowly while searching
-            rotate_cmd = list(get_rotate(math.pi / 4 / FPS))
+            rotate_cmd = list(get_rotate(math.pi / 2 / FPS))
             print("→ override_movement(search_for_can_rotate)")
             self.robot_commander.override_movement(rotate_cmd)
             return
@@ -521,6 +521,7 @@ class RobotHandler():
             #     self.targetZone = GOLDEN_ZONE
             #     zone_name = "GOLDEN"
             self.targetZone = GREEN_ZONE
+            zone_name = "GREEN"
             print(
                 f"State: {self.state.name} → PlaceInZone (target: {zone_name})")
             self.targetStackId = -1
@@ -540,7 +541,7 @@ class RobotHandler():
 
         if self.newStackPosition is None:
             # pick some point that is good enough distance away
-            zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
+            zone_x, zone_y = getPolygonCenter(self.zones[self.targetZone])
 
             # use self.targetStackId to remember which stack
             # remember to set to -1 when starting stacking phase
@@ -608,7 +609,7 @@ class RobotHandler():
                     break
             if targetStack is None:
                 # make new stack
-                zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
+                zone_x, zone_y = getPolygonCenter(self.zones[self.targetZone])
                 targetStack = (zone_x, zone_y, 0, self.targetZone)
                 self.stacked_cans.append(targetStack)
                 self.targetStackId = len(self.stacked_cans) - 1
@@ -826,9 +827,9 @@ class RobotHandler():
             else:
                 # TODO: figure out which zone is ours
                 # using actual logic
-                prev_x, prev_y = getSquareCenter(prev_zone)
+                prev_x, prev_y = getPolygonCenter(prev_zone)
                 prevDistSquared = prev_x * prev_x + prev_y * prev_y
-                curr_x, curr_y = getSquareCenter(zone)
+                curr_x, curr_y = getPolygonCenter(zone)
                 currDistSquared = curr_x * curr_x + curr_y * curr_y
                 if currDistSquared < prevDistSquared:
                     # current zone is our zone and other zone might be
@@ -937,7 +938,7 @@ class RobotHandler():
 
         return in_rectangle
 
-    def send_waypoints(self, waypoints: List[Tuple[float, float]]):
+    def send_waypoints_with_start(self, waypoints: List[Tuple[float, float]]):
         x, y, _ = unpackPose(self.robot_pose)
         command_args = [x, y]
         for x, y in waypoints:
@@ -948,20 +949,16 @@ class RobotHandler():
     def thetaStarAndSend(self, x: float, y: float):
         # temporary while thetastar doesn't work
         # dx, dy = world_to_relative((x, y), self.robot_pose)
-        # gx, gy = relative_to_world((max(dx - 150, 0), dy), self.robot_pose)
+        # gx, gy = relative_to_world((max(dx - 80, 0), dy), self.robot_pose)
         # self.robot_commander.override_world_xy(gx, gy)
-        print(f"→ override_world_xy({x:.0f}, {y:.0f})")
-        self.robot_commander.override_world_xy(x, y)
-        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-        print(f"⏳ Waiting for command {self.waiting_for_command_id}")
-        # robot_x = self.robot_pose.x
-        # robot_y = self.robot_pose.y
-        #
-        # self.thetaStar.set_start(robot_x, robot_y)
-        # self.thetaStar.set_goal(x, y)
-        # waypoints = self.thetaStar.path_find()
-        #
-        # self.send_waypoints(waypoints)
+        # print(f"→ override_world_xy({x:.0f}, {y:.0f})")
+        # self.robot_commander.override_world_xy(x, y)
+        gx, gy = x, y
+        robot_x, robot_y, theta = unpackPose(self.robot_pose)
+        self.thetaStar.set_start(robot_x, robot_y)
+        self.thetaStar.set_goal(gx, gy)
+        waypoints = self.thetaStar.path_find()
+        self.send_waypoints_with_start(waypoints)
 
     def updateTelemetry(self):
         # self.telemetry.set_img(cv2.Mat(self.frame_top))

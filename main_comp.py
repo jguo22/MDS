@@ -2,14 +2,17 @@ import time
 import argparse
 import threading
 import numpy as np
+import cv2
 from profiler import Profiler
 from RobotHandler import RobotHandler
 from connection.ComputerReceiver import ComputerReceiver
 from InputProcessor import InputProcessor
 from connection.FrameSaver import FrameSaver
 from connection.frame_info import FrameInfo
-from vision.zone_utils import visualize_xy_locations, getSquareCenter, visualize_convex_hulls
-from vision.relativeCoordinates import world_to_relative
+from vision.zone_utils import visualize_xy_locations, getPolygonCenter, visualize_convex_hulls
+from vision.relativeCoordinates import world_to_relative, world_to_pixel
+from vision.pixelTo3D import H_TOP, H_BOTTOM
+from colors import GREEN_ZONE, RED_ZONE, GOLDEN_ZONE, GREEN_ZONE_OPP, RED_ZONE_OPP, GOLDEN_ZONE_OPP
 import config
 
 
@@ -131,29 +134,59 @@ def main():
                 labels=[f"C{i}" for i in range(len(robotHandler.cans))]
             )
 
-        # Visualize zone corners and centers on frames
+        # Visualize zone polygons
+        zone_colors = {
+            GREEN_ZONE: (0, 255, 0),      # Green
+            RED_ZONE: (0, 0, 255),        # Red
+            GOLDEN_ZONE: (0, 215, 255),   # Gold
+            GREEN_ZONE_OPP: (100, 200, 100),   # Light green
+            RED_ZONE_OPP: (100, 100, 200),     # Light red
+            GOLDEN_ZONE_OPP: (100, 215, 255)   # Light gold
+        }
+
         for zone_idx, zone in enumerate(robotHandler.zones):
             if zone is not None:
-                # Get zone center
-                center_x, center_y = getSquareCenter(zone)
-                center_relative = world_to_relative(
-                    (center_x, center_y), robotHandler.robot_pose)
+                # Get zone color
+                color = zone_colors.get(zone_idx, (255, 255, 255))  # White default
 
-                # Get all 4 corners of the zone
-                # Zone is shape (4, 2) or (4, 1, 2)
-                corners: np.ndarray
+                # Reshape zone to (N, 2)
                 if zone.ndim == 3:
-                    corners = zone.reshape(4, 2)
+                    corners = zone.reshape(-1, 2)
                 else:
                     corners = zone if zone.ndim == 2 else zone.reshape(-1, 2)
+
+                # Draw polygon on top camera
+                polygon_points_top = []
+                for corner in corners:
+                    pixel = world_to_pixel((float(corner[0]), float(corner[1])), H_TOP)
+                    if pixel is not None:
+                        polygon_points_top.append(pixel)
+
+                if len(polygon_points_top) >= 3:
+                    pts = np.array(polygon_points_top, dtype=np.int32)
+                    cv2.polylines(frame_info.frame_top, [pts], isClosed=True, color=color, thickness=2)
+
+                # Draw polygon on bottom camera
+                polygon_points_bottom = []
+                for corner in corners:
+                    pixel = world_to_pixel((float(corner[0]), float(corner[1])), H_BOTTOM)
+                    if pixel is not None:
+                        polygon_points_bottom.append(pixel)
+
+                if len(polygon_points_bottom) >= 3:
+                    pts = np.array(polygon_points_bottom, dtype=np.int32)
+                    cv2.polylines(frame_info.frame_bottom, [pts], isClosed=True, color=color, thickness=2)
+
+                # Get zone center
+                center_x, center_y = getPolygonCenter(zone)
+                center_relative = world_to_relative(
+                    (center_x, center_y), robotHandler.robot_pose)
 
                 # Convert corners to camera-relative coordinates
                 corners_relative = []
                 for corner in corners:
                     rel = world_to_relative(
-                        (float(
-                            corner[0]), float(
-                            corner[1])), robotHandler.robot_pose)
+                        (float(corner[0]), float(corner[1])), robotHandler.robot_pose)
                     corners_relative.append(rel)
 
                 # Visualize corners on top camera
@@ -164,7 +197,7 @@ def main():
                     is_top=True,
                     color=(255, 0, 255),  # Magenta for zone corners
                     radius=5,
-                    labels=[f"Z{zone_idx}.{i}" for i in range(4)]
+                    labels=[f"Z{zone_idx}.{i}" for i in range(len(corners))]
                 )
 
                 # Visualize center on top camera
@@ -186,7 +219,7 @@ def main():
                     is_top=False,
                     color=(255, 0, 255),  # Magenta for zone corners
                     radius=5,
-                    labels=[f"Z{zone_idx}.{i}" for i in range(4)]
+                    labels=[f"Z{zone_idx}.{i}" for i in range(len(corners))]
                 )
 
                 # Visualize center on bottom camera
