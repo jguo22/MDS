@@ -14,7 +14,7 @@ Run on the computer that will process the video and send movement commands.
 import socket
 import threading
 import time
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 import cv2
 import traceback
 import config
@@ -22,16 +22,14 @@ from . import protocol
 from connection.frame_info import FrameInfo
 from connection.RemoteRobotCommander import RemoteRobotCommander
 from profiler import Profiler
-from IRobotCommander import IRobotCommander  # type: ignore
 
 
-class ComputerReceiver(IRobotCommander):
+class ComputerReceiver:
     """
-    Video receiver and movement command sender for computer.
+    Video receiver for computer.
 
-    Handles the computer-side of the video streaming and movement control system.
-    Receives video frames from Raspberry Pi and sends back movement commands
-    consisting of left/right motor coefficients and distance.
+    Handles the computer-side of the video streaming system.
+    Receives video frames from Raspberry Pi.
 
     STARTING AND CLOSING CONNECTIONS IS NOT THREAD SAFE
     """
@@ -47,7 +45,6 @@ class ComputerReceiver(IRobotCommander):
             video_port: Port for video receiving
             command_port: Port for sending commands
         """
-        super().__init__()
         self.host = host
         self.video_port = video_port
         self.command_port = command_port
@@ -61,7 +58,7 @@ class ComputerReceiver(IRobotCommander):
         self.command_client_socket: Optional[socket.socket] = None
 
         # Remote commander for sending commands
-        self._commander = RemoteRobotCommander()
+        self.commander = RemoteRobotCommander()
 
         # takes in FrameInfo
         self.on_frame: Callable[[FrameInfo], None] = lambda _: None
@@ -141,7 +138,7 @@ class ComputerReceiver(IRobotCommander):
                 f"Movement command connection from {self.command_client_socket.getpeername()}")
 
             # Update commander's socket
-            self._commander.set_socket(self.command_client_socket)
+            self.commander.set_socket(self.command_client_socket)
             return True
         except socket.error as e:
             print(f"Connection error: {e}")
@@ -246,8 +243,9 @@ class ComputerReceiver(IRobotCommander):
                     # Check if we skipped frames
                     if self.frames_skipped > last_skipped_count:
                         frames_skipped_this_cycle = self.frames_skipped - last_skipped_count
-                        print(
-                            f"Skipped {frames_skipped_this_cycle} frames (total: {self.frames_skipped})")
+                        # print(
+                        # f"Skipped {frames_skipped_this_cycle} frames (total:
+                        # {self.frames_skipped})")
                         last_skipped_count = self.frames_skipped
 
                     last_frame_id = frame_info.frame_id
@@ -325,77 +323,13 @@ class ComputerReceiver(IRobotCommander):
         """
         # tell pi that we're closing the connection
         # so that it can look for a new one and see when we restart the code
-        self._commander.close()
+        self.commander.close()
 
         # Close client connections
         protocol.close_socket(self.video_client_socket)
         self.video_client_socket = None
 
         protocol.close_socket(self.command_client_socket)
-        self._commander.set_socket(None)
+        self.commander.set_socket(None)
         self.command_client_socket = None
         print("client connection stopped")
-
-    # ------------------ IRobotCommander Interface ------------------
-    def early_game(
-            self,
-            golden: Tuple[float, float],
-            left: Tuple[float, float],
-            right: Tuple[float, float]) -> bool:
-        """
-        Send early game strategy command with can locations.
-
-        Args:
-            golden: (x, y) coordinates of golden can in mm
-            left: (x, y) coordinates of left can in mm
-            right: (x, y) coordinates of right can in mm
-
-        Returns:
-            True if successful
-        """
-        return self._commander.early_game(golden, left, right)
-
-    def override_movement(self, movement_args: list[float]) -> bool:
-        """
-        Send list of movement commands to the Pi.
-
-        Args:
-            movement_args: list of movement commands in groups of 3
-                left_coef: Left motor coefficient (-1.0 to 1.0)
-                right_coef: Right motor coefficient (-1.0 to 1.0)
-                distance: Distance to move (in ticks)
-
-        Returns:
-            True if successful
-        """
-        return self._commander.override_movement(movement_args)
-
-    def override_waypoints(self, movement_args: list[float]) -> bool:
-        """
-        Override current path with waypoint navigation.
-
-        Args:
-            movement_args: List of coordinates [start_x, start_y, wp1_x, wp1_y, ...]
-
-        Returns:
-            True if successful
-        """
-        return self._commander.override_waypoints(movement_args)
-
-    def pickup_can(self) -> bool:
-        """
-        Pick up a can with the gripper.
-
-        Returns:
-            True if successful
-        """
-        return self._commander.pickup_can()
-
-    def release_can(self) -> bool:
-        """
-        Release the can from the gripper.
-
-        Returns:
-            True if successful
-        """
-        return self._commander.release_can()

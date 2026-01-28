@@ -124,6 +124,48 @@ class RemoteRobotCommander(IRobotCommander):
             movement_args
         )
 
+    def override_relative_xy(self, x: float, y: float) -> bool:
+        """
+        Override current path with relative movement in ROS coordinates.
+
+        Args:
+            x: Forward distance in mm (positive = forward, negative = backward)
+            y: Lateral distance in mm (positive = left, negative = right)
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print(f'Sending relative xy: x={x}, y={y}')
+        return protocol.send_command(
+            self.command_socket,
+            message_types.OVERRIDE_RELATIVE_XY,
+            [x, y]
+        )
+
+    def override_world_xy(self, world_x: float, world_y: float) -> bool:
+        """
+        Override current path to navigate to world coordinates.
+
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print(f'Sending world coordinates: x={world_x}, y={world_y}')
+        return protocol.send_command(
+            self.command_socket,
+            message_types.OVERRIDE_WORLD_XY,
+            [world_x, world_y]
+        )
+
     def pickup_can(self) -> bool:
         """
         Pick up a can with the gripper.

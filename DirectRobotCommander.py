@@ -150,6 +150,77 @@ class DirectRobotCommander(IRobotCommander):
             print(f"Error in override_waypoints: {e}")
             return False
 
+    def override_relative_xy(self, x: float, y: float) -> bool:
+        """
+        Override current path with relative movement in ROS coordinates.
+
+        Args:
+            x: Forward distance in mm (positive = forward, negative = backward)
+            y: Lateral distance in mm (positive = left, negative = right)
+
+        Returns:
+            True if successful
+        """
+        try:
+            distance = math.sqrt(x * x + y * y)
+
+            # ROS coordinates: x is forward, y is left
+            # atan2(y, x) gives angle from forward axis (x) to target
+            theta = math.atan2(y, x)
+
+            rotate_move = get_rotate(theta)
+            forward_move = get_forward_mm(distance)
+
+            print(
+                f'Relative xy movement: x={x} y={y} theta={theta:.3f} distance={distance:.1f}')
+
+            movement_args = list(rotate_move) + list(forward_move)
+            return self.override_movement(movement_args)
+
+        except Exception as e:
+            print(f"Error in override_relative_xy: {e}")
+            return False
+
+    def override_world_xy(self, world_x: float, world_y: float) -> bool:
+        """
+        Override current path to navigate to world coordinates.
+
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+
+        Returns:
+            True if successful
+        """
+        try:
+            # Get current robot position from nav odometry
+            current_x, current_y = RAVEN_WRAPPER.get_odometry()
+            current_heading = self.imu.get_heading()
+
+            # Calculate relative position to target
+            dx = world_x - current_x
+            dy = world_y - current_y
+            distance = math.sqrt(dx * dx + dy * dy)
+
+            # Calculate target heading in world frame
+            target_heading = math.atan2(dy, dx)
+
+            # Calculate rotation needed from current heading
+            rotation_angle = target_heading - current_heading
+
+            rotate_move = get_rotate(rotation_angle)
+            forward_move = get_forward_mm(distance)
+
+            print(f'World xy movement: target=({world_x}, {world_y}) current=({current_x:.1f}, {current_y:.1f}) '
+                  f'rotate={rotation_angle:.3f}rad distance={distance:.1f}mm')
+
+            movement_args = list(rotate_move) + list(forward_move)
+            return self.override_movement(movement_args)
+
+        except Exception as e:
+            print(f"Error in override_world_xy: {e}")
+            return False
+
     def pickup_can(self) -> bool:
         RAVEN_WRAPPER.lower_elevator()
         RAVEN_WRAPPER.close_gripper()

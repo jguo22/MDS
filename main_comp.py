@@ -35,9 +35,13 @@ def main():
     # ----------------- CREATE RECEIVER AND PROCESSORS -----------------
     computer_receiver = ComputerReceiver(
         args.host, args.video_port, args.coord_port)
-    robotHandler = RobotHandler(computer_receiver)
+
+    # Get robot commander for sending commands
+    robot_commander = computer_receiver.commander
+
+    robotHandler = RobotHandler(robot_commander)
     inputProcessor = InputProcessor(
-        computer_receiver, window_name_top, robotHandler)
+        robot_commander, window_name_top, robotHandler)
     frame_saver = FrameSaver(1, "images")
 
     # Create main profiler for frame processing pipeline

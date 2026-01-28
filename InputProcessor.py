@@ -1,6 +1,6 @@
 import cv2
 from config import FRAME_HEIGHT, FRAME_WIDTH
-from connection.ComputerReceiver import ComputerReceiver
+from IRobotCommander import IRobotCommander  # type: ignore
 from vision.pixelTo3D import transform_uv_to_xy
 from RobotHandler import RobotHandler
 
@@ -8,10 +8,10 @@ from RobotHandler import RobotHandler
 class InputProcessor():
     def __init__(
             self,
-            computerReceiver: ComputerReceiver,
+            robot_commander: IRobotCommander,
             window_name: str,
             robotHandler: RobotHandler):
-        self.computerReceiver = computerReceiver
+        self.robot_commander = robot_commander
         self.window_name = window_name
         self.robotHandler = robotHandler
         self.frame_size = (FRAME_WIDTH, FRAME_HEIGHT)  # (width, height)
@@ -24,7 +24,7 @@ class InputProcessor():
             xy = transform_uv_to_xy(x, y)
             if xy is not None:
                 x_scaled, y_scaled = xy
-                # self.computerReceiver.send_xy(x_scaled, y_scaled)
+                # self.robot_commander.override_relative_xy(x_scaled, y_scaled)
 
     # Interactive input thread for manual movement commands
     def handleKeyboardMovementsLoop(self):
@@ -32,6 +32,8 @@ class InputProcessor():
         print("Commands:")
         print("  r x y    - Send relative coordinates (robot-relative)")
         print("  w x y    - Send world coordinates (absolute position)")
+        print("  pickup   - Pick up can with gripper")
+        print("  release  - Release can from gripper")
         print("  start    - Start autonomous robot operation")
         print("  quit     - Exit\n")
         while True:
@@ -52,30 +54,54 @@ class InputProcessor():
                     else:
                         print("  → Error: RobotHandler not available")
 
+                # Pickup can
+                elif user_input.lower() == 'pickup':
+                    success = self.robot_commander.pickup_can()
+                    if success:
+                        print("  → Sent pickup can command")
+                    else:
+                        print("  → ERROR: Failed to send pickup command (no connection?)")
+
+                # Release can
+                elif user_input.lower() == 'release':
+                    success = self.robot_commander.release_can()
+                    if success:
+                        print("  → Sent release can command")
+                    else:
+                        print("  → ERROR: Failed to send release command (no connection?)")
+
                 # Relative coordinates: r x y
                 elif len(parts) == 3 and parts[0].lower() == 'r':
                     x = float(parts[1])
                     y = float(parts[2])
-                    self.computerReceiver.send_xy(x, y)
-                    print(f"  → Sent relative movement: x={x}, y={y}")
+                    success = self.robot_commander.override_relative_xy(x, y)
+                    if success:
+                        print(f"  → Sent relative movement: x={x}, y={y}")
+                    else:
+                        print(f"  → ERROR: Failed to send relative movement (no connection?)")
 
                 # World coordinates: w x y
                 elif len(parts) == 3 and parts[0].lower() == 'w':
                     x = float(parts[1])
                     y = float(parts[2])
-                    self.computerReceiver.send_world_xy(x, y)
-                    print(f"  → Sent world coordinates: x={x}, y={y}")
+                    success = self.robot_commander.override_world_xy(x, y)
+                    if success:
+                        print(f"  → Sent world coordinates: x={x}, y={y}")
+                    else:
+                        print(f"  → ERROR: Failed to send world coordinates (no connection?)")
 
                 # Backward compatibility: plain x y defaults to relative
                 elif len(parts) == 2:
                     x = float(parts[0])
                     y = float(parts[1])
-                    self.computerReceiver.send_xy(x, y)
-                    print(
-                        f"  → Sent relative movement: x={x}, y={y} (default mode)")
+                    success = self.robot_commander.override_relative_xy(x, y)
+                    if success:
+                        print(f"  → Sent relative movement: x={x}, y={y} (default mode)")
+                    else:
+                        print(f"  → ERROR: Failed to send relative movement (no connection?)")
 
                 else:
-                    print("Invalid command. Use: r x y (relative) or w x y (world)")
+                    print("Invalid command. Use: r x y (relative), w x y (world), pickup, or release")
 
             except ValueError:
                 print("Invalid numbers. Try again.")
