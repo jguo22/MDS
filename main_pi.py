@@ -157,7 +157,7 @@ def main():
     print("Cameras initialized")
 
     # Create direct robot commander for command execution
-    robot_commander = DirectRobotCommander(nav, distance_sensor, IMUWrapper())
+    robot_commander = DirectRobotCommander(nav, distance_sensor, imu_wrapper)
     print("DirectRobotCommander initialized")
 
     # Branch based on mode

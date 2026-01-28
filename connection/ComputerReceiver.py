@@ -155,7 +155,7 @@ class ComputerReceiver:
         Returns:
                 True if successful
         """
-        return self._commander.close()
+        return self.commander.close()
 
     def _receive_frames_thread(self):
         """Background thread that continuously receives frames and updates latest_frame."""
