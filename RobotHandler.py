@@ -12,7 +12,7 @@ import navHelpers
 from vision.segment import segmentImage
 from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones, isPointInPoly
 from vision.can_utils import getCans
-from vision.relativeCoordinates import get_movement_plan, world_to_relative
+from vision.relativeCoordinates import get_movement_plan, relative_to_world, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStarPlanner
 from streamer import Streamer
@@ -73,6 +73,7 @@ class RobotHandler():
         self.frame_id = -1
         self.robot_pose = SE2(0, 0, 0)
         self.distanceSensed = 0
+        self.didEarlyGame = False
 
         self.telemetry.set_data(self.get_picklable_dict())
 
@@ -95,8 +96,33 @@ class RobotHandler():
         self.profiler.record("segmentImage")
 
         # scan and set any zones that haven't been found yet
-        self.scanAndSetZones(result_top, self.frame_top, True)
         self.scanAndSetZones(result_bottom, self.frame_bottom, False)
+
+        for result, frame, is_top in [
+                (result_top, self.frame_top, True),
+                (result_bottom, self.frame_bottom, False)]:
+            self.scanAndSetZones(result, frame, is_top)
+            locations, colors = getCans(result, frame)
+            locations = [
+                relative_to_world(
+                    location,
+                    self.robot_pose) for location in locations]
+
+            for i in range(len(self.cans)):
+                not_repeat = True
+                for j in range(len(locations)):
+                    if distance(
+                            self.cans[i],
+                            locations[j]) < CAN_DIAMETER:
+                        not_repeat = False
+                        break
+                if not_repeat:
+                    locations.append(self.cans[i])
+                    colors.append(self.can_colors[i])
+
+            self.cans = locations
+            self.can_colors = colors
+
         self.profiler.record("scanAndSetZones")
 
         # Dispatch to appropriate state handler
@@ -154,19 +180,6 @@ class RobotHandler():
         if self.startFrame == -1:
             self.startFrame = frame_id
 
-            # # Get all detected cans in image coordinates
-            can_locations_xy, can_colors = getCans(result, frame)
-
-            # Store the planned path
-            self.cans = can_locations_xy
-            self.can_colors = canNamesToNumbers(can_colors)
-
-            # self.cans = [(1000, 0), (1000, -100), (1000, -200),
-            #              (1000, -300), (1000, -1000), (0, -1000),
-            #              (500, 500), (0, 0)]
-            # self.cans = [(-2000, 0)]
-            # self.can_colors = [GREEN_CAN] * len(self.cans)
-
         if self.started:
             self.state = RobotState.StartGather
 
@@ -174,13 +187,34 @@ class RobotHandler():
         """Handle StartGather state: send waypoints and check if cans reached"""
         self.state = RobotState.StartGather
         # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
-        if time.time() - self.lastTimeSentPath > 100:
-            self.lastTimeSentPath = time.time()
+        # if time.time() - self.lastTimeSentPath > 100:
+        #     self.lastTimeSentPath = time.time()
+        #
+        #     self.send_waypoints(self.cans)
+        #
+        # while len(self.cans) > 0 and self.isPointInScooper(*self.cans[0]):
+        #     self.cans.pop(0)
 
-            self.send_waypoints(self.cans)
+        # Sort cans by y value, keeping colors aligned
+        if not self.didEarlyGame:
+            self.didEarlyGame = True
 
-        while len(self.cans) > 0 and self.isPointInScooper(*self.cans[0]):
-            self.cans.pop(0)
+            sorted_pairs = sorted(
+                zip(self.cans, self.can_colors), key=lambda pair: pair[0][1])
+            sorted_cans = [can for can, color in sorted_pairs]
+            sorted_colors = [color for can, color in sorted_pairs]
+
+            # Find the golden can
+            golden_can = None
+            for i, color in enumerate(sorted_colors):
+                if color == GOLDEN_CAN:
+                    golden_can = sorted_cans[i]
+                    break
+            if golden_can is None:
+                golden_can = sorted_cans[len(sorted_cans) // 2]
+
+            self.computer_receiver.send_early_game(
+                golden_can, sorted_cans[0], sorted_cans[-1])
 
     def handleMidgameSearch(self):
         """Handle Search state: rotate slowly until target zone is found"""
@@ -480,7 +514,8 @@ class RobotHandler():
             'telemetry',
             'frame_bottom',
             'frame_top',
-            'robot_pose'
+            'robot_pose',
+            'zones',
         }
 
         result = {}
@@ -500,3 +535,11 @@ class RobotHandler():
             self.robot_pose.theta()]
 
         return result
+
+
+def distance(point1, point2):
+    x1, y1 = point1
+    x2, y2 = point2
+    dx = x1 - x2
+    dy = y1 - y2
+    return math.sqrt(dx * dx + dy * dy)

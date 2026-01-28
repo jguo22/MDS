@@ -8,6 +8,7 @@ GRIP_CAN = 4  # Grip can and lift: [height_mm]
 RELEASE_CAN = 5  # Release can grip: [height_mm]
 SEND_GRIPPER_HEIGHT = 6  # Set gripper height: [height_mm]
 PING = 7  # Latency test ping: [timestamp]
+EARLY_GAME = 8
 
 messageTypes = [
     CLOSE,
@@ -17,5 +18,6 @@ messageTypes = [
     GRIP_CAN,
     RELEASE_CAN,
     SEND_GRIPPER_HEIGHT,
-    PING
+    PING,
+    EARLY_GAME
 ]

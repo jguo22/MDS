@@ -16,7 +16,7 @@ class NavMove:
             left: float,
             right: float,
             dist: float,
-            smooth: bool,
+            smooth: bool = False,
             correct_angle: bool = True):
         self.left = left
         self.right = right
@@ -257,3 +257,28 @@ class Nav:
         y_world = robot_y + CLAW_OFFSET * sin_angle
 
         return x_world, y_world
+
+    def override_rotate_world_xy(self, world_x, world_y):
+        """
+        Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
+
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+        """
+        x, y = self.get_relative_position(world_x, world_y)
+
+        # Calculate angle to rotate to face the target
+        # atan2(y, x) gives the angle from robot's forward axis to the target
+        target_angle = math.atan2(y, x)
+
+        # Calculate distance to target
+        target_distance = math.sqrt(x**2 + y**2)
+
+        # Create movement path: rotate, then forward
+        movements = []
+
+        movements.append(NavMove(*get_rotate(target_angle), False))
+
+        # Override current path with new movements
+        self.overridePaths(movements)

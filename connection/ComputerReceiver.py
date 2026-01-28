@@ -426,3 +426,14 @@ class ComputerReceiver():
             message_types.SEND_GRIPPER_HEIGHT,
             [height_mm]
         )
+
+    def send_early_game(self, golden, left, right):
+        if not self.command_client_socket:
+            return False
+
+        args = [golden[0], golden[1], left[0], left[1], right[0], right[1]]
+        return protocol.send_command(
+            self.command_client_socket,
+            message_types.EARLY_GAME,
+            args
+        )

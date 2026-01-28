@@ -2,6 +2,7 @@ import time
 import argparse
 from IMUWrapper import IMUWrapper
 from RavenWrapper import RAVEN_WRAPPER
+from distanceSensorWrapper import DistanceSensorWrapper
 from nav import Nav, NavMove
 import threading
 import traceback
@@ -9,7 +10,7 @@ import config
 from connection import message_types
 from connection.PiStreamer import PiStreamer
 from connection.CameraCapture import CameraCapture
-from connection.DummyCameraCapture import DummyCameraCapture
+from earlyGame import EarlyGame
 
 
 def main():
@@ -21,7 +22,7 @@ def main():
     # Create cameras (managed externally, persists across reconnections)
     # Using DummyCameraCapture for testing (replace with CameraCapture for
     # real cameras)
-    camera_top = DummyCameraCapture(
+    camera_top = CameraCapture(
         args.camera_top,
         config.FRAME_WIDTH,
         config.FRAME_HEIGHT)
@@ -29,7 +30,7 @@ def main():
         print(f"Failed to open top camera: {args.camera_top}")
         return
 
-    camera_bottom = DummyCameraCapture(
+    camera_bottom = CameraCapture(
         args.camera_bottom,
         config.FRAME_WIDTH,
         config.FRAME_HEIGHT)
@@ -39,6 +40,7 @@ def main():
         return
 
     imuWrapper = IMUWrapper()
+    distanceSensor = DistanceSensorWrapper()
     nav = Nav(imuWrapper)
 
     # activate the navigation in another thread
@@ -87,6 +89,13 @@ def main():
             height = args[0]
             print(f"SEND_GRIPPER_HEIGHT: height={height}")
             RAVEN_WRAPPER.raise_elevator()
+
+        elif msg_type == message_types.EARLY_GAME:
+            golden = [args[0], args[1]]
+            left = [args[2], args[3]]
+            right = [args[4], args[5]]
+            earlyGame = EarlyGame(nav, distanceSensor, golden, left, right)
+            earlyGame.performEarlyGame()
 
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True

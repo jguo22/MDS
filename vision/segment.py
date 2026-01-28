@@ -2,13 +2,10 @@ import cv2 as cv
 from pathlib import Path
 from ultralytics.models.yolo import YOLO
 
-from .mask_utils import fixSegmentation, yoloMaskToBinary
-from .zone_utils import annotate_poly
-
 
 SCRIPT_DIR = Path(__file__).parent.absolute()
 
-MODEL = YOLO(str(SCRIPT_DIR / 'last.pt'))
+MODEL = YOLO(str(SCRIPT_DIR / 'best.pt'))
 labels = MODEL.names
 print(labels)
 
