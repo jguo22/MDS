@@ -15,7 +15,7 @@ from vision.relativeCoordinates import relative_to_world, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStarPlanner
 from streamer import Streamer
-from config import FPS, CAN_HEIGHT, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH
+from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, SCOOPER_LENGTH
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -258,8 +258,8 @@ class RobotHandler():
             self.state = RobotState.MidgameGoToCan
             return
 
-        if self.isPointInGripper(cx, cy):
-            self.robot_commander.override_movement([])
+        if self.isPointClose(cx, cy):
+            self.robot_commander.approach_can_with_ds()
             self.robot_commander.pickup_can()
 
             # Select target zone based on can color
@@ -270,9 +270,8 @@ class RobotHandler():
             elif can_color == GOLDEN_CAN:
                 self.targetZone = GOLDEN_ZONE
 
+            # TODO: logic to see if we actually got it
             self.state = RobotState.MidgameGoToZone
-        elif self.isPointClose(cx, cy):
-            self.preciseMoveToTarget(cx, cy)
         else:
             self.thetaStarAndSend(cx, cy)
             self.state = RobotState.MidgameGoToCan
@@ -284,16 +283,13 @@ class RobotHandler():
         # Check if robot is in target zone
         if self.zones[self.targetZone] is None:
             self.handleMidgameSearch()
-            self.state = RobotState.MidgameSearch
             return
 
         goal = None
-        stack_size = 0
         for x, y, size, color in self.stacked_cans:
             if color == self.targetZone:
                 if isPointInPoly((x, y), self.zones[self.targetZone]):
                     goal = (x, y)
-                    stack_size = size
                 else:
                     print("WARNING: CAN STACK NOT IN ZONE")
         if goal is None:
@@ -310,13 +306,56 @@ class RobotHandler():
 
         cx, cy, height = self.targetStack
 
-        if self.isPointInGripper(cx, cy):
+        if self.isPointClose(cx, cy):
+            # TODO: logic for 2+ stack
+            self.robot_commander.approach_can_with_ds()
             self.robot_commander.release_can()
-        elif self.isPointClose(cx, cy):
-            self.preciseMoveToTarget(cx, cy)
+
+            # update stack
+            spot = relative_to_world([50, 0])
+
+            self.state = RobotState.MidgameGoToCan
         else:
             self.thetaStarAndSend(cx, cy)
             self.state = RobotState.MidgameGoToZone
+
+    def stack():
+        global can_in_center_pos, stacked_cans
+        # Assume robot is gripping can
+        nav.override_paths_world_xy(
+            *offset_pos if can_in_center_pos else center_pos,
+            use_claw=True)
+        time.sleep(4)
+        nav.ravenWrapper.lower_elevator()
+        time.sleep(1)
+        nav.ravenWrapper.open_gripper()
+        time.sleep(1)
+        nav.ravenWrapper.raise_elevator()
+        time.sleep(1)
+        nav.addPath(NavMove(-1, -1, 3000))
+        time.sleep(1.5)
+        if (stacked_cans > 0):
+            nav.override_rotate_world_xy(
+                *center_pos if can_in_center_pos else offset_pos)
+            time.sleep(1)
+            approach_can_with_ds()
+            nav.ravenWrapper.lower_elevator()
+            time.sleep(1)
+            nav.ravenWrapper.close_gripper()
+            time.sleep(0.3)
+            nav.ravenWrapper.raise_elevator()
+            time.sleep(0.5)
+            nav.addPath(NavMove(-1, -1, 3000))
+            time.sleep(2)
+            nav.override_rotate_world_xy(
+                *offset_pos if can_in_center_pos else center_pos)
+            time.sleep(1)
+            approach_can_with_ds()
+            nav.ravenWrapper.open_gripper()
+
+        can_in_center_pos = not can_in_center_pos
+        stacked_cans += 1
+        time.sleep(2)
 
     # ------------------------ HELPER FUNCTIONS .----------------------------
 
@@ -488,12 +527,6 @@ class RobotHandler():
         rx, ry = self.thetaStar.planning(robot_x, robot_y, x, y)
         waypoints = list(zip(rx, ry))
         self.send_waypoints(waypoints)
-
-    def preciseMoveToTarget(self, gx, gy):
-        # TODO: add better logic
-        distanceToMove = min(self.distanceSensed - CAN_DIAMETER / 2, 0)
-        movement_args = list(navHelpers.get_forward_mm(distanceToMove))
-        self.robot_commander.override_movement(movement_args)
 
     def updateTelemetry(self):
         # self.telemetry.set_img(cv2.Mat(self.frame_top))

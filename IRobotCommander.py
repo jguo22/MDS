@@ -113,3 +113,16 @@ class IRobotCommander(ABC):
             True if successful
         """
         pass
+
+    @abstractmethod
+    def approach_can_with_ds(self) -> bool:
+        """
+        Approach can using distance sensor feedback.
+
+        Uses distance sensor to approach can in real-time, stopping when
+        within 100mm or returning False if no can detected (> 800mm).
+
+        Returns:
+            True if successfully approached can, False if no can detected
+        """
+        pass

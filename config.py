@@ -8,7 +8,7 @@ CAN_HEIGHT = 122.5  # Standard can height in mm
 
 ROBOT_DIAMETER = 250  # different from base_d, this is whole robot radius
 SCOOPER_LENGTH = 254
-CLAW_OFFSET = 120
+CLAW_OFFSET = 50
 
 BIG_ZONE_SIDE_LENGTH = 20 / 12 * FT_TO_MM
 SMALL_ZONE_SIDE_LENGTH = 4 / 12 * FT_TO_MM

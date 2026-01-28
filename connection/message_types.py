@@ -11,6 +11,7 @@ RELEASE_CAN = 5  # Release can (no arguments)
 EARLY_GAME = 6
 OVERRIDE_RELATIVE_XY = 7  # Relative movement: [x, y] in mm
 OVERRIDE_WORLD_XY = 8  # World coordinate navigation: [world_x, world_y] in mm
+APPROACH_CAN_DS = 9  # Approach can using distance sensor (no arguments)
 
 messageTypes = [
     CLOSE,
@@ -21,5 +22,6 @@ messageTypes = [
     RELEASE_CAN,
     EARLY_GAME,
     OVERRIDE_RELATIVE_XY,
-    OVERRIDE_WORLD_XY
+    OVERRIDE_WORLD_XY,
+    APPROACH_CAN_DS
 ]

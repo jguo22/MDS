@@ -16,7 +16,7 @@ class NavMove:
             left: float,
             right: float,
             dist: float,
-            smooth: bool = False,
+            smooth: bool = True,
             correct_angle: bool = True):
         self.left = left
         self.right = right
@@ -212,7 +212,7 @@ class Nav:
         return world_to_relative(
             (world_x, world_y), SE2(robot_x, robot_y, robot_theta))
 
-    def override_paths_world_xy(self, world_x, world_y):
+    def override_paths_world_xy(self, world_x, world_y, use_claw=False):
         """
         Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
 
@@ -232,9 +232,18 @@ class Nav:
         # Create movement path: rotate, then forward
         movements = []
 
-        movements.append(NavMove(*get_rotate(target_angle), False))
+        movements.append(
+            NavMove(
+                *get_rotate(target_angle),
+                False,
+                correct_angle=True))
 
-        movements.append(NavMove(*get_forward_mm(target_distance), False))
+        distance = get_forward_mm(target_distance)[2]
+
+        movements.append(
+            NavMove(1, 1,
+                    distance if not use_claw else distance - CLAW_OFFSET,
+                    False))
 
         # Override current path with new movements
         self.overridePaths(movements)

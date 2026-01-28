@@ -7,7 +7,7 @@ and hardware control functions, suitable for Pi-side execution.
 
 from typing import Tuple
 import math
-
+import time
 from spatialmath import SE2
 from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
@@ -102,9 +102,9 @@ class DirectRobotCommander(IRobotCommander):
             for idx, move in enumerate(moves):
                 print(
                     f"  Move {idx}: left={
-                        move.left:.2f}, right={
-                        move.right:.2f}, dist={
-                        move.dist:.1f}, smooth={
+                        move.left: .2f}, right={
+                        move.right: .2f}, dist={
+                        move.dist: .1f}, smooth={
                         move.smooth}")
             self.nav.overridePaths(moves)
             print("override_movement: Called nav.overridePaths()")
@@ -185,9 +185,9 @@ class DirectRobotCommander(IRobotCommander):
 
             print(
                 f'Relative xy: theta={
-                    theta:.3f}rad ({
-                    math.degrees(theta):.1f}deg), distance={
-                    distance:.1f}mm')
+                    theta: .3f}rad({
+                        math.degrees(theta): .1f}deg), distance={
+                    distance: .1f}mm')
             print(f'  rotate_move={rotate_move}')
             print(f'  forward_move={forward_move}')
 
@@ -231,10 +231,10 @@ class DirectRobotCommander(IRobotCommander):
 
             print(
                 f'World xy movement: target=({world_x}, {world_y}) current=({
-                    current_x:.1f}, {
-                    current_y:.1f}) ' f'rotate={
-                    rotation_angle:.3f}rad distance={
-                    distance:.1f}mm')
+                    current_x: .1f}, {
+                    current_y: .1f}) ' f'rotate={
+                    rotation_angle: .3f}rad distance={
+                    distance: .1f}mm')
 
             movement_args = list(rotate_move) + list(forward_move)
             return self.override_movement(movement_args)
@@ -267,6 +267,85 @@ class DirectRobotCommander(IRobotCommander):
         except Exception as e:
             print(f"Error in send_release_can: {e}")
             return False
+
+    def approach_can_with_ds(self) -> bool:
+        """
+        Approach can using distance sensor feedback.
+
+        Uses distance sensor to approach can in real-time, stopping when
+        within 100mm or returning False if no can detected (> 800mm).
+
+        Returns:
+            True if successfully approached can, False if no can detected
+        """
+        try:
+            while self.distance_sensor.get_distance() > 100:
+                distance = self.distance_sensor.get_distance()
+                if distance > 800:
+                    print(
+                        f"No can detected (distance: {distance}mm > 800mm)")
+                    return False
+
+                # Move forward by (current_distance - 85mm)
+                move_distance = distance - 85
+                print(
+                    f"Distance sensor: {distance}mm, moving forward {move_distance}mm")
+                self.nav.overridePaths(
+                    [NavMove(*get_forward_mm(move_distance), smooth=False)])
+                time.sleep(1.2)
+
+            print(
+                f"Can approached successfully(final distance: {
+                    self.distance_sensor.get_distance()}mm)")
+            return True
+        except Exception as e:
+            print(f"Error in approach_can_with_ds: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def stack(self,
+              temp_pos: Tuple[float, float],
+              stack_pos: Tuple[float, float],
+              stacked_cans: int,
+              ):
+        # Assume robot is gripping can
+        self.nav.override_paths_world_xy(*temp_pos, use_claw=True)
+        self.waitMovementFinished()
+
+        # set can down
+        self.approach_can_with_ds()
+        RAVEN_WRAPPER.lower_elevator(2)
+        RAVEN_WRAPPER.open_gripper()
+        RAVEN_WRAPPER.raise_elevator(2.1)
+
+        # move backwards so later we can turn without knocking over cans
+        self.nav.addPath(NavMove(-1, -1, 3000))
+        self.waitMovementFinished()
+
+        if (stacked_cans > 0):
+            # rotate
+            self.nav.override_rotate_world_xy(*stack_pos)
+            self.waitMovementFinished()
+
+            # pickup stack
+            self.approach_can_with_ds()
+            self.pickup_can()
+
+            # move back
+            self.nav.addPath(NavMove(-1, -1, 3000))
+            self.waitMovementFinished()
+
+            # go to temporary position
+            self.nav.override_rotate_world_xy(*temp_pos)
+            self.waitMovementFinished()
+            self.approach_can_with_ds()
+
+            RAVEN_WRAPPER.open_gripper()
+
+    def waitMovementFinished(self):
+        while self.nav.moving:
+            time.sleep(0.1)
 
 
 def is_near_segment(A, B, P, r):

@@ -199,3 +199,23 @@ class RemoteRobotCommander(IRobotCommander):
             message_types.RELEASE_CAN,
             []
         )
+
+    def approach_can_with_ds(self) -> bool:
+        """
+        Approach can using distance sensor feedback.
+
+        Uses distance sensor to approach can in real-time, stopping when
+        within 100mm or returning False if no can detected (> 800mm).
+
+        Returns:
+            True if successfully approached can, False if no can detected
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending approach can with distance sensor command')
+        return protocol.send_command(
+            self.command_socket,
+            message_types.APPROACH_CAN_DS,
+            []
+        )

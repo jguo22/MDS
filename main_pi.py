@@ -60,6 +60,12 @@ def run_network_mode(camera_top, camera_bottom, robot_commander, imu_wrapper):
             print(f"EARLY_GAME: golden={golden}, left={left}, right={right}")
             robot_commander.early_game(golden, left, right)
 
+        elif msg_type == message_types.APPROACH_CAN_DS:
+            assert (len(args) == 0)
+            print("APPROACH_CAN_DS")
+            result = robot_commander.approach_can_with_ds()
+            print(f"APPROACH_CAN_DS result: {result}")
+
     # Reconnection loop - each connection uses a new PiStreamer instance
     running = True
     while running:
