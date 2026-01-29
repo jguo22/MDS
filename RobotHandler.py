@@ -106,8 +106,6 @@ class RobotHandler():
 
         # Skip processing if paused
         if self.paused:
-            # if self.frame_id % 30 == 0:  # Print every 30 frames (~1 second)
-            #     print("⏸️  PAUSED (type 'resume' to continue)")
             self.profiler.end_frame()
             return
 

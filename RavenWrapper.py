@@ -28,9 +28,10 @@ class RavenWrapper():
             self.raven.set_motor_max_current(motor, 5)
             self.raven.set_motor_mode(motor, Raven.MotorMode.POSITION)
             self.raven.set_motor_target(motor, 0)
+            self.raven.set_motor_pid(motor, p_gain=25, i_gain=0, d_gain=2)
 
-        self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
-        self.raven.set_motor_pid(LEFT_MOTOR, p_gain=20, i_gain=5, d_gain=0.1)
+        # self.raven.set_motor_pid(RIGHT_MOTOR, p_gain=25, i_gain=5, d_gain=0.13)
+        # self.raven.set_motor_pid(LEFT_MOTOR, p_gain=20, i_gain=5, d_gain=0.1)
 
         self._lock = threading.Lock()
 

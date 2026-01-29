@@ -261,9 +261,13 @@ class RobotHandlerSimple:
             self.thetaStarAndSend(zx, zy)
 
     def updateCanDetections(self) -> None:
-        """Detect cans from segmentation and keep old detections."""
-        all_locations: List[Tuple[float, float]] = []
-        all_colors: List[int] = []
+        """Detect cans from segmentation and update tracking."""
+        GRID_SIZE = 50  # mm - grid for matching detections
+        MATCH_DISTANCE = CAN_DIAMETER  # Distance to consider same can
+
+        # Get all detections from both cameras
+        current_detections: List[Tuple[float, float]] = []
+        current_colors: List[int] = []
 
         for result, frame, is_top in [
             (self.result_top, self.frame_top, True),
@@ -273,64 +277,76 @@ class RobotHandlerSimple:
             colors = canNamesToNumbers(color_strings)
 
             # Transform to world coordinates
-            locations = [relative_to_world(location, self.robot_pose)
-                         for location in locations]
+            for loc, color in zip(locations, colors):
+                world_loc = relative_to_world(loc, self.robot_pose)
+                current_detections.append(world_loc)
+                current_colors.append(color)
 
-            all_locations.extend(locations)
-            all_colors.extend(colors)
+        # Update detection counts (for stability filtering)
+        new_detection_counts: dict[Tuple[int, int], int] = {}
 
-        # Update detection tracking
-        new_detections: dict[Tuple[int, int], int] = {}
-
-        for i, location in enumerate(all_locations):
-            rounded = (
-                round(location[0] / 50) * 50,
-                round(location[1] / 50) * 50
+        for location in current_detections:
+            grid_loc = (
+                round(location[0] / GRID_SIZE) * GRID_SIZE,
+                round(location[1] / GRID_SIZE) * GRID_SIZE
             )
 
-            matched = False
-            for existing_loc, count in self.can_detections.items():
-                if getDistance(rounded, existing_loc) < CAN_DIAMETER:
-                    new_detections[existing_loc] = count + 1
-                    matched = True
+            # Check if matches existing tracked location
+            matched_key = None
+            for existing_loc in self.can_detections:
+                if getDistance(grid_loc, existing_loc) < MATCH_DISTANCE:
+                    matched_key = existing_loc
                     break
 
-            if not matched:
-                new_detections[rounded] = 1
+            if matched_key:
+                new_detection_counts[matched_key] = self.can_detections[matched_key] + 1
+            else:
+                new_detection_counts[grid_loc] = 1
 
-        # Build confirmed cans list
-        confirmed_cans: List[Tuple[float, float]] = []
-        confirmed_colors: List[int] = []
+        # Build final can list
+        final_cans: List[Tuple[float, float]] = []
+        final_colors: List[int] = []
 
-        # Add newly confirmed cans
-        for rounded_loc, count in new_detections.items():
+        # Add cans that meet detection threshold
+        for grid_loc, count in new_detection_counts.items():
             if count >= self.DETECTION_THRESHOLD:
-                for i, location in enumerate(all_locations):
-                    rounded = (
-                        round(location[0] / 50) * 50,
-                        round(location[1] / 50) * 50
-                    )
-                    if rounded == rounded_loc:
-                        confirmed_cans.append(location)
-                        confirmed_colors.append(all_colors[i])
-                        break
+                # Find the actual detection closest to this grid location
+                best_loc = None
+                best_color = -1
+                best_dist = float('inf')
 
-        # Keep old cans that are still valid
+                for loc, color in zip(current_detections, current_colors):
+                    dist = getDistance(loc, grid_loc)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_loc = loc
+                        best_color = color
+
+                if best_loc and best_dist < MATCH_DISTANCE:
+                    # Check not already added
+                    is_duplicate = False
+                    for existing in final_cans:
+                        if getDistance(existing, best_loc) < MATCH_DISTANCE:
+                            is_duplicate = True
+                            break
+                    if not is_duplicate:
+                        final_cans.append(best_loc)
+                        final_colors.append(best_color)
+
+        # Keep old confirmed cans that weren't re-detected
         for old_can, old_color in zip(self.cans, self.can_colors):
-            # Skip if already in new confirmed list
-            already_added = False
-            for new_can in confirmed_cans:
-                if getDistance(old_can, new_can) < CAN_DIAMETER / 2:
-                    already_added = True
+            is_duplicate = False
+            for new_can in final_cans:
+                if getDistance(old_can, new_can) < MATCH_DISTANCE:
+                    is_duplicate = True
                     break
+            if not is_duplicate:
+                final_cans.append(old_can)
+                final_colors.append(old_color)
 
-            if not already_added:
-                confirmed_cans.append(old_can)
-                confirmed_colors.append(old_color)
-
-        self.can_detections = new_detections
-        self.cans = confirmed_cans
-        self.can_colors = confirmed_colors
+        self.can_detections = new_detection_counts
+        self.cans = final_cans
+        self.can_colors = final_colors
 
     # Helper functions
 

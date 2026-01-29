@@ -31,6 +31,8 @@ GRID_H = 200
 LOGICAL_OFFSET = 50   # how much the 100x100 is inset
 START_GRID_X = LOGICAL_OFFSET + GRID_SIZE // 2  # 50 + 50 = 100
 START_GRID_Y = LOGICAL_OFFSET                   # 50
+# START_GRID_X = 50
+# START_GRID_Y = 0
 
 
 def convert_world_to_grid(wx_mm: float, wy_mm: float):
@@ -400,7 +402,7 @@ class ThetaStar():
 def main():
     thetaStar = ThetaStar()
     thetaStar.addCan(700, 0)
-    thetaStar.set_goal(1000, 0)
+    thetaStar.set_goal(-2000, 0)
 
     # # --- Plot setup
     # if show_animation:
