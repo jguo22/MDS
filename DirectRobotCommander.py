@@ -390,7 +390,7 @@ class DirectRobotCommander(IRobotCommander):
         try:
             # Assume robot is gripping can
             self.nav.override_paths_world_xy(*temp_pos, use_claw=True)
-            self.waitFinishedNoving()
+            self.waitFinishedMoving()
 
             # set can down
             self.approach_can_with_ds()
@@ -400,12 +400,12 @@ class DirectRobotCommander(IRobotCommander):
 
             # move backwards so later we can turn without knocking over cans
             self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
-            self.waitFinishedNoving()
+            self.waitFinishedMoving()
 
             if (stacked_cans > 0):
                 # rotate
                 self.nav.override_rotate_world_xy(*stack_pos)
-                self.waitFinishedNoving()
+                self.waitFinishedMoving()
 
                 # pickup stack
                 self.approach_can_with_ds()
@@ -413,13 +413,13 @@ class DirectRobotCommander(IRobotCommander):
 
                 # go to temporary position
                 self.nav.override_rotate_world_xy(*temp_pos)
-                self.waitFinishedNoving()
+                self.waitFinishedMoving()
                 self.approach_can_with_ds()
 
                 # Release stacked can with proper elevator control
                 RAVEN_WRAPPER.open_gripper()
                 self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
-                self.waitFinishedNoving()
+                self.waitFinishedMoving()
 
             return True
         except Exception as e:
@@ -428,7 +428,7 @@ class DirectRobotCommander(IRobotCommander):
             traceback.print_exc()
             return False
 
-    def waitFinishedNoving(self) -> bool:
+    def waitFinishedMoving(self) -> bool:
         """
         Wait for current movement to complete.
 
