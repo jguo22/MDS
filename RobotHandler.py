@@ -203,7 +203,7 @@ class RobotHandler:
         # Do one iteration of approach
         print("approach")
         print(self.distanceSensed)
-        if self.distanceSensed <= 8:
+        if self.distanceSensed <= 22:
             print("pickup")
             self.handlePickupCan()
         else:
