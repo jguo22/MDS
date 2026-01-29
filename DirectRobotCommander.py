@@ -292,6 +292,7 @@ class DirectRobotCommander(IRobotCommander):
             True if successfully approached can, False if no can detected
         """
         # Approach can with distance sensor
+        print("ds")
         no_can_repeat = 0
         stuck = 0
         searching = "forward"
