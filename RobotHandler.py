@@ -1,5 +1,6 @@
 import time
 import math
+from matplotlib.pyplot import cla
 import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List, Optional
@@ -9,14 +10,14 @@ from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
 from vision.pixelTo3D import is_world_point_visible
 from vision.segment import segmentImage
-from vision.zone_utils import doPolygonsIntersect, getSquareCenter, getZones
+from vision.zone_utils import doPolygonsIntersect, getPolygonCenter, getZones
 from vision.can_utils import getCans, is_hull_overlap_with_target_rect
 from vision.relativeCoordinates import relative_to_world, world_to_relative
 from vision.mask_utils import maskToConvexHull, yoloMaskToBinary
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import BACKING_TICKS, FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
+from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET, APPROACH_OFFSET
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -44,8 +45,8 @@ class RobotHandler():
         self.waiting_for_command_id = 0
 
         # BEST GUESS MEMORY VARIABLES
-        # four vertices of scoring zones in world coords
-        # list of zones, each zone is [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]]
+        # Polygon vertices of scoring zones in world coords (mm)
+        # list of zones, each zone is [[x1, y1], [x2, y2], ..., [xN, yN]]
         self.zones: List[Optional[np.ndarray]] = [
             None, None, None, None, None, None]
         self.zone_confidences = [0, 0, 0, 0, 0, 0]
@@ -144,21 +145,21 @@ class RobotHandler():
         self.updateCanDetections()
 
         # TESTING PURPOSES
-        self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
-                                           [922.48, -271.63],
-                                           [1391.22, -262.14],
-                                           [1382.95, 269.04]])
-        self.zone_confidences[GREEN_ZONE] = 2
-        self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
-                                         [1791.50, 311.42],
-                                         [1438.28, 7.33],
-                                         [1710.01, -324.33]])
-        self.zone_confidences[RED_ZONE] = 2
-        self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
-                                            [1832.41, -610.53],
-                                            [1732.2, -675.07],
-                                            [1811.42, -762.24]])
-        self.zone_confidences[GOLDEN_ZONE] = 2
+        # self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
+        #                                    [922.48, -271.63],
+        #                                    [1391.22, -262.14],
+        #                                    [1382.95, 269.04]])
+        # self.zone_confidences[GREEN_ZONE] = 2
+        # self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
+        #                                  [1791.50, 311.42],
+        #                                  [1438.28, 7.33],
+        #                                  [1710.01, -324.33]])
+        # self.zone_confidences[RED_ZONE] = 2
+        # self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
+        #                                     [1832.41, -610.53],
+        #                                     [1732.2, -675.07],
+        #                                     [1811.42, -762.24]])
+        # self.zone_confidences[GOLDEN_ZONE] = 2
 
         self.profiler.record("scanAndSetZones")
 
@@ -191,7 +192,7 @@ class RobotHandler():
         self.updateTelemetry()
         self.profiler.record("telemetry")
 
-        self.paused = True
+        # self.paused = True
         # time.sleep(5)
         self.profiler.record("sleep")
 
@@ -213,7 +214,7 @@ class RobotHandler():
             (self.result_bottom, self.frame_bottom, False)
         ]:
             locations, color_strings = getCans(result, frame, is_top)
-            print(locations)
+            # print(locations)
             colors = canNamesToNumbers(color_strings)
 
             # Transform to world coordinates
@@ -383,7 +384,7 @@ class RobotHandler():
         self.state = RobotState.SearchForCan
         if len(self.cans) == 0:
             # Rotate slowly while searching
-            rotate_cmd = list(get_rotate(math.pi / 4 / FPS))
+            rotate_cmd = list(get_rotate(math.pi / 2 / FPS))
             print("→ override_movement(search_for_can_rotate)")
             self.robot_commander.override_movement(rotate_cmd)
             return
@@ -511,15 +512,17 @@ class RobotHandler():
         if True:
             # if self.hasGoodPickup():
             # Select target zone based on can color
-            if can_color == GREEN_CAN:
-                self.targetZone = GREEN_ZONE
-                zone_name = "GREEN"
-            elif can_color == RED_CAN:
-                self.targetZone = RED_ZONE
-                zone_name = "RED"
-            else:  # GOLDEN_CAN
-                self.targetZone = GOLDEN_ZONE
-                zone_name = "GOLDEN"
+            # if can_color == GREEN_CAN:
+            #     self.targetZone = GREEN_ZONE
+            #     zone_name = "GREEN"
+            # elif can_color == RED_CAN:
+            #     self.targetZone = RED_ZONE
+            #     zone_name = "RED"
+            # else:  # GOLDEN_CAN
+            #     self.targetZone = GOLDEN_ZONE
+            #     zone_name = "GOLDEN"
+            self.targetZone = RED_ZONE
+            zone_name = "RED"
             print(
                 f"State: {self.state.name} → PlaceInZone (target: {zone_name})")
             self.targetStackId = -1
@@ -539,14 +542,13 @@ class RobotHandler():
 
         if self.newStackPosition is None:
             # pick some point that is good enough distance away
-            zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
+            zone_x, zone_y = getPolygonCenter(self.zones[self.targetZone])
 
             # use self.targetStackId to remember which stack
             # remember to set to -1 when starting stacking phase
             targetStack = None
             if self.targetStackId == -1:
                 # find a stack based on the color zone
-                self.targetStackId = -1
                 for i, stack in enumerate(self.stacked_cans):
                     x, y, size, color = stack
                     if size < self.MAX_STACK_SIZE and color == self.targetZone:
@@ -585,7 +587,10 @@ class RobotHandler():
             self.robot_commander.backup()
             self.robot_commander.waitFinishedMoving()
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-            self.state = RobotState.PickupStack
+            if self.stacked_cans[self.targetStackId][2] == 0:
+                self.state = RobotState.MidgameGoToCan
+            else:
+                self.state = RobotState.PickupStack
         else:
             self.thetaStarAndSend(gx, gy)
 
@@ -605,7 +610,7 @@ class RobotHandler():
                     break
             if targetStack is None:
                 # make new stack
-                zone_x, zone_y = getSquareCenter(self.zones[self.targetZone])
+                zone_x, zone_y = getPolygonCenter(self.zones[self.targetZone])
                 targetStack = (zone_x, zone_y, 0, self.targetZone)
                 self.stacked_cans.append(targetStack)
                 self.targetStackId = len(self.stacked_cans) - 1
@@ -658,7 +663,7 @@ class RobotHandler():
         self.thetaStar.addCan(cx, cy)
 
         print("→ override_movement([-1, -1, 3000])")
-        self.robot_commander.override_movement([-1, -1, BACKING_TICKS])
+        self.robot_commander.backup()
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
         print(f"⏳ Waiting for command {self.waiting_for_command_id}")
         print(f"State: {self.state.name} → MidgameGoToCan")
@@ -676,8 +681,7 @@ class RobotHandler():
             image: Original BGR image used for zone detection
         """
         # Get zones sorted by distance (closest first)
-        squares_xy, class_names, confidences = getZones(
-            result, image, is_top)
+        squares_xy, class_names, confidences = getZones(result, image, is_top)
 
         # Iterate through all detected zones
         for zone, name, conf in zip(squares_xy, class_names, confidences):
@@ -823,9 +827,9 @@ class RobotHandler():
             else:
                 # TODO: figure out which zone is ours
                 # using actual logic
-                prev_x, prev_y = getSquareCenter(prev_zone)
+                prev_x, prev_y = getPolygonCenter(prev_zone)
                 prevDistSquared = prev_x * prev_x + prev_y * prev_y
-                curr_x, curr_y = getSquareCenter(zone)
+                curr_x, curr_y = getPolygonCenter(zone)
                 currDistSquared = curr_x * curr_x + curr_y * curr_y
                 if currDistSquared < prevDistSquared:
                     # current zone is our zone and other zone might be
@@ -925,7 +929,7 @@ class RobotHandler():
             return True
 
         # Check 2: Is point within rectangle in front of robot?
-        rect_length = CLAW_OFFSET + CAN_DIAMETER * 3 / 2
+        rect_length = APPROACH_OFFSET
         rect_width = CAN_DIAMETER
         in_rectangle = (
             0 <= local_x <= rect_length and
@@ -934,31 +938,24 @@ class RobotHandler():
 
         return in_rectangle
 
-    def send_waypoints(self, waypoints: List[Tuple[float, float]]):
+    def send_waypoints_with_start(self, waypoints: List[Tuple[float, float]]):
         x, y, _ = unpackPose(self.robot_pose)
         command_args = [x, y]
+        print("adding waypoints")
         for x, y in waypoints:
+            print(x, y)
             command_args.append(x)
             command_args.append(y)
         self.robot_commander.override_waypoints(command_args)
 
     def thetaStarAndSend(self, x: float, y: float):
         # temporary while thetastar doesn't work
-        # dx, dy = world_to_relative((x, y), self.robot_pose)
-        # gx, gy = relative_to_world((max(dx - 150, 0), dy), self.robot_pose)
-        # self.robot_commander.override_world_xy(gx, gy)
-        print(f"→ override_world_xy({x:.0f}, {y:.0f})")
-        self.robot_commander.override_world_xy(x, y)
-        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-        print(f"⏳ Waiting for command {self.waiting_for_command_id}")
-        # robot_x = self.robot_pose.x
-        # robot_y = self.robot_pose.y
-        #
-        # self.thetaStar.set_start(robot_x, robot_y)
-        # self.thetaStar.set_goal(x, y)
-        # waypoints = self.thetaStar.path_find()
-        #
-        # self.send_waypoints(waypoints)
+        gx, gy = self.getWorldClawOffsetPosition((x, y))
+        robot_x, robot_y, theta = unpackPose(self.robot_pose)
+        self.thetaStar.set_start(robot_x, robot_y)
+        self.thetaStar.set_goal(gx, gy)
+        waypoints = self.thetaStar.path_find()
+        self.send_waypoints_with_start(waypoints)
 
     def updateTelemetry(self):
         # self.telemetry.set_img(cv2.Mat(self.frame_top))
@@ -994,11 +991,11 @@ class RobotHandler():
         for zone_id, zone in enumerate(self.zones):
             if zone is not None:
                 color = zone_colors.get(zone_id, "white")
-                # Draw 4 lines connecting the vertices in a closed loop
-                for i in range(4):
+                # Draw lines lines connecting the vertices in a closed loop
+                for i in range(len(zone)):
                     x1, y1 = zone[i]
-                    x2, y2 = zone[(i + 1) %
-                                  4]  # Wrap around to close the polygon
+                    # Wrap around to close the polygon
+                    x2, y2 = zone[(i + 1) % len(zone)]
                     lines.append((x1 * scaling, y1 * scaling,
                                  x2 * scaling, y2 * scaling, color))
 
@@ -1058,6 +1055,12 @@ class RobotHandler():
             self.robot_pose.theta()]
 
         return result
+
+    def getWorldClawOffsetPosition(self, point: Tuple[float, float]):
+        dx, dy = world_to_relative(point, self.robot_pose)
+        gx, gy = relative_to_world(
+            (max(dx - APPROACH_OFFSET + 10, 0), dy), self.robot_pose)
+        return gx, gy
 
 
 def getDistance(point1, point2):

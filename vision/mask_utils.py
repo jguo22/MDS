@@ -101,9 +101,23 @@ def maskToConvexRegion(mask):
 
 
 def maskToConvexHull(mask):
-    # Find all contours
+    """
+    Computes the convex hull from a binary mask.
+
+    Uses CHAIN_APPROX_NONE to preserve all contour points for accurate hull computation.
+
+    Args:
+        mask: Binary mask (H, W) with values 0 or 255
+
+    Returns:
+        Convex hull as numpy array of shape (N, 1, 2) where N is number of hull vertices
+    """
+    # Find all contours - use CHAIN_APPROX_NONE to keep all points for accurate hull
     contours, _ = cv.findContours(
-        mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
+
+    if not contours:
+        return None
 
     # Combine ALL contour points into single array
     all_points = np.vstack(contours)
