@@ -12,3 +12,5 @@ print(sx, sy)
 print(gx, gy)
 print(thetaStar.ox)
 rx, ry = thetaStar.path_find()
+
+# asdfas
