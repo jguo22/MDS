@@ -72,6 +72,14 @@ def run_network_mode(
             assert (len(args) == 0)
             robot_commander.release_can()
 
+        elif msg_type == message_types.OPEN_GRIPPER:
+            assert (len(args) == 0)
+            robot_commander.open_gripper()
+
+        elif msg_type == message_types.LOWER_ELEVATOR:
+            assert (len(args) == 0)
+            robot_commander.lower_elevator()
+
         elif msg_type == message_types.RESET_GRIPPER:
             assert (len(args) == 0)
             robot_commander.reset_gripper()

@@ -3,6 +3,7 @@ from config import FRAME_HEIGHT, FRAME_WIDTH
 from IRobotCommander import IRobotCommander  # type: ignore
 from vision.pixelTo3D import transform_uv_to_xy
 from RobotHandler import RobotHandler
+from RobotHandler_Simple import RobotHandlerSimple
 
 
 class InputProcessor():
@@ -10,7 +11,7 @@ class InputProcessor():
             self,
             robot_commander: IRobotCommander,
             window_name: str,
-            robotHandler: RobotHandler):
+            robotHandler: RobotHandlerSimple):
         self.robot_commander = robot_commander
         self.window_name = window_name
         self.robotHandler = robotHandler
@@ -78,7 +79,8 @@ class InputProcessor():
                     if success:
                         print("  → Sent pickup can command")
                     else:
-                        print("  → ERROR: Failed to send pickup command (no connection?)")
+                        print(
+                            "  → ERROR: Failed to send pickup command (no connection?)")
 
                 # Release can
                 elif user_input.lower() == 'release':
@@ -86,7 +88,8 @@ class InputProcessor():
                     if success:
                         print("  → Sent release can command")
                     else:
-                        print("  → ERROR: Failed to send release command (no connection?)")
+                        print(
+                            "  → ERROR: Failed to send release command (no connection?)")
 
                 # Relative coordinates: r x y
                 elif len(parts) == 3 and parts[0].lower() == 'r':
@@ -96,7 +99,8 @@ class InputProcessor():
                     if success:
                         print(f"  → Sent relative movement: x={x}, y={y}")
                     else:
-                        print("  → ERROR: Failed to send relative movement (no connection?)")
+                        print(
+                            "  → ERROR: Failed to send relative movement (no connection?)")
 
                 # World coordinates: w x y
                 elif len(parts) == 3 and parts[0].lower() == 'w':
@@ -106,7 +110,8 @@ class InputProcessor():
                     if success:
                         print(f"  → Sent world coordinates: x={x}, y={y}")
                     else:
-                        print("  → ERROR: Failed to send world coordinates (no connection?)")
+                        print(
+                            "  → ERROR: Failed to send world coordinates (no connection?)")
 
                 # Backward compatibility: plain x y defaults to relative
                 elif len(parts) == 2:
@@ -114,12 +119,15 @@ class InputProcessor():
                     y = float(parts[1])
                     success = self.robot_commander.override_relative_xy(x, y)
                     if success:
-                        print(f"  → Sent relative movement: x={x}, y={y} (default mode)")
+                        print(
+                            f"  → Sent relative movement: x={x}, y={y} (default mode)")
                     else:
-                        print("  → ERROR: Failed to send relative movement (no connection?)")
+                        print(
+                            "  → ERROR: Failed to send relative movement (no connection?)")
 
                 else:
-                    print("Invalid command. Use: r x y (relative), w x y (world), pickup, release, start, pause, or resume")
+                    print(
+                        "Invalid command. Use: r x y (relative), w x y (world), pickup, release, start, pause, or resume")
 
             except ValueError:
                 print("Invalid numbers. Try again.")

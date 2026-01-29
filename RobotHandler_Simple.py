@@ -90,8 +90,19 @@ class RobotHandlerSimple:
         self.profiler.start_frame()
 
         if self.paused:
+            return
+        self.robot_commander.open_gripper()
+        self.robot_commander.lower_elevator()
+        self.paused = True
+        return
+
+        if (not self.started) or self.paused:
             self.profiler.end_frame()
             return
+
+        self.robot_commander.approach_can_with_ds()
+        self.paused = True
+        return
 
         # Check if waiting for command
         if self.waiting_for_command_id > 0:
@@ -143,8 +154,8 @@ class RobotHandlerSimple:
         if len(target_cans) == 0:
             # Keep rotating
             rotate_cmd = list(get_rotate(math.pi / 3 / FPS))
-            print(
-                f"Searching for can {self.cans_collected + 1}/{self.MAX_STACK}")
+            # print(
+            # f"Searching for can {self.cans_collected + 1}/{self.MAX_STACK}")
             self.robot_commander.override_movement(rotate_cmd)
         else:
             print(f"Can found! Moving to it...")
@@ -154,19 +165,25 @@ class RobotHandlerSimple:
         """Navigate to the nearest can of target color."""
         # Filter cans to only target color
         target_cans = self.getTargetColorCans()
+        print("navigating")
 
         if len(target_cans) == 0:
             print("No cans of target color found, searching again...")
             self.state = RobotStateSimple.SearchForCan
             return
+        print("can found")
 
         # Get closest target can
-        robot_x, robot_y = self.robot_pose.x, self.robot_pose.y
-        closest_idx = min(
-            range(
-                len(target_cans)), key=lambda i: getDistance(
-                (robot_x, robot_y), target_cans[i]))
+        robot_x, robot_y, theta = unpackPose(self.robot_pose)
+        closest_idx = 0
+        closest_dist = float('inf')
+        for i, (can_x, can_y, can_color) in enumerate(target_cans):
+            dist = getDistance((robot_x, robot_y), (can_x, can_y))
+            if dist < closest_dist:
+                closest_dist = dist
+                closest_idx = i
         can_x, can_y, can_color = target_cans[closest_idx]
+        print(can_x, can_y)
 
         # Check if close enough to approach
         if self.isPointClose(can_x, can_y):
@@ -179,8 +196,9 @@ class RobotHandlerSimple:
                     self.can_colors.pop(i)
                     break
             self.robot_commander.approach_can_with_ds()
-            self.robot_commander.open_gripper()
-            self.robot_commander.lower_elevator()
+            if self.can_in_gripper:
+                self.robot_commander.open_gripper()
+                self.robot_commander.lower_elevator()
             self.robot_commander.pickup_can()
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
             self.state = RobotStateSimple.GrabCan
@@ -231,7 +249,7 @@ class RobotHandlerSimple:
             self.thetaStarAndSend(zx, zy)
 
     def updateCanDetections(self) -> None:
-        """Detect cans from segmentation."""
+        """Detect cans from segmentation and keep old detections."""
         all_locations: List[Tuple[float, float]] = []
         all_colors: List[int] = []
 
@@ -272,6 +290,7 @@ class RobotHandlerSimple:
         confirmed_cans: List[Tuple[float, float]] = []
         confirmed_colors: List[int] = []
 
+        # Add newly confirmed cans
         for rounded_loc, count in new_detections.items():
             if count >= self.DETECTION_THRESHOLD:
                 for i, location in enumerate(all_locations):
@@ -283,6 +302,19 @@ class RobotHandlerSimple:
                         confirmed_cans.append(location)
                         confirmed_colors.append(all_colors[i])
                         break
+
+        # Keep old cans that are still valid
+        for old_can, old_color in zip(self.cans, self.can_colors):
+            # Skip if already in new confirmed list
+            already_added = False
+            for new_can in confirmed_cans:
+                if getDistance(old_can, new_can) < CAN_DIAMETER / 2:
+                    already_added = True
+                    break
+
+            if not already_added:
+                confirmed_cans.append(old_can)
+                confirmed_colors.append(old_color)
 
         self.can_detections = new_detections
         self.cans = confirmed_cans
@@ -306,7 +338,7 @@ class RobotHandlerSimple:
         if distance <= ROBOT_DIAMETER / 2:
             return True
 
-        rect_length = APPROACH_OFFSET
+        rect_length = APPROACH_OFFSET + 20
         rect_width = CAN_DIAMETER
         in_rectangle = (
             0 <= local_x <= rect_length and
@@ -327,6 +359,8 @@ class RobotHandlerSimple:
         """Plan path using theta* and send to robot."""
         # Get offset position to approach from correct distance
         goal_x, goal_y = self.getWorldClawOffsetPosition((x, y))
+        print(x, y)
+        print(goal_x, goal_y)
 
         robot_x, robot_y, theta = unpackPose(self.robot_pose)
         self.thetaStar.set_start(robot_x, robot_y)
@@ -337,6 +371,7 @@ class RobotHandlerSimple:
         for wx, wy in waypoints:
             command_args.append(wx)
             command_args.append(wy)
+        print(command_args)
         self.robot_commander.override_waypoints(command_args)
 
     def updateTelemetry(self):
@@ -388,7 +423,7 @@ class RobotHandlerSimple:
         return result
 
 
-def getDistance(point1, point2):
+def getDistance(point1: Tuple[float, float], point2: Tuple[float, float]):
     x1, y1 = point1
     x2, y2 = point2
     dx = x1 - x2
