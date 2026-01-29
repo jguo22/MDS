@@ -141,7 +141,7 @@ class DirectRobotCommander(IRobotCommander):
 
             # remove the first waypoint if we already passed it
             # within the ~3 frames delay
-            if is_near_segment(start, [x, y], waypoints[0], BASE_D):
+            if is_near_segment(start, [x, y], waypoints[0], BASE_D / 2):
                 waypoints.pop(0)
 
             plan = get_movement_plan(waypoints, robot_pose)

@@ -37,16 +37,17 @@ class RobotHandler:
         self.waiting_for_command_id = 0
 
         # Configuration
-        self.MAX_STACK = 3  # Number of cans to collect
+        self.MAX_STACK = 2  # Number of cans to collect
         self.cans_collected = 0  # Total cans delivered to zone
         self.cans_held = 0  # Number of cans currently holding
-        self.target_zone = RED_ZONE
+        self.target_zone = GREEN_ZONE
         self.target_can_color = RED_CAN  # Color of cans to search for
 
         # Memory
         # Hardcoded zone centers for testing
         self.zones: list[Tuple[float, float]] = [(0, 0)] * 3
-        self.zones[GREEN_ZONE] = (1670, 584)
+        # HERE
+        self.zones[GREEN_ZONE] = (1000, 0)
         self.zones[RED_ZONE] = (990, -939.8)
         self.zones[GOLDEN_ZONE] = (2235, -914)
         self.cans: List[Tuple[float, float]] = []
@@ -406,6 +407,12 @@ class RobotHandler:
         self.thetaStar.set_start(robot_x, robot_y)
         self.thetaStar.set_goal(goal_x, goal_y)
         waypoints = self.thetaStar.path_find()
+
+        # Filter out waypoints less than 5mm from start
+        waypoints = [
+            (wx, wy) for wx, wy in waypoints
+            if getDistance((robot_x, robot_y), (wx, wy)) >= 5.0
+        ]
 
         command_args = [robot_x, robot_y]
         for wx, wy in waypoints:
