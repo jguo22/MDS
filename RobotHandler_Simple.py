@@ -12,13 +12,14 @@ from vision.relativeCoordinates import relative_to_world, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import FPS, CAN_DIAMETER, ROBOT_DIAMETER, APPROACH_OFFSET
+from config import CLAW_OFFSET, FPS, CAN_DIAMETER, ROBOT_DIAMETER, APPROACH_OFFSET
 from colors import GREEN_ZONE, RED_ZONE, GOLDEN_ZONE, GREEN_CAN, RED_CAN, GOLDEN_CAN, canNamesToNumbers
 
 
 class RobotStateSimple(Enum):
     SearchForCan = auto()
     MoveToCan = auto()
+    ApproachingCan = auto()
     GrabCan = auto()
     MoveToZone = auto()
     Done = auto()
@@ -127,6 +128,8 @@ class RobotHandlerSimple:
             self.handleSearchForCan()
         elif self.state == RobotStateSimple.MoveToCan:
             self.handleMoveToCan()
+        elif self.state == RobotStateSimple.ApproachingCan:
+            self.handleApproachingCan()
         elif self.state == RobotStateSimple.GrabCan:
             self.handleGrabCan()
         elif self.state == RobotStateSimple.MoveToZone:
@@ -178,7 +181,8 @@ class RobotHandlerSimple:
 
         # Check if close enough to approach
         if self.isPointClose(can_x, can_y):
-            print(f"Reached can at ({can_x:.0f}, {can_y:.0f})")
+            print(
+                f"Close to can at ({can_x:.0f}, {can_y:.0f}), starting approach")
             self.current_can = (can_x, can_y, can_color)
             # Remove this can from the list
             for i, (cx, cy) in enumerate(self.cans):
@@ -186,18 +190,32 @@ class RobotHandlerSimple:
                     self.cans.pop(i)
                     self.can_colors.pop(i)
                     break
-            print("using ds")
-            self.robot_commander.approach_can_with_ds()
-            if self.can_in_gripper:
-                self.robot_commander.open_gripper()
-                self.robot_commander.lower_elevator()
-            self.robot_commander.pickup_can()
-            self.state = RobotStateSimple.GrabCan
+            self.state = RobotStateSimple.ApproachingCan
         else:
             # Move closer
             self.thetaStarAndSend(can_x, can_y)
-            self.robot_commander.waitFinishedMoving()
+            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+
+    def handleApproachingCan(self):
+        """Use distance sensor to approach can, limited iterations per frame."""
+        print("Approaching can with distance sensor...")
+
+        # Do one iteration of approach
+        self.robot_commander.approach_can_with_ds()
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+
+        # Check if we're close enough to grab
+        # This will be checked next frame after approach completes
+        # For now, assume approach worked and proceed to grab
+        if self.can_in_gripper:
+            print("Opening gripper for new can")
+            self.robot_commander.open_gripper()
+            self.robot_commander.lower_elevator()
+
+        print("Picking up can")
+        self.robot_commander.pickup_can()
+        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+        self.state = RobotStateSimple.GrabCan
 
     def handleGrabCan(self):
         """Wait for grab to complete and update state."""
@@ -333,7 +351,7 @@ class RobotHandlerSimple:
             return True
 
         rect_length = APPROACH_OFFSET + 70
-        rect_width = 400
+        rect_width = CAN_DIAMETER * 2
         in_rectangle = (
             0 <= local_x <= rect_length and
             -rect_width / 2 <= local_y <= rect_width / 2

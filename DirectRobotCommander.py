@@ -284,93 +284,46 @@ class DirectRobotCommander(IRobotCommander):
             traceback.print_exc()
             return False
 
-    def approach_can_with_ds(self) -> bool:
+    def approach_can_with_ds(self, max_iterations: int = 3) -> bool:
         """
         Approach can using distance sensor feedback.
 
-        Uses distance sensor to approach can in real-time, stopping when
-        within 100mm or returning False if no can detected (> 800mm).
+        Uses distance sensor to approach can, stopping when close enough
+        or after max_iterations.
+
+        Args:
+            max_iterations: Maximum number of approach iterations (default 3)
 
         Returns:
             True if successfully approached can, False if no can detected
         """
-        # Approach can with distance sensor
-        no_can_repeat = 0
-        stuck = 0
-        searching = "forward"
-        while self.distance_sensor.get_distance() > 20:
+        TARGET_DISTANCE = 25  # mm - stop when this close
+        MAX_DISTANCE = 500  # mm - consider no can if farther
+
+        for iteration in range(max_iterations):
             distance = self.distance_sensor.get_distance()
-            print(distance)
-            if (distance > 500):
-                no_can_repeat += 1
-                if (no_can_repeat >= 5):
-                    if (searching == "forward"):
-                        searching = "left1"
-                        self.nav.addPath(
-                            NavMove(-1, 1, get_rotate(math.pi / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "left1"):
-                        searching = "left2"
-                        self.nav.addPath(
-                            NavMove(-1, 1, get_rotate(math.pi / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "left2"):
-                        searching = "left3"
-                        self.nav.addPath(
-                            NavMove(-1, 1, get_rotate(math.pi / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "left3"):
-                        searching = "left4"
-                        self.nav.addPath(
-                            NavMove(-1, 1, get_rotate(math.pi / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "left4"):
-                        searching = "right1"
-                        self.nav.addPath(
-                            NavMove(1, -1, get_rotate(math.pi * 5 / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "right1"):
-                        searching = "right2"
-                        self.nav.addPath(
-                            NavMove(1, -1, get_rotate(math.pi * 1 / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "right2"):
-                        searching = "right3"
-                        self.nav.addPath(
-                            NavMove(1, -1, get_rotate(math.pi * 1 / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "right3"):
-                        searching = "right4"
-                        self.nav.addPath(
-                            NavMove(1, -1, get_rotate(math.pi * 1 / 16)[2], smooth=False))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-                    elif (searching == "right4"):
-                        searching = "forward"
-                        self.nav.addPath(
-                            NavMove(-1, 1, get_rotate(math.pi / 4)[2], smooth=False))
-                        self.nav.addPath(NavMove(1, 1, 2000))
-                        self.waitFinishedMoving()
-                        no_can_repeat = 0
-            else:
-                if (abs(distance - 80) < 20):
-                    stuck += 1
-                else:
-                    stuck = 0
-                if (stuck > 3):
-                    self.nav.addPath(NavMove(1, 0, 600))
-                    self.waitFinishedMoving()
-                no_can_repeat = 0
-                self.nav.overridePaths([NavMove(*get_forward_mm(distance))])
-                time.sleep(1)
-            time.sleep(0.1)
+            print(
+                f"Approach iteration {iteration + 1}/{max_iterations}, distance: {distance}mm")
+
+            if distance <= TARGET_DISTANCE:
+                print("Close enough to can")
+                return True
+
+            if distance > MAX_DISTANCE:
+                print(f"No can detected (distance > {MAX_DISTANCE}mm)")
+                return False
+
+            # Move forward by distance minus target
+            move_distance = distance - TARGET_DISTANCE
+            print(f"Moving forward {move_distance}mm")
+            self.nav.overridePaths(
+                [NavMove(*get_forward_mm(move_distance), smooth=False)])
+            self.waitFinishedMoving()
+
+        final_distance = self.distance_sensor.get_distance()
+        print(
+            f"Completed {max_iterations} iterations, final distance: {final_distance}mm")
+        return final_distance <= TARGET_DISTANCE
 
     def stack(
             self,
