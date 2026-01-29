@@ -214,7 +214,7 @@ class RobotHandler:
             self.handlePickupCan()
         else:
             print("actually sending")
-            self.robot_commander.approach_can_with_ds(20)
+            self.robot_commander.approach_can_with_ds(3)
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
             self.state = RobotState.AfterApproaching
 
