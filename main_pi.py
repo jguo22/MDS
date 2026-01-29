@@ -4,6 +4,7 @@ from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
 from RavenWrapper import RAVEN_WRAPPER
 from distanceSensorWrapper import DistanceSensorWrapper
+import distanceSensorWrapper
 from nav import Nav
 import threading
 import traceback
@@ -15,13 +16,51 @@ from connection import command_tracker
 from DirectRobotCommander import DirectRobotCommander
 
 
-def run_network_mode(
-        camera_top,
-        camera_bottom,
-        robot_commander: IRobotCommander,
-        imu_wrapper,
-        nav):
-    """Run network mode - stream to computer and receive commands."""
+def main():
+    parser = argparse.ArgumentParser(
+        description="Raspberry Pi Robot - Network or Autonomous Mode")
+    parser.add_argument("--camera-top", default="/dev/videoblacktop",
+                        help="Top camera device path")
+    parser.add_argument("--camera-bottom", default="/dev/videoblackbot",
+                        help="Bottom camera device path")
+    parser.add_argument(
+        "--local",
+        help="Run autonomously on Pi without network (default: connect to computer)")
+    parser.add_argument("--fps", type=int, default=config.FPS,
+                        help="Target frames per second (local mode only)")
+    args = parser.parse_args()
+
+    # Initialize IMU (must be first!)
+    imu_wrapper = IMUWrapper()
+
+    # Initialize distance sensor
+    distance_sensor = DistanceSensorWrapper()
+
+    # Initialize navigation
+    nav = Nav(imu_wrapper)
+
+    # Start navigation loop in background thread
+    nav_thread = threading.Thread(target=nav.startLoop, daemon=True)
+    nav_thread.start()
+
+    # Initialize cameras
+    camera_top = CameraCapture(
+        args.camera_top,
+        config.FRAME_WIDTH,
+        config.FRAME_HEIGHT)
+    if not camera_top.open():
+        return
+
+    camera_bottom = CameraCapture(
+        args.camera_bottom,
+        config.FRAME_WIDTH,
+        config.FRAME_HEIGHT)
+    if not camera_bottom.open():
+        camera_top.close()
+        return
+
+    # Create direct robot commander for command execution
+    robot_commander = DirectRobotCommander(nav, distance_sensor, imu_wrapper)
 
     def command_callback(msg_type: int, command_id: int, args: list[float]):
         """Route network commands to DirectRobotCommander."""
@@ -115,6 +154,8 @@ def run_network_mode(
                 host=config.COMPUTER_IP,
                 video_port=config.VIDEO_PORT,
                 command_port=config.COMMAND_PORT)
+            streamer.set_sensor_callbacks(
+                get_distance_sensed=distance_sensor.get_distance)
 
             # Set up movement callback
             streamer.set_command_callback(command_callback)
@@ -134,61 +175,6 @@ def run_network_mode(
 
     camera_top.close()
     camera_bottom.close()
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Raspberry Pi Robot - Network or Autonomous Mode")
-    parser.add_argument("--camera-top", default="/dev/videoblacktop",
-                        help="Top camera device path")
-    parser.add_argument("--camera-bottom", default="/dev/videoblackbot",
-                        help="Bottom camera device path")
-    parser.add_argument(
-        "--local",
-        help="Run autonomously on Pi without network (default: connect to computer)")
-    parser.add_argument("--fps", type=int, default=config.FPS,
-                        help="Target frames per second (local mode only)")
-    args = parser.parse_args()
-
-    # Initialize IMU (must be first!)
-    imu_wrapper = IMUWrapper()
-
-    # Initialize distance sensor
-    distance_sensor = DistanceSensorWrapper()
-
-    # Initialize navigation
-    nav = Nav(imu_wrapper)
-
-    # Start navigation loop in background thread
-    nav_thread = threading.Thread(target=nav.startLoop, daemon=True)
-    nav_thread.start()
-
-    # Initialize cameras
-    camera_top = CameraCapture(
-        args.camera_top,
-        config.FRAME_WIDTH,
-        config.FRAME_HEIGHT)
-    if not camera_top.open():
-        return
-
-    camera_bottom = CameraCapture(
-        args.camera_bottom,
-        config.FRAME_WIDTH,
-        config.FRAME_HEIGHT)
-    if not camera_bottom.open():
-        camera_top.close()
-        return
-
-    # Create direct robot commander for command execution
-    robot_commander = DirectRobotCommander(nav, distance_sensor, imu_wrapper)
-
-    # Branch based on mode
-    run_network_mode(
-        camera_top,
-        camera_bottom,
-        robot_commander,
-        imu_wrapper,
-        nav)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,6 @@ import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List
 from spatialmath import SE2
-from torch.nn.modules import distance
 from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
@@ -203,7 +202,8 @@ class RobotHandler:
 
         # Do one iteration of approach
         print("approach")
-        if self.distanceSensed <= 20:
+        print(self.distanceSensed)
+        if self.distanceSensed <= 8:
             print("pickup")
             self.handlePickupCan()
         else:
@@ -369,7 +369,7 @@ class RobotHandler:
         local_x, local_y = world_to_relative((x, y), self.robot_pose)
 
         distance = math.sqrt(local_x**2 + local_y**2)
-        if distance <= ROBOT_DIAMETER / 2:
+        if distance <= ROBOT_DIAMETER:
             return True
 
         rect_length = APPROACH_OFFSET + 70
