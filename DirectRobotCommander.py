@@ -11,12 +11,12 @@ import time
 from spatialmath import SE2
 from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
-from config import BACKING_TICKS, BASE_D, CAN_DIAMETER, CLAW_OFFSET, DS_TO_CLAW
+from config import BACKING_TICKS, BASE_D, CAN_DIAMETER, CLAW_OFFSET, DS_TO_CLAW, MIN_ROTATION
 from nav import Nav, NavMove
 from distanceSensorWrapper import DistanceSensorWrapper
 from RavenWrapper import RAVEN_WRAPPER
 from earlyGame import EarlyGame
-from navHelpers import get_forward_mm, get_rotate
+from navHelpers import get_forward_mm, get_rotate, get_arc
 from vision.relativeCoordinates import get_movement_plan
 
 
@@ -149,9 +149,12 @@ class DirectRobotCommander(IRobotCommander):
             movement_args = []
             for move in plan:
                 dist, theta = move
-                if theta > 0.01:
+                if abs(theta) > MIN_ROTATION:
+                    dx = dist * math.cos(theta)
+                    dy = dist * math.sin(theta)
+                    movement_args.extend(get_arc(dx, dy))
+                else:
                     movement_args.extend(get_rotate(theta))
-                if dist > 5:
                     movement_args.extend(get_forward_mm(dist))
             return self.override_movement(movement_args)
 

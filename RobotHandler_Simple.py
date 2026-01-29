@@ -45,10 +45,10 @@ class RobotHandlerSimple:
 
         # Memory
         # Hardcoded zone centers for testing
-        self.zones: list[np.ndarray] = [np.array([0, 0])] * 3
-        self.zones[GREEN_ZONE] = np.array([[1670, 584]])
-        self.zones[RED_ZONE] = np.array([[990, -939.8]])
-        self.zones[GOLDEN_ZONE] = np.array([[2235, -914]])
+        self.zones: list[Tuple[float, float]] = [(0, 0)] * 3
+        self.zones[GREEN_ZONE] = (1670, 584)
+        self.zones[RED_ZONE] = (990, -939.8)
+        self.zones[GOLDEN_ZONE] = (2235, -914)
         self.cans: List[Tuple[float, float]] = []
         self.can_colors: List[int] = []
         self.can_detections: dict[Tuple[int, int], int] = {}
@@ -147,8 +147,6 @@ class RobotHandlerSimple:
         if len(target_cans) == 0:
             # Keep rotating
             rotate_cmd = list(get_rotate(math.pi / 3 / FPS))
-            # print(
-            # f"Searching for can {self.cans_collected + 1}/{self.MAX_STACK}")
             self.robot_commander.override_movement(rotate_cmd)
         else:
             print(f"Can found! Moving to it...")
@@ -188,16 +186,18 @@ class RobotHandlerSimple:
                     self.cans.pop(i)
                     self.can_colors.pop(i)
                     break
+            print("using ds")
             self.robot_commander.approach_can_with_ds()
             if self.can_in_gripper:
                 self.robot_commander.open_gripper()
                 self.robot_commander.lower_elevator()
             self.robot_commander.pickup_can()
-            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
             self.state = RobotStateSimple.GrabCan
         else:
             # Move closer
             self.thetaStarAndSend(can_x, can_y)
+            self.robot_commander.waitFinishedMoving()
+        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
 
     def handleGrabCan(self):
         """Wait for grab to complete and update state."""
@@ -225,6 +225,7 @@ class RobotHandlerSimple:
             print("Zone not found, searching...")
             return
 
+        print(zone)
         zx, zy = zone
 
         # Check if at zone
@@ -332,7 +333,7 @@ class RobotHandlerSimple:
             return True
 
         rect_length = APPROACH_OFFSET + 70
-        rect_width = CAN_DIAMETER
+        rect_width = 400
         in_rectangle = (
             0 <= local_x <= rect_length and
             -rect_width / 2 <= local_y <= rect_width / 2
