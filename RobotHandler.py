@@ -202,10 +202,12 @@ class RobotHandler:
         print("Approaching can with distance sensor...")
 
         # Do one iteration of approach
-        print("approachig with ds")
-        if self.distanceSensed <= 25:
+        print("approach")
+        if self.distanceSensed <= 20:
+            print("pickup")
             self.handlePickupCan()
         else:
+            print("actually sending")
             self.robot_commander.approach_can_with_ds()
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
 
