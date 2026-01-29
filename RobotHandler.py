@@ -23,6 +23,7 @@ class RobotState(Enum):
     PickupCan = auto()
     MoveToZone = auto()
     Done = auto()
+    AfterApproaching = auto()
 
 
 class RobotHandler:
@@ -144,6 +145,7 @@ class RobotHandler:
 
     def handleSearchForCan(self):
         """Rotate until a can of target color is detected."""
+        self.state = RobotState.SearchForCan
         # Filter cans to only target color
         target_cans = self.getTargetColorCans()
 
@@ -157,6 +159,7 @@ class RobotHandler:
 
     def handleMoveToCan(self):
         """Navigate to the nearest can of target color."""
+        self.state = RobotState.MoveToCan
         # Filter cans to only target color
         target_cans = self.getTargetColorCans()
         print("navigating")
@@ -198,6 +201,7 @@ class RobotHandler:
 
     def handleApproachingCan(self):
         """Use distance sensor to approach can, limited iterations per frame."""
+        self.state = RobotState.ApproachingCan
         print("Approaching can with distance sensor...")
 
         # Do one iteration of approach
@@ -210,8 +214,18 @@ class RobotHandler:
             print("actually sending")
             self.robot_commander.approach_can_with_ds()
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+            self.state = RobotState.AfterApproaching
+
+    def handleAfterApproaching(self):
+        self.state = RobotState.AfterApproaching
+        if self.distanceSensed <= 22:
+            print("pickup")
+            self.handlePickupCan()
+        else:
+            self.state = RobotState.MoveToCan
 
     def handlePickupCan(self):
+        self.state = RobotState.PickupCan
         # Check if we're close enough to grab
         # This will be checked next frame after approach completes
         # For now, assume approach worked and proceed to grab
@@ -240,6 +254,7 @@ class RobotHandler:
 
     def handleMoveToZone(self):
         """Move to target zone and drop cans."""
+        self.state = RobotState.MoveToZone
         zone = self.zones[self.target_zone]
         if zone is None:
             print("Zone not found, searching...")
@@ -262,6 +277,7 @@ class RobotHandler:
         else:
             self.thetaStarAndSend(zx, zy)
 
+    # HELPER FUNCTIONS
     def updateCanDetections(self) -> None:
         """Detect cans from segmentation and update tracking."""
         GRID_SIZE = 50  # mm - grid for matching detections
@@ -350,7 +366,6 @@ class RobotHandler:
         self.cans = final_cans
         self.can_colors = final_colors
 
-    # Helper functions
     def getTargetColorCans(self) -> List[Tuple[float, float, int]]:
         """Get list of cans matching target color and within bounds."""
         target_cans = []
