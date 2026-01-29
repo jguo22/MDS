@@ -1,6 +1,5 @@
 import time
 import math
-from matplotlib.pyplot import cla
 import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List, Optional
@@ -136,64 +135,64 @@ class RobotHandler():
         self.result_bottom = segmentImage(self.frame_bottom)
         self.profiler.record("segmentImage")
 
-        for result, frame, is_top in [
-            (self.result_top, self.frame_top, True),
-            (self.result_bottom, self.frame_bottom, False)
-        ]:
-            self.scanAndSetZones(result, frame, is_top)
+        # for result, frame, is_top in [
+        #     (self.result_top, self.frame_top, True),
+        #     (self.result_bottom, self.frame_bottom, False)
+        # ]:
+        #     self.scanAndSetZones(result, frame, is_top)
 
         self.updateCanDetections()
 
-        # TESTING PURPOSES
-        # self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
-        #                                    [922.48, -271.63],
-        #                                    [1391.22, -262.14],
-        #                                    [1382.95, 269.04]])
-        # self.zone_confidences[GREEN_ZONE] = 2
-        # self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
-        #                                  [1791.50, 311.42],
-        #                                  [1438.28, 7.33],
-        #                                  [1710.01, -324.33]])
-        # self.zone_confidences[RED_ZONE] = 2
-        # self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
-        #                                     [1832.41, -610.53],
-        #                                     [1732.2, -675.07],
-        #                                     [1811.42, -762.24]])
-        # self.zone_confidences[GOLDEN_ZONE] = 2
+        print(self.cans)
+        # print(self.robot_pose)
+        print(unpackPose(self.robot_pose))
+
+        # TESTING PURPOSES - Hardcoded zone centers
+        self.zones[GREEN_ZONE] = np.array([[1153.82, 5.90]])
+        self.zone_confidences[GREEN_ZONE] = 2
+        self.zones[RED_ZONE] = np.array([[1752.90, -8.07]])
+        self.zone_confidences[RED_ZONE] = 2
+        self.zones[GOLDEN_ZONE] = np.array([[1818.02, -682.43]])
+        self.zone_confidences[GOLDEN_ZONE] = 2
+        # for zoneId in [GREEN_ZONE, RED_ZONE, GOLDEN_ZONE]:
+        #     zone = self.zones[zoneId]
+        #     if zone is None:
+        #         print("None")
+        #     else:
+        #         print(getPolygonCenter(zone))
 
         self.profiler.record("scanAndSetZones")
 
-        # Dispatch to appropriate state handler
-        if self.state == RobotState.StartScan:
-            self.handleStartScan(self.frame_id)
-        elif self.state == RobotState.StartGather:
-            self.handleStartGather()
-        elif self.state == RobotState.SearchForZone:
-            self.handleSearchForZone()
-        elif self.state == RobotState.SearchForCan:
-            self.handleSearchForCan()
-        elif self.state == RobotState.MidgameGoToCan:
-            self.handleMidgameGoToCan()
-        elif self.state == RobotState.MidgameGrabbing:
-            self.handleMidgameGrabbing()
-        elif self.state == RobotState.PlaceInZone:
-            self.handlePlaceInZone()
-        elif self.state == RobotState.PickupStack:
-            self.handlePickUpStack()
-        elif self.state == RobotState.AddStack:
-            self.handleAddStack()
-        elif self.state == RobotState.FinishedStacking:
-            self.handleFinishedStacking()
-        elif self.state == RobotState.PostGrab:
-            self.handlePostGrab()
-
-        self.profiler.record("handleState")
+        if not self.paused:
+            # Dispatch to appropriate state handler
+            if self.state == RobotState.StartScan:
+                self.handleStartScan(self.frame_id)
+            elif self.state == RobotState.StartGather:
+                self.handleStartGather()
+            elif self.state == RobotState.SearchForZone:
+                self.handleSearchForZone()
+            elif self.state == RobotState.SearchForCan:
+                self.handleSearchForCan()
+            elif self.state == RobotState.MidgameGoToCan:
+                self.handleMidgameGoToCan()
+            elif self.state == RobotState.MidgameGrabbing:
+                self.handleMidgameGrabbing()
+            elif self.state == RobotState.PlaceInZone:
+                self.handlePlaceInZone()
+            elif self.state == RobotState.PickupStack:
+                self.handlePickUpStack()
+            elif self.state == RobotState.AddStack:
+                self.handleAddStack()
+            elif self.state == RobotState.FinishedStacking:
+                self.handleFinishedStacking()
+            elif self.state == RobotState.PostGrab:
+                self.handlePostGrab()
+            self.profiler.record("handleState")
 
         self.updateTelemetry()
         self.profiler.record("telemetry")
 
         # self.paused = True
-        # time.sleep(5)
         self.profiler.record("sleep")
 
         self.profiler.end_frame()
@@ -330,9 +329,11 @@ class RobotHandler():
         """Handle StartGather state: send waypoints and check if cans reached"""
         self.state = RobotState.StartGather
 
-        self.targetZone = GREEN_ZONE
-        print(f"State: {self.state.name} → MidgameGoToCan")
-        self.handleMidgameGoToCan()
+        self.send_waypoints_with_start(
+            [getPolygonCenter(self.zones[self.frame_id % 3])])
+        # self.targetZone = GREEN_ZONE
+        # print(f"State: {self.state.name} → MidgameGoToCan")
+        # self.handleMidgameGoToCan()
         return
         # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
         # if time.time() - self.lastTimeSentPath > 100:
@@ -582,16 +583,21 @@ class RobotHandler():
             self.newStackPosition = new_pos
 
         gx, gy = self.newStackPosition
+        print("new stack position is")
+        print(gx, gy)
         if self.isPointInGripper(gx, gy):
             self.robot_commander.set_down_can()
             self.robot_commander.backup()
             self.robot_commander.waitFinishedMoving()
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
             if self.stacked_cans[self.targetStackId][2] == 0:
+                print("placeinzone to gotocan")
                 self.state = RobotState.MidgameGoToCan
             else:
+                print('placeinzone to pickupstack')
                 self.state = RobotState.PickupStack
         else:
+            print("theatastar")
             self.thetaStarAndSend(gx, gy)
 
     def handlePickUpStack(self):
@@ -949,12 +955,13 @@ class RobotHandler():
         self.robot_commander.override_waypoints(command_args)
 
     def thetaStarAndSend(self, x: float, y: float):
-        # temporary while thetastar doesn't work
         gx, gy = self.getWorldClawOffsetPosition((x, y))
         robot_x, robot_y, theta = unpackPose(self.robot_pose)
         self.thetaStar.set_start(robot_x, robot_y)
         self.thetaStar.set_goal(gx, gy)
         waypoints = self.thetaStar.path_find()
+        print("waypoints")
+        print(waypoints)
         self.send_waypoints_with_start(waypoints)
 
     def updateTelemetry(self):

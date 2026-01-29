@@ -18,6 +18,8 @@ WAIT_MOVEMENT_FINISHED = 11  # Wait for movement to complete (no arguments)
 RESET_GRIPPER = 12  # Reset gripper servo (no arguments)
 SET_DOWN_CAN = 13  # Set down can at current position (no arguments)
 BACKUP = 14  # Back up robot a short distance (no arguments)
+OPEN_GRIPPER = 15  # Open gripper to prepare for grabbing (no arguments)
+LOWER_ELEVATOR = 16  # Lower elevator mechanism (no arguments)
 
 messageTypes = [
     CLOSE,
@@ -34,5 +36,7 @@ messageTypes = [
     WAIT_MOVEMENT_FINISHED,
     RESET_GRIPPER,
     SET_DOWN_CAN,
-    BACKUP
+    BACKUP,
+    OPEN_GRIPPER,
+    LOWER_ELEVATOR
 ]

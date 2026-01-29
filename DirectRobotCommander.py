@@ -214,7 +214,7 @@ class DirectRobotCommander(IRobotCommander):
         return True
 
     def set_down_can(self) -> bool:
-        RAVEN_WRAPPER.raise_elevator(1.5)
+        RAVEN_WRAPPER.lower_elevator(1.5)
         RAVEN_WRAPPER.open_gripper()
         return True
 
@@ -245,6 +245,36 @@ class DirectRobotCommander(IRobotCommander):
         """
         try:
             RAVEN_WRAPPER.open_gripper()
+            return True
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def open_gripper(self) -> bool:
+        """
+        Open the gripper to prepare for grabbing.
+
+        Returns:
+            True if successful
+        """
+        try:
+            RAVEN_WRAPPER.open_gripper()
+            return True
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def lower_elevator(self) -> bool:
+        """
+        Lower the elevator mechanism.
+
+        Returns:
+            True if successful
+        """
+        try:
+            RAVEN_WRAPPER.lower_elevator(2.0)
             return True
         except Exception:
             import traceback

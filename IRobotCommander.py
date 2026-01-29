@@ -125,6 +125,26 @@ class IRobotCommander(ABC):
         pass
 
     @abstractmethod
+    def open_gripper(self) -> bool:
+        """
+        Open the gripper to prepare for grabbing.
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def lower_elevator(self) -> bool:
+        """
+        Lower the elevator mechanism.
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
     def approach_can_with_ds(self) -> bool:
         """
         Approach can using distance sensor feedback.

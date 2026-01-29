@@ -249,6 +249,43 @@ class RemoteRobotCommander(IRobotCommander):
             command_id=0
         )
 
+    def open_gripper(self) -> bool:
+        """
+        Open the gripper to prepare for grabbing.
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending open gripper command')
+        return protocol.send_command(
+            self.command_socket,
+            message_types.OPEN_GRIPPER,
+            [],
+            command_id=0
+        )
+
+    def lower_elevator(self) -> bool:
+        """
+        Lower the elevator mechanism.
+
+        Returns:
+            True if successful
+        """
+        if not self.command_socket:
+            return False
+
+        print('Sending lower elevator command')
+        command_id = self._get_command_id()
+        return protocol.send_command(
+            self.command_socket,
+            message_types.LOWER_ELEVATOR,
+            [],
+            command_id=command_id
+        )
+
     def approach_can_with_ds(self) -> bool:
         """
         Approach can using distance sensor feedback.

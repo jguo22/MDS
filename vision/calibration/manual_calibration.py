@@ -18,20 +18,17 @@ def outputToArray(input: str) -> np.ndarray:
     return np.array(points_2d)
 
 
-PTS_IMAGE_PLANE = outputToArray('''0 - u: 139, v: 97
-1 - u: 802, v: 111
-2 - u: 85, v: 405
-3 - u: 635, v: 403
-4 - u: 783, v: 293
-5 - u: 10, v: 214''')
+PTS_IMAGE_PLANE = outputToArray(''' 0 - u: 86, v: 404
+1 - u: 636, v: 403
+2 - u: 515, v: 170
+3 - u: 221, v: 164
+''')
 
 PTS_GROUND_PLANE = np.array([
-    [8, 2],
-    [8, -4],
     [3, 1],
     [3, -1],
-    [4, -2],
-    [5, 2]
+    [6, -1],
+    [6, 1],
 ]) * 304.8
 
 print(PTS_IMAGE_PLANE)

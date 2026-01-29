@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 
-# FRAME SIZE 864 by 448
+# FRAME SIZE 864 by 480
 
 # camera with case cover
 DISTORTION_TOP = np.array([[0.05532577, 0.24960091,
