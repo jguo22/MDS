@@ -286,25 +286,28 @@ class RemoteRobotCommander(IRobotCommander):
             command_id=command_id
         )
 
-    def approach_can_with_ds(self) -> bool:
+    def approach_can_with_ds(self, max_iterations: int = 100) -> bool:
         """
         Approach can using distance sensor feedback.
 
         Uses distance sensor to approach can in real-time, stopping when
-        within 100mm or returning False if no can detected (> 800mm).
+        within 20mm or returning False if no can detected or max iterations exceeded.
+
+        Args:
+            max_iterations: Maximum number of loop iterations before giving up (default 100)
 
         Returns:
-            True if successfully approached can, False if no can detected
+            True if successfully approached can, False if no can detected or max exceeded
         """
         if not self.command_socket:
             return False
 
-        print('Sending approach can with distance sensor command')
+        print(f'Sending approach can with distance sensor command (max_iterations={max_iterations})')
         command_id = self._get_command_id()
         return protocol.send_command(
             self.command_socket,
             message_types.APPROACH_CAN_DS,
-            [],
+            [float(max_iterations)],
             command_id=command_id
         )
 

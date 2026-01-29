@@ -46,8 +46,9 @@ def run_network_mode(
             robot_commander.override_world_xy(world_x, world_y)
 
         elif msg_type == message_types.APPROACH_CAN_DS:
-            assert (len(args) == 0)
-            robot_commander.approach_can_with_ds()
+            assert (len(args) <= 1)
+            max_iterations = int(args[0]) if len(args) == 1 else 100
+            robot_commander.approach_can_with_ds(max_iterations)
 
         elif msg_type == message_types.EARLY_GAME:
             assert (len(args) == 6)
