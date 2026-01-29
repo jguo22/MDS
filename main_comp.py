@@ -1,11 +1,8 @@
 import time
 import argparse
 import threading
-import numpy as np
-import cv2
-from RobotHandler_Simple import RobotHandlerSimple
+from RobotHandler_Simple import RobotHandler
 from profiler import Profiler
-from RobotHandler import RobotHandler
 from connection.ComputerReceiver import ComputerReceiver
 from InputProcessor import InputProcessor
 from connection.FrameSaver import FrameSaver
@@ -48,7 +45,7 @@ def main():
     # Get robot commander for sending commands
     robot_commander = computer_receiver.commander
 
-    robotHandler = RobotHandlerSimple(robot_commander)
+    robotHandler = RobotHandler(robot_commander)
     inputProcessor = InputProcessor(
         robot_commander, window_name_top, robotHandler)
 

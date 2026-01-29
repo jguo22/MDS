@@ -3,7 +3,7 @@ from config import FRAME_HEIGHT, FRAME_WIDTH
 from IRobotCommander import IRobotCommander  # type: ignore
 from vision.pixelTo3D import transform_uv_to_xy
 from RobotHandler import RobotHandler
-from RobotHandler_Simple import RobotHandlerSimple
+from RobotHandler_Simple import RobotHandler
 
 
 class InputProcessor():
@@ -11,7 +11,7 @@ class InputProcessor():
             self,
             robot_commander: IRobotCommander,
             window_name: str,
-            robotHandler: RobotHandlerSimple):
+            robotHandler: RobotHandler):
         self.robot_commander = robot_commander
         self.window_name = window_name
         self.robotHandler = robotHandler
