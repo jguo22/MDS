@@ -129,11 +129,13 @@ class DirectRobotCommander(IRobotCommander):
             assert len(
                 movement_args) % 2 == 0, "Movement args must be pairs of x, y coordinates"
 
+            print("override")
             # Parse starting point and waypoints
             start = movement_args[:2]
             waypoints = []
             for i in range(2, len(movement_args), 2):
                 waypoints.append((movement_args[i], movement_args[i + 1]))
+            print(start)
 
             x, y = RAVEN_WRAPPER.get_odometry()
             theta = self.imu.get_heading()
@@ -142,9 +144,11 @@ class DirectRobotCommander(IRobotCommander):
             # remove the first waypoint if we already passed it
             # within the ~3 frames delay
             if is_near_segment(start, [x, y], waypoints[0], BASE_D / 2):
+                print("remove")
                 waypoints.pop(0)
 
             plan = get_movement_plan(waypoints, robot_pose)
+            print(plan)
 
             movement_args = []
             for move in plan:
