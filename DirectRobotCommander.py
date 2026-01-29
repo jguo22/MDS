@@ -154,7 +154,9 @@ class DirectRobotCommander(IRobotCommander):
             for move in plan:
                 dist, theta = move
                 if abs(theta) > MIN_ROTATION:
-                    movement_args.extend(get_rotate(theta))
+                    thing = get_rotate(theta)
+                    movement_args.extend(
+                        [thing[0] * 0.5, thing[1] * 0.5, thing[2] * 2])
                     movement_args.extend(get_forward_mm(dist))
                 else:
                     dx = dist * math.cos(theta)
