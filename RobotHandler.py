@@ -131,6 +131,8 @@ class RobotHandler:
             self.handleMoveToCan()
         elif self.state == RobotState.ApproachingCan:
             self.handleApproachingCan()
+        elif self.state == RobotState.AfterApproaching:
+            self.handleAfterApproaching()
         elif self.state == RobotState.PickupCan:
             self.handlePickupCan()
         elif self.state == RobotState.MoveToZone:
@@ -212,7 +214,7 @@ class RobotHandler:
             self.handlePickupCan()
         else:
             print("actually sending")
-            self.robot_commander.approach_can_with_ds()
+            self.robot_commander.approach_can_with_ds(20)
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
             self.state = RobotState.AfterApproaching
 
@@ -223,7 +225,7 @@ class RobotHandler:
             print("pickup")
             self.handlePickupCan()
         else:
-            print("find can")
+            print("didn't ds can, now moving to new can")
             self.state = RobotState.MoveToCan
 
     def handlePickupCan(self):
