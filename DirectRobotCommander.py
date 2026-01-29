@@ -373,6 +373,7 @@ class DirectRobotCommander(IRobotCommander):
                 self.nav.overridePaths([NavMove(*get_forward_mm(distance))])
                 time.sleep(1)
             time.sleep(0.1)
+        print("done with ds sucess")
         return True
 
     def stack(

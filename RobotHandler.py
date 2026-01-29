@@ -218,10 +218,12 @@ class RobotHandler:
 
     def handleAfterApproaching(self):
         self.state = RobotState.AfterApproaching
+        print("after approach")
         if self.distanceSensed <= 22:
             print("pickup")
             self.handlePickupCan()
         else:
+            print("find can")
             self.state = RobotState.MoveToCan
 
     def handlePickupCan(self):
