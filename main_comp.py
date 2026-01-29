@@ -139,15 +139,15 @@ def main():
                 labels=[f"C{i}" for i in range(len(robotHandler.cans))]
             )
 
-        # Visualize zone polygons
-        zone_colors = {
-            GREEN_ZONE: (0, 255, 0),      # Green
-            RED_ZONE: (0, 0, 255),        # Red
-            GOLDEN_ZONE: (0, 215, 255),   # Gold
-            GREEN_ZONE_OPP: (100, 200, 100),   # Light green
-            RED_ZONE_OPP: (100, 100, 200),     # Light red
-            GOLDEN_ZONE_OPP: (100, 215, 255)   # Light gold
-        }
+        # # Visualize zone polygons
+        # zone_colors = {
+        #     GREEN_ZONE: (0, 255, 0),      # Green
+        #     RED_ZONE: (0, 0, 255),        # Red
+        #     GOLDEN_ZONE: (0, 215, 255),   # Gold
+        #     GREEN_ZONE_OPP: (100, 200, 100),   # Light green
+        #     RED_ZONE_OPP: (100, 100, 200),     # Light red
+        #     GOLDEN_ZONE_OPP: (100, 215, 255)   # Light gold
+        # }
 
         # for zone_idx, zone in enumerate(robotHandler.zones):
         #     if zone is not None:

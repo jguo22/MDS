@@ -3,6 +3,7 @@ import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List
 from spatialmath import SE2
+from torch.nn.modules import distance
 from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
@@ -12,7 +13,7 @@ from vision.relativeCoordinates import relative_to_world, world_to_relative
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import CLAW_OFFSET, FPS, CAN_DIAMETER, ROBOT_DIAMETER, APPROACH_OFFSET
+from config import FPS, CAN_DIAMETER, ROBOT_DIAMETER, APPROACH_OFFSET
 from colors import GREEN_ZONE, RED_ZONE, GOLDEN_ZONE, GREEN_CAN, RED_CAN, GOLDEN_CAN, canNamesToNumbers
 
 
@@ -20,7 +21,7 @@ class RobotState(Enum):
     SearchForCan = auto()
     MoveToCan = auto()
     ApproachingCan = auto()
-    GrabCan = auto()
+    PickupCan = auto()
     MoveToZone = auto()
     Done = auto()
 
@@ -29,8 +30,6 @@ class RobotHandler:
     """Simplified robot handler with basic can collection strategy."""
 
     # Constants
-    X_CENTER_BORDER = 3000  # Exclude cans with x >= this value
-
     def __init__(self, robot_commander: IRobotCommander):
         self.state = RobotState.SearchForCan
         self.started = False
@@ -42,7 +41,7 @@ class RobotHandler:
         self.cans_collected = 0  # Total cans delivered to zone
         self.cans_held = 0  # Number of cans currently holding
         self.target_zone = RED_ZONE
-        self.target_can_color = GREEN_CAN  # Color of cans to search for
+        self.target_can_color = RED_CAN  # Color of cans to search for
 
         # Memory
         # Hardcoded zone centers for testing
@@ -112,6 +111,7 @@ class RobotHandler:
         self.frame_bottom = frame_info.frame_bottom
         self.frame_id = frame_info.frame_id
         self.robot_pose = SE2(frame_info.x, frame_info.y, frame_info.theta)
+        self.distanceSensed = frame_info.distanceSensed
 
         # Run segmentation
         self.result_top = segmentImage(self.frame_top)
@@ -130,8 +130,8 @@ class RobotHandler:
             self.handleMoveToCan()
         elif self.state == RobotState.ApproachingCan:
             self.handleApproachingCan()
-        elif self.state == RobotState.GrabCan:
-            self.handleGrabCan()
+        elif self.state == RobotState.PickupCan:
+            self.handlePickupCan()
         elif self.state == RobotState.MoveToZone:
             self.handleMoveToZone()
         elif self.state == RobotState.Done:
@@ -202,9 +202,13 @@ class RobotHandler:
 
         # Do one iteration of approach
         print("approachig with ds")
-        self.robot_commander.approach_can_with_ds()
-        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+        if self.distanceSensed <= 25:
+            self.handlePickupCan()
+        else:
+            self.robot_commander.approach_can_with_ds()
+            self.waiting_for_command_id = self.robot_commander.get_last_command_id()
 
+    def handlePickupCan(self):
         # Check if we're close enough to grab
         # This will be checked next frame after approach completes
         # For now, assume approach worked and proceed to grab
@@ -216,12 +220,6 @@ class RobotHandler:
         print("Picking up can")
         self.robot_commander.pickup_can()
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-        self.state = RobotState.GrabCan
-
-    def handleGrabCan(self):
-        """Wait for grab to complete and update state."""
-        # Wait for previous commands to finish
-        self.robot_commander.waitFinishedMoving()
 
         self.cans_held += 1
         self.can_in_gripper = True
@@ -350,12 +348,16 @@ class RobotHandler:
         self.can_colors = final_colors
 
     # Helper functions
-
     def getTargetColorCans(self) -> List[Tuple[float, float, int]]:
         """Get list of cans matching target color and within bounds."""
         target_cans = []
+        # TODO: put back color color
+        # for i, (can_x, can_y) in enumerate(self.cans):
+        #     if self.can_colors[i] == self.target_can_color and isWithinBounds(
+        #             can_x, can_y):
+        #         target_cans.append((can_x, can_y, self.can_colors[i]))
         for i, (can_x, can_y) in enumerate(self.cans):
-            if self.can_colors[i] == self.target_can_color and can_x < self.X_CENTER_BORDER:
+            if isWithinBounds(can_x, can_y):
                 target_cans.append((can_x, can_y, self.can_colors[i]))
         return target_cans
 
@@ -490,3 +492,16 @@ def unpackPose(pose: SE2) -> Tuple[float, float, float]:
         return x, y, theta
     else:
         return x, y, theta[0]
+
+
+low_x = 0
+high_x = 3048
+low_y = 0
+high_y = 3048
+x_offset = 600
+y_offset = 304.8
+
+
+def isWithinBounds(x, y):
+    return x + x_offset > low_x and x + x_offset < high_x and y + \
+        y_offset > low_y and y + y_offset < high_y
