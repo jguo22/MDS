@@ -330,9 +330,17 @@ class RobotHandler():
         """Handle StartGather state: send waypoints and check if cans reached"""
         self.state = RobotState.StartGather
 
-        self.targetZone = GREEN_ZONE
-        print(f"State: {self.state.name} → MidgameGoToCan")
-        self.handleMidgameGoToCan()
+        # self.targetZone = GREEN_ZONE
+        for i in range(len(self.zones)):
+            zone = self.zones[i]
+            if zone is not None:
+                center = getPolygonCenter(zone)
+                self.send_waypoints([center])
+                self.robot_commander.waitFinishedMoving()
+        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
+
+        # print(f"State: {self.state.name} → MidgameGoToCan")
+        # self.handleMidgameGoToCan()
         return
         # ---------- SEND PATH IF IT HASN'T BEEN SENT YET -------------
         # if time.time() - self.lastTimeSentPath > 100:
@@ -682,6 +690,10 @@ class RobotHandler():
         """
         # Get zones sorted by distance (closest first)
         squares_xy, class_names, confidences = getZones(result, image, is_top)
+        squares_xy = [
+            relative_to_world(
+                square,
+                self.robot_pose) for square in squares_xy]
 
         # Iterate through all detected zones
         for zone, name, conf in zip(squares_xy, class_names, confidences):
@@ -938,7 +950,7 @@ class RobotHandler():
 
         return in_rectangle
 
-    def send_waypoints_with_start(self, waypoints: List[Tuple[float, float]]):
+    def send_waypoints(self, waypoints: List[Tuple[float, float]]):
         x, y, _ = unpackPose(self.robot_pose)
         command_args = [x, y]
         print("adding waypoints")
@@ -955,7 +967,7 @@ class RobotHandler():
         self.thetaStar.set_start(robot_x, robot_y)
         self.thetaStar.set_goal(gx, gy)
         waypoints = self.thetaStar.path_find()
-        self.send_waypoints_with_start(waypoints)
+        self.send_waypoints(waypoints)
 
     def updateTelemetry(self):
         # self.telemetry.set_img(cv2.Mat(self.frame_top))
