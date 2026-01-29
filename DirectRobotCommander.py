@@ -150,12 +150,12 @@ class DirectRobotCommander(IRobotCommander):
             for move in plan:
                 dist, theta = move
                 if abs(theta) > MIN_ROTATION:
+                    movement_args.extend(get_rotate(theta))
+                    movement_args.extend(get_forward_mm(dist))
+                else:
                     dx = dist * math.cos(theta)
                     dy = dist * math.sin(theta)
                     movement_args.extend(get_arc(dx, dy))
-                else:
-                    movement_args.extend(get_rotate(theta))
-                    movement_args.extend(get_forward_mm(dist))
             return self.override_movement(movement_args)
 
         except Exception:

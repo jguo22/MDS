@@ -16,7 +16,7 @@ from config import CLAW_OFFSET, FPS, CAN_DIAMETER, ROBOT_DIAMETER, APPROACH_OFFS
 from colors import GREEN_ZONE, RED_ZONE, GOLDEN_ZONE, GREEN_CAN, RED_CAN, GOLDEN_CAN, canNamesToNumbers
 
 
-class RobotStateSimple(Enum):
+class RobotState(Enum):
     SearchForCan = auto()
     MoveToCan = auto()
     ApproachingCan = auto()
@@ -32,7 +32,7 @@ class RobotHandler:
     X_CENTER_BORDER = 3000  # Exclude cans with x >= this value
 
     def __init__(self, robot_commander: IRobotCommander):
-        self.state = RobotStateSimple.SearchForCan
+        self.state = RobotState.SearchForCan
         self.started = False
         self.paused = False
         self.waiting_for_command_id = 0
@@ -82,7 +82,7 @@ class RobotHandler:
         self.cans_held = 0
         self.claw_raised = True
         self.can_in_gripper = False
-        self.state = RobotStateSimple.SearchForCan
+        self.state = RobotState.SearchForCan
 
     def handleFrame(self, frame_info: FrameInfo):
         self.profiler.start_frame()
@@ -124,17 +124,17 @@ class RobotHandler:
         self.profiler.record("scanAndSetZones")
 
         # State machine
-        if self.state == RobotStateSimple.SearchForCan:
+        if self.state == RobotState.SearchForCan:
             self.handleSearchForCan()
-        elif self.state == RobotStateSimple.MoveToCan:
+        elif self.state == RobotState.MoveToCan:
             self.handleMoveToCan()
-        elif self.state == RobotStateSimple.ApproachingCan:
+        elif self.state == RobotState.ApproachingCan:
             self.handleApproachingCan()
-        elif self.state == RobotStateSimple.GrabCan:
+        elif self.state == RobotState.GrabCan:
             self.handleGrabCan()
-        elif self.state == RobotStateSimple.MoveToZone:
+        elif self.state == RobotState.MoveToZone:
             self.handleMoveToZone()
-        elif self.state == RobotStateSimple.Done:
+        elif self.state == RobotState.Done:
             print("Task complete!")
 
         self.profiler.record("handleState")
@@ -153,7 +153,7 @@ class RobotHandler:
             self.robot_commander.override_movement(rotate_cmd)
         else:
             print(f"Can found! Moving to it...")
-            self.state = RobotStateSimple.MoveToCan
+            self.state = RobotState.MoveToCan
 
     def handleMoveToCan(self):
         """Navigate to the nearest can of target color."""
@@ -163,7 +163,7 @@ class RobotHandler:
 
         if len(target_cans) == 0:
             print("No cans of target color found, searching again...")
-            self.state = RobotStateSimple.SearchForCan
+            self.state = RobotState.SearchForCan
             return
         print("can found")
 
@@ -190,7 +190,7 @@ class RobotHandler:
                     self.cans.pop(i)
                     self.can_colors.pop(i)
                     break
-            self.state = RobotStateSimple.ApproachingCan
+            self.state = RobotState.ApproachingCan
         else:
             # Move closer
             self.thetaStarAndSend(can_x, can_y)
@@ -216,7 +216,7 @@ class RobotHandler:
         print("Picking up can")
         self.robot_commander.pickup_can()
         self.waiting_for_command_id = self.robot_commander.get_last_command_id()
-        self.state = RobotStateSimple.GrabCan
+        self.state = RobotState.GrabCan
 
     def handleGrabCan(self):
         """Wait for grab to complete and update state."""
@@ -232,10 +232,10 @@ class RobotHandler:
         # Check if done collecting
         if self.cans_held >= self.MAX_STACK:
             print(f"Holding {self.MAX_STACK} cans, moving to zone...")
-            self.state = RobotStateSimple.MoveToZone
+            self.state = RobotState.MoveToZone
         else:
             print(f"Searching for next can...")
-            self.state = RobotStateSimple.SearchForCan
+            self.state = RobotState.SearchForCan
 
     def handleMoveToZone(self):
         """Move to target zone and drop cans."""
@@ -257,7 +257,7 @@ class RobotHandler:
             self.cans_held = 0
             self.waiting_for_command_id = self.robot_commander.get_last_command_id()
             print(f"Total cans delivered: {self.cans_collected}")
-            self.state = RobotStateSimple.Done
+            self.state = RobotState.Done
         else:
             self.thetaStarAndSend(zx, zy)
 
@@ -411,16 +411,28 @@ class RobotHandler:
             command_args.append(wy)
         print(command_args)
         self.robot_commander.override_waypoints(command_args)
+        self.robot_commander.waitFinishedMoving()
+        self.waiting_for_command_id
 
     def updateTelemetry(self):
-        """Update telemetry data for visualization."""
         scaling = 0.001
         x, y, theta = unpackPose(self.robot_pose)
         self.telemetry.update_odom_state(x * scaling, y * scaling, theta)
 
         circles = []
-        for i, (cx, cy) in enumerate(self.cans):
-            circles.append((cx * scaling, cy * scaling, "blue"))
+        for i in range(len(self.cans)):
+            cx, cy = self.cans[i]
+            cx *= scaling
+            cy *= scaling
+            color = self.can_colors[i]
+            if color == GREEN_CAN:
+                circles.append((cx, cy, "green"))
+            elif color == RED_CAN:
+                circles.append((cx, cy, "red"))
+            elif color == GOLDEN_CAN:
+                circles.append((cx, cy, "gold"))
+        for i in range(len(self.zones)):
+            circles.append((self.zones[i][0], self.zones[i][1], "white"))
         self.telemetry.update_circles(circles)
 
         data = self.get_picklable_dict()
@@ -431,10 +443,15 @@ class RobotHandler:
         exclude = {
             'robot_commander', 'thetaStar', 'profiler', 'telemetry',
             'frame_bottom', 'frame_top', 'robot_pose',
-            'result_top', 'result_bottom'
+            'result_top', 'result_bottom', 'state'
         }
 
         result = {}
+        result['state'] = self.state.name
+        result['robot_pose'] = [
+            self.robot_pose.x,
+            self.robot_pose.y,
+            self.robot_pose.theta()]
         for k, v in self.__dict__.items():
             if k not in exclude:
                 if isinstance(v, np.ndarray):
@@ -454,10 +471,6 @@ class RobotHandler:
                 else:
                     result[k] = v
 
-        result['robot_pose'] = [
-            self.robot_pose.x,
-            self.robot_pose.y,
-            self.robot_pose.theta()]
         return result
 
 

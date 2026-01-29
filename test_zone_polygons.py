@@ -10,7 +10,6 @@ import numpy as np
 import argparse
 from vision.segment import segmentImage
 from vision.zone_utils import getZonesPolygon, visualize_convex_hulls
-from colors import ZONE_CLASS_NAMES
 
 
 def visualize_polygons(image, polygons, class_names, color=(0, 255, 0)):

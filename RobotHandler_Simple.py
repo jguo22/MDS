@@ -434,25 +434,29 @@ class RobotHandler:
             'result_top', 'result_bottom'
         }
 
+        def serialize(v):
+            """Recursively serialize a value to JSON-compatible format."""
+            if isinstance(v, np.ndarray):
+                return v.tolist()
+            elif isinstance(v, Enum):
+                return v.name
+            elif isinstance(v, dict):
+                safe_dict = {}
+                for dk, dv in v.items():
+                    safe_key = ",".join(str(x) for x in dk) if isinstance(dk, tuple) else str(dk)
+                    safe_dict[safe_key] = serialize(dv)
+                return safe_dict
+            elif isinstance(v, (list, tuple)):
+                return [serialize(item) for item in v]
+            elif isinstance(v, (np.integer, np.floating)):
+                return v.item()
+            else:
+                return v
+
         result = {}
         for k, v in self.__dict__.items():
             if k not in exclude:
-                if isinstance(v, np.ndarray):
-                    result[k] = v.tolist()
-                elif isinstance(v, dict):
-                    safe_dict = {}
-                    for dk, dv in v.items():
-                        safe_key = ",".join(
-                            str(x) for x in dk) if isinstance(
-                            dk, tuple) else dk
-                        safe_dict[safe_key] = dv
-                    result[k] = safe_dict
-                elif isinstance(v, list):
-                    result[k] = [
-                        item.tolist() if isinstance(
-                            item, np.ndarray) else item for item in v]
-                else:
-                    result[k] = v
+                result[k] = serialize(v)
 
         result['robot_pose'] = [
             self.robot_pose.x,
