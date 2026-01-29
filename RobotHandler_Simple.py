@@ -45,7 +45,7 @@ class RobotHandlerSimple:
 
         # Memory
         # Hardcoded zone centers for testing
-        self.zones: list[np.ndarray] = []
+        self.zones: list[np.ndarray] = [np.array([0, 0])] * 3
         self.zones[GREEN_ZONE] = np.array([[1670, 584]])
         self.zones[RED_ZONE] = np.array([[990, -939.8]])
         self.zones[GOLDEN_ZONE] = np.array([[2235, -914]])
@@ -331,7 +331,7 @@ class RobotHandlerSimple:
         if distance <= ROBOT_DIAMETER / 2:
             return True
 
-        rect_length = APPROACH_OFFSET + 20
+        rect_length = APPROACH_OFFSET + 70
         rect_width = CAN_DIAMETER
         in_rectangle = (
             0 <= local_x <= rect_length and
@@ -343,9 +343,18 @@ class RobotHandlerSimple:
     def getWorldClawOffsetPosition(
             self, point: Tuple[float, float]) -> Tuple[float, float]:
         """Get position offset by claw length to approach can properly."""
-        dx, dy = world_to_relative(point, self.robot_pose)
-        gx, gy = relative_to_world(
-            (max(dx - APPROACH_OFFSET + 10, 0), dy), self.robot_pose)
+        robot_x, robot_y, _ = unpackPose(self.robot_pose)
+        dx = point[0] - robot_x
+        dy = point[1] - robot_y
+        dist = math.sqrt(dx * dx + dy * dy)
+
+        if dist < APPROACH_OFFSET:
+            return robot_x, robot_y
+
+        scale = (dist - APPROACH_OFFSET) / dist
+        gx = robot_x + dx * scale
+        gy = robot_y + dy * scale
+
         return gx, gy
 
     def thetaStarAndSend(self, x: float, y: float):
