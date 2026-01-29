@@ -1,13 +1,12 @@
 import math
 import numpy as np
 from enum import Enum, auto
-from typing import Tuple, List, Optional
+from typing import Tuple, List
 from spatialmath import SE2
 from IRobotCommander import IRobotCommander  # type: ignore
 from connection.frame_info import FrameInfo
 from navHelpers import get_rotate
 from vision.segment import segmentImage
-from vision.zone_utils import getPolygonCenter
 from vision.can_utils import getCans
 from vision.relativeCoordinates import relative_to_world, world_to_relative
 from profiler import Profiler
@@ -45,8 +44,11 @@ class RobotHandlerSimple:
         self.target_can_color = GREEN_CAN  # Color of cans to search for
 
         # Memory
-        self.zones: List[Optional[np.ndarray]] = [
-            None, None, None]  # GREEN, RED, GOLDEN
+        # Hardcoded zone centers for testing
+        self.zones: list[np.ndarray] = []
+        self.zones[GREEN_ZONE] = np.array([[1670, 584]])
+        self.zones[RED_ZONE] = np.array([[990, -939.8]])
+        self.zones[GOLDEN_ZONE] = np.array([[2235, -914]])
         self.cans: List[Tuple[float, float]] = []
         self.can_colors: List[int] = []
         self.can_detections: dict[Tuple[int, int], int] = {}
@@ -81,28 +83,19 @@ class RobotHandlerSimple:
         self.can_in_gripper = False
         self.state = RobotStateSimple.SearchForCan
 
-        # Hardcoded zone centers for testing
-        self.zones[GREEN_ZONE] = np.array([[1670, 584]])
-        self.zones[RED_ZONE] = np.array([[990, -939.8]])
-        self.zones[GOLDEN_ZONE] = np.array([[2235, -914]])
-
     def handleFrame(self, frame_info: FrameInfo):
         self.profiler.start_frame()
 
-        if self.paused:
-            return
-        self.robot_commander.open_gripper()
-        self.robot_commander.lower_elevator()
-        self.paused = True
-        return
+        # if self.paused:
+        #     return
+        # self.robot_commander.open_gripper()
+        # self.robot_commander.lower_elevator()
+        # self.paused = True
+        # return
 
         if (not self.started) or self.paused:
             self.profiler.end_frame()
             return
-
-        self.robot_commander.approach_can_with_ds()
-        self.paused = True
-        return
 
         # Check if waiting for command
         if self.waiting_for_command_id > 0:
