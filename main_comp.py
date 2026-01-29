@@ -1,16 +1,15 @@
 import time
 import argparse
 import threading
-from RobotHandler_Simple import RobotHandler
-from profiler import Profiler
 from connection.ComputerReceiver import ComputerReceiver
 from InputProcessor import InputProcessor
 from connection.FrameSaver import FrameSaver
 from connection.frame_info import FrameInfo
-from vision.zone_utils import visualize_xy_locations, getPolygonCenter, visualize_convex_hulls
-from vision.relativeCoordinates import world_to_relative, world_to_pixel
-from vision.pixelTo3D import H_TOP, H_BOTTOM
+from vision.zone_utils import visualize_xy_locations, visualize_convex_hulls
+from vision.relativeCoordinates import world_to_relative
 from colors import GREEN_ZONE, RED_ZONE, GOLDEN_ZONE, GREEN_ZONE_OPP, RED_ZONE_OPP, GOLDEN_ZONE_OPP
+from RobotHandler import RobotHandler
+from profiler import Profiler
 import config
 
 
@@ -140,15 +139,15 @@ def main():
                 labels=[f"C{i}" for i in range(len(robotHandler.cans))]
             )
 
-        # Visualize zone polygons
-        zone_colors = {
-            GREEN_ZONE: (0, 255, 0),      # Green
-            RED_ZONE: (0, 0, 255),        # Red
-            GOLDEN_ZONE: (0, 215, 255),   # Gold
-            GREEN_ZONE_OPP: (100, 200, 100),   # Light green
-            RED_ZONE_OPP: (100, 100, 200),     # Light red
-            GOLDEN_ZONE_OPP: (100, 215, 255)   # Light gold
-        }
+        # # Visualize zone polygons
+        # zone_colors = {
+        #     GREEN_ZONE: (0, 255, 0),      # Green
+        #     RED_ZONE: (0, 0, 255),        # Red
+        #     GOLDEN_ZONE: (0, 215, 255),   # Gold
+        #     GREEN_ZONE_OPP: (100, 200, 100),   # Light green
+        #     RED_ZONE_OPP: (100, 100, 200),     # Light red
+        #     GOLDEN_ZONE_OPP: (100, 215, 255)   # Light gold
+        # }
 
         # for zone_idx, zone in enumerate(robotHandler.zones):
         #     if zone is not None:

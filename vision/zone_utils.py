@@ -6,8 +6,7 @@ import numpy as np
 from shapely.geometry import Polygon
 from typing import Tuple, Optional
 
-from colors import GOLDEN_ZONE, ZONE_CLASS_NAMES
-from config import BIG_ZONE_SIDE_LENGTH, SMALL_ZONE_SIDE_LENGTH
+from colors import ZONE_CLASS_NAMES
 
 from .pixelTo3D import transform_uv_to_xy, H_TOP, H_BOTTOM
 from .mask_utils import maskToConvexHull
