@@ -286,7 +286,7 @@ class DirectRobotCommander(IRobotCommander):
 
     def approach_can_with_ds(self, max_iterations: int = 100) -> bool:
         # Approach can with distance sensor
-        print("appraochign with ds")
+        print("ds")
         no_can_repeat = 0
         stuck = 0
         searching = "forward"
