@@ -11,12 +11,12 @@ import time
 from spatialmath import SE2
 from IMUWrapper import IMUWrapper
 from IRobotCommander import IRobotCommander
-from config import BACKING_TICKS, BASE_D, CAN_DIAMETER, CLAW_OFFSET, DS_TO_CLAW
+from config import BACKING_TICKS, BASE_D, CAN_DIAMETER, CLAW_OFFSET, DS_TO_CLAW, MIN_ROTATION
 from nav import Nav, NavMove
 from distanceSensorWrapper import DistanceSensorWrapper
 from RavenWrapper import RAVEN_WRAPPER
 from earlyGame import EarlyGame
-from navHelpers import get_forward_mm, get_rotate
+from navHelpers import get_forward_mm, get_rotate, get_arc
 from vision.relativeCoordinates import get_movement_plan
 
 
@@ -149,9 +149,12 @@ class DirectRobotCommander(IRobotCommander):
             movement_args = []
             for move in plan:
                 dist, theta = move
-                if theta > 0.01:
+                if abs(theta) > MIN_ROTATION:
+                    dx = dist * math.cos(theta)
+                    dy = dist * math.sin(theta)
+                    movement_args.extend(get_arc(dx, dy))
+                else:
                     movement_args.extend(get_rotate(theta))
-                if dist > 5:
                     movement_args.extend(get_forward_mm(dist))
             return self.override_movement(movement_args)
 
@@ -281,22 +284,19 @@ class DirectRobotCommander(IRobotCommander):
             traceback.print_exc()
             return False
 
-    def approach_can_with_ds(self) -> bool:
-        """
-        Approach can using distance sensor feedback.
-
-        Uses distance sensor to approach can in real-time, stopping when
-        within 100mm or returning False if no can detected (> 800mm).
-
-        Returns:
-            True if successfully approached can, False if no can detected
-        """
+    def approach_can_with_ds(self, max_iterations: int = 100) -> bool:
         # Approach can with distance sensor
         print("ds")
         no_can_repeat = 0
         stuck = 0
         searching = "forward"
-        while self.distance_sensor.get_distance() > 20:
+        iterations = 0
+        while self.distance_sensor.get_distance() > 22:
+            iterations += 1
+            if iterations > max_iterations:
+                print(
+                    f"approach_can_with_ds exceeded max iterations ({max_iterations})")
+                return False
             distance = self.distance_sensor.get_distance()
             print(distance)
             if (distance > 500):
@@ -369,6 +369,7 @@ class DirectRobotCommander(IRobotCommander):
                 self.nav.overridePaths([NavMove(*get_forward_mm(distance))])
                 time.sleep(1)
             time.sleep(0.1)
+        return True
 
     def stack(
             self,
@@ -389,7 +390,7 @@ class DirectRobotCommander(IRobotCommander):
         try:
             # Assume robot is gripping can
             self.nav.override_paths_world_xy(*temp_pos, use_claw=True)
-            self.waitFinishedMoving()
+            self.waitFinishedNoving()
 
             # set can down
             self.approach_can_with_ds()
@@ -399,12 +400,12 @@ class DirectRobotCommander(IRobotCommander):
 
             # move backwards so later we can turn without knocking over cans
             self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
-            self.waitFinishedMoving()
+            self.waitFinishedNoving()
 
             if (stacked_cans > 0):
                 # rotate
                 self.nav.override_rotate_world_xy(*stack_pos)
-                self.waitFinishedMoving()
+                self.waitFinishedNoving()
 
                 # pickup stack
                 self.approach_can_with_ds()
@@ -412,13 +413,13 @@ class DirectRobotCommander(IRobotCommander):
 
                 # go to temporary position
                 self.nav.override_rotate_world_xy(*temp_pos)
-                self.waitFinishedMoving()
+                self.waitFinishedNoving()
                 self.approach_can_with_ds()
 
                 # Release stacked can with proper elevator control
                 RAVEN_WRAPPER.open_gripper()
                 self.nav.addPath(NavMove(-1, -1, BACKING_TICKS))
-                self.waitFinishedMoving()
+                self.waitFinishedNoving()
 
             return True
         except Exception as e:
@@ -427,7 +428,7 @@ class DirectRobotCommander(IRobotCommander):
             traceback.print_exc()
             return False
 
-    def waitFinishedMoving(self) -> bool:
+    def waitFinishedNoving(self) -> bool:
         """
         Wait for current movement to complete.
 

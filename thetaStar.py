@@ -12,6 +12,7 @@ import math
 import heapq
 import numpy as np
 import matplotlib.pyplot as plt
+from config import ROBOT_DIAMETER
 
 show_animation = False
 use_theta_star = True
@@ -31,6 +32,8 @@ GRID_H = 200
 LOGICAL_OFFSET = 50   # how much the 100x100 is inset
 START_GRID_X = LOGICAL_OFFSET + GRID_SIZE // 2  # 50 + 50 = 100
 START_GRID_Y = LOGICAL_OFFSET                   # 50
+# START_GRID_X = 50
+# START_GRID_Y = 0
 
 
 def convert_world_to_grid(wx_mm: float, wy_mm: float):
@@ -312,8 +315,10 @@ class ThetaStarPlanner:
 
 class ThetaStar():
     def __init__(self):
-        self.ox, self.oy = [], []
+        self.border_ox, self.border_oy = [], []  # Static border obstacles
+        self.dynamic_obstacles: dict[tuple[int, int], set[tuple[int, int]]] = {}  # Track added obstacles
         self.robot_radius = 1  # 177 mm / 30.48 mm = 5.8 cells
+        self.obstacle_radius_cells = int(math.ceil((ROBOT_DIAMETER / 2) / CELL_SIZE_MM))
 
         # --- Start/goal from robot-world (mm) -> grid
         self.sx, self.sy = convert_world_to_grid(0, 0)
@@ -322,23 +327,40 @@ class ThetaStar():
         self.gx, self.gy = clamp_grid(self.gx, self.gy)
 
         # Make borders
-
         MIN_B = 0
         MAX_B = GRID_W - 1   # 199
 
         # bottom & top
         for x in range(MIN_B, MAX_B + 1):
-            self.ox.append(x)
-            self.oy.append(MIN_B)     # y = -50 mapped to 0
-            self.ox.append(x)
-            self.oy.append(MAX_B)     # y = 150 mapped to 199
+            self.border_ox.append(x)
+            self.border_oy.append(MIN_B)     # y = -50 mapped to 0
+            self.border_ox.append(x)
+            self.border_oy.append(MAX_B)     # y = 150 mapped to 199
 
         # left & right
         for y in range(MIN_B, MAX_B + 1):
-            self.ox.append(MIN_B)
-            self.oy.append(y)
-            self.ox.append(MAX_B)
-            self.oy.append(y)
+            self.border_ox.append(MIN_B)
+            self.border_oy.append(y)
+            self.border_ox.append(MAX_B)
+            self.border_oy.append(y)
+
+    @property
+    def ox(self):
+        """Combined list of all obstacle x coordinates."""
+        all_ox = list(self.border_ox)
+        for cells in self.dynamic_obstacles.values():
+            for gx, _ in cells:
+                all_ox.append(gx)
+        return all_ox
+
+    @property
+    def oy(self):
+        """Combined list of all obstacle y coordinates."""
+        all_oy = list(self.border_oy)
+        for cells in self.dynamic_obstacles.values():
+            for _, gy in cells:
+                all_oy.append(gy)
+        return all_oy
 
     def set_start(self, world_x, world_y):
         self.sx, self.sy = convert_world_to_grid(world_x, world_y)
@@ -378,15 +400,59 @@ class ThetaStar():
         return outx, outy
 
     def addCan(self, world_x, world_y):
-        radius = self.robot_radius
-        for i in range(-radius, radius):
-            for j in range(-radius, radius):
-                if i * i + j * j <= radius * radius:
-                    obs_gx, obs_gy = convert_world_to_grid(world_x, world_y)
-                    obs_gx, obs_gy = clamp_grid(obs_gx + i, obs_gy + j)
-                    self.ox.append(obs_gx)
-                    self.oy.append(obs_gy)
-    # Return a list of waypoints
+        """Add a can as an obstacle (uses robot_radius for inflation)."""
+        self.addObstacle(world_x, world_y, radius_cells=self.robot_radius)
+
+    def addObstacle(self, world_x, world_y, radius_cells: int | None = None):
+        """
+        Add an obstacle at world coordinates with circular inflation.
+
+        Args:
+            world_x: X position in mm
+            world_y: Y position in mm
+            radius_cells: Inflation radius in grid cells (default: ROBOT_DIAMETER/2 in cells)
+        """
+        if radius_cells is None:
+            radius_cells = self.obstacle_radius_cells
+
+        center_gx, center_gy = convert_world_to_grid(world_x, world_y)
+        key = (center_gx, center_gy)
+
+        if key in self.dynamic_obstacles:
+            return  # Already added
+
+        cells = set()
+        for i in range(-radius_cells, radius_cells + 1):
+            for j in range(-radius_cells, radius_cells + 1):
+                if i * i + j * j <= radius_cells * radius_cells:
+                    obs_gx, obs_gy = clamp_grid(center_gx + i, center_gy + j)
+                    cells.add((obs_gx, obs_gy))
+
+        self.dynamic_obstacles[key] = cells
+
+    def removeObstacle(self, world_x, world_y):
+        """
+        Remove an obstacle at world coordinates.
+
+        Args:
+            world_x: X position in mm
+            world_y: Y position in mm
+
+        Returns:
+            True if obstacle was removed, False if not found
+        """
+        center_gx, center_gy = convert_world_to_grid(world_x, world_y)
+        key = (center_gx, center_gy)
+
+        if key in self.dynamic_obstacles:
+            del self.dynamic_obstacles[key]
+            return True
+        return False
+
+    def clearObstacles(self):
+        """Remove all dynamically added obstacles."""
+        self.dynamic_obstacles.clear()
+
 
     def path_find(self):
         planner = ThetaStarPlanner(
@@ -400,7 +466,7 @@ class ThetaStar():
 def main():
     thetaStar = ThetaStar()
     thetaStar.addCan(700, 0)
-    thetaStar.set_goal(1000, 0)
+    thetaStar.set_goal(-2000, 0)
 
     # # --- Plot setup
     # if show_animation:
