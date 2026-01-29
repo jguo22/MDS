@@ -30,8 +30,11 @@ def main():
         help=f"Coordinate port (default: {config.COMMAND_PORT})")
     parser.add_argument("--no-display", action="store_true",
                         help="Disable video display")
-    parser.add_argument("--picture-delay", type=float, default=None,
-                        help="Delay in seconds between saving pictures (default: don't save)")
+    parser.add_argument(
+        "--picture-delay",
+        type=float,
+        default=None,
+        help="Delay in seconds between saving pictures (default: don't save)")
     args = parser.parse_args()
 
     window_name_top = "Top Camera"
@@ -61,6 +64,11 @@ def main():
         main_profiler.start_frame()
         robotHandler.handleFrame(frame_info)
         main_profiler.record("robotHandler")
+
+        # Only save frame if frame_saver was initialized
+        if frame_saver is not None:
+            frame_saver.saveFrame(frame_info)
+            main_profiler.record("saveFrame")
 
         # Overlay YOLO segmentation results on frames first
         if robotHandler.result_top is not None:
@@ -147,7 +155,8 @@ def main():
         for zone_idx, zone in enumerate(robotHandler.zones):
             if zone is not None:
                 # Get zone color
-                color = zone_colors.get(zone_idx, (255, 255, 255))  # White default
+                color = zone_colors.get(
+                    zone_idx, (255, 255, 255))  # White default
 
                 # Reshape zone to (N, 2)
                 if zone.ndim == 3:
@@ -158,24 +167,40 @@ def main():
                 # Draw polygon on top camera
                 polygon_points_top = []
                 for corner in corners:
-                    pixel = world_to_pixel((float(corner[0]), float(corner[1])), H_TOP)
+                    pixel = world_to_pixel(
+                        (float(
+                            corner[0]), float(
+                            corner[1])), H_TOP)
                     if pixel is not None:
                         polygon_points_top.append(pixel)
 
                 if len(polygon_points_top) >= 3:
                     pts = np.array(polygon_points_top, dtype=np.int32)
-                    cv2.polylines(frame_info.frame_top, [pts], isClosed=True, color=color, thickness=2)
+                    cv2.polylines(
+                        frame_info.frame_top,
+                        [pts],
+                        isClosed=True,
+                        color=color,
+                        thickness=2)
 
                 # Draw polygon on bottom camera
                 polygon_points_bottom = []
                 for corner in corners:
-                    pixel = world_to_pixel((float(corner[0]), float(corner[1])), H_BOTTOM)
+                    pixel = world_to_pixel(
+                        (float(
+                            corner[0]), float(
+                            corner[1])), H_BOTTOM)
                     if pixel is not None:
                         polygon_points_bottom.append(pixel)
 
                 if len(polygon_points_bottom) >= 3:
                     pts = np.array(polygon_points_bottom, dtype=np.int32)
-                    cv2.polylines(frame_info.frame_bottom, [pts], isClosed=True, color=color, thickness=2)
+                    cv2.polylines(
+                        frame_info.frame_bottom,
+                        [pts],
+                        isClosed=True,
+                        color=color,
+                        thickness=2)
 
                 # Get zone center
                 center_x, center_y = getPolygonCenter(zone)
@@ -186,7 +211,9 @@ def main():
                 corners_relative = []
                 for corner in corners:
                     rel = world_to_relative(
-                        (float(corner[0]), float(corner[1])), robotHandler.robot_pose)
+                        (float(
+                            corner[0]), float(
+                            corner[1])), robotHandler.robot_pose)
                     corners_relative.append(rel)
 
                 # Visualize corners on top camera
@@ -234,11 +261,6 @@ def main():
                 )
 
         main_profiler.record("visualization")
-
-        # Only save frame if frame_saver was initialized
-        if frame_saver is not None:
-            frame_saver.saveFrame(frame_info)
-            main_profiler.record("saveFrame")
 
         main_profiler.end_frame()
 

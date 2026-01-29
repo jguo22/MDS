@@ -11,6 +11,7 @@ ROBOT_DIAMETER = 250  # different from base_d, this is whole robot radius
 SCOOPER_LENGTH = 254
 CLAW_OFFSET = 47
 DS_TO_CLAW = 20
+APPROACH_OFFSET = 150
 
 TEMP_STACK_OFFSET = 200
 BACKING_TICKS = 500

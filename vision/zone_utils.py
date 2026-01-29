@@ -4,7 +4,7 @@ Zone detection and quadrilateral utilities.
 import cv2 as cv
 import numpy as np
 from shapely.geometry import Polygon
-from typing import Tuple
+from typing import Tuple, Optional
 
 from colors import GOLDEN_ZONE, ZONE_CLASS_NAMES
 from config import BIG_ZONE_SIDE_LENGTH, SMALL_ZONE_SIDE_LENGTH
@@ -26,11 +26,10 @@ def getZones(result, image, is_top=True, epsilon_factor=0.02):
         epsilon_factor: Polygon simplification factor (default: 0.02)
 
     Returns:
-        List of dicts with keys:
-        - 'polygon_xy': Zone polygon in world coordinates (mm), shape (N, 2)
-        - 'polygon_uv': Zone polygon in pixel coordinates, shape (N, 2)
-        - 'class_name': Zone class name (e.g., 'Green Zone')
-        - 'confidence': Detection confidence
+        Tuple of (zones, class_names, confidences):
+        - zones: List of numpy arrays, each with shape (N, 2) representing polygon vertices in world coordinates (mm)
+        - class_names: List of zone class names (e.g., 'Green Zone')
+        - confidences: List of detection confidence values
     """
     zones = []
     class_names = []
@@ -79,21 +78,25 @@ def getZones(result, image, is_top=True, epsilon_factor=0.02):
 
         poly_xy = np.array(poly_xy)
 
-        zones.append(poly_uv_simplified)
+        zones.append(poly_xy)
         class_names.append(class_name)
         confidences.append(confidence)
 
-        print(f"{class_name}: {len(poly_xy)} vertices (confidence: {confidence:.2f})")
+        # print(f"{class_name}: {len(poly_xy)} vertices (confidence: {confidence:.2f})")
 
     return zones, class_names, confidences
 
 
 def simplify_polygon(polygon, epsilon_factor=0.02):
-    """Simplify polygon using Douglas-Peucker algorithm."""
+    """Simplify polygon using Douglas-Peucker algorithm.
+
+    Returns numpy array with float64 dtype for JSON serialization compatibility.
+    """
     perimeter = cv.arcLength(polygon.astype(np.float32), closed=True)
     epsilon = epsilon_factor * perimeter
     approx = cv.approxPolyDP(polygon.astype(np.float32), epsilon, closed=True)
-    return approx.reshape(-1, 2)
+    result = approx.reshape(-1, 2)
+    return result.astype(np.float64)
 
 
 def getPolygonCenter(polygon) -> Tuple[float, float]:
@@ -215,18 +218,22 @@ def annotate_poly(image, polygon, color=(0, 0, 255)):
     Args:
         image: Image to annotate (numpy array)
               Shape: (H, W, 3) for BGR color image
-        polygon: Polygon contour (N, 1, 2) numpy array
+        polygon: Polygon contour as numpy array, shape (N, 2) or (N, 1, 2)
         color: Color for polygon (BGR tuple), default red (0, 0, 255)
 
     Returns:
         Annotated image
     """
+    # Reshape to (N, 1, 2) for drawContours
+    polygon_reshaped = polygon.reshape(-1, 1, 2).astype(np.int32) if polygon.ndim == 2 else polygon.astype(np.int32)
+
     # Draw the polygon
-    cv.drawContours(image, [polygon], 0, color, 1)
+    cv.drawContours(image, [polygon_reshaped], 0, color, 1)
 
     # Draw corner points
-    for point in polygon:
-        cv.circle(image, tuple(point[0]), 5, color, -1)
+    points = polygon.reshape(-1, 2)
+    for point in points:
+        cv.circle(image, tuple(point.astype(np.int32)), 5, color, -1)
 
     return image
 
@@ -299,7 +306,7 @@ def visualize_xy_locations(
     color: tuple = (0, 255, 0),
     radius: int = 5,
     thickness: int = -1,
-    labels: list = None
+    labels: Optional[list] = None
 ) -> np.ndarray:
     """
     Visualize world coordinate (x, y) locations on an image by projecting them to pixels.

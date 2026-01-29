@@ -1,5 +1,6 @@
 import time
 import math
+from matplotlib.pyplot import cla
 import numpy as np
 from enum import Enum, auto
 from typing import Tuple, List, Optional
@@ -16,7 +17,7 @@ from vision.mask_utils import maskToConvexHull, yoloMaskToBinary
 from profiler import Profiler
 from thetaStar import ThetaStar
 from streamer import Streamer
-from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET
+from config import FPS, CAN_DIAMETER, BASE_D, CLAW_OFFSET, PICKED_RECT, ROBOT_DIAMETER, SCOOPER_LENGTH, TEMP_STACK_OFFSET, APPROACH_OFFSET
 from colors import GREEN_CAN, GREEN_ZONE, GREEN_ZONE_OPP, RED_CAN, RED_ZONE, RED_ZONE_OPP, GOLDEN_CAN, GOLDEN_ZONE, GOLDEN_ZONE_OPP, ZONE_CLASS_NAMES, canNamesToNumbers
 
 
@@ -144,21 +145,21 @@ class RobotHandler():
         self.updateCanDetections()
 
         # TESTING PURPOSES
-        self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
-                                           [922.48, -271.63],
-                                           [1391.22, -262.14],
-                                           [1382.95, 269.04]])
-        self.zone_confidences[GREEN_ZONE] = 2
-        self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
-                                         [1791.50, 311.42],
-                                         [1438.28, 7.33],
-                                         [1710.01, -324.33]])
-        self.zone_confidences[RED_ZONE] = 2
-        self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
-                                            [1832.41, -610.53],
-                                            [1732.2, -675.07],
-                                            [1811.42, -762.24]])
-        self.zone_confidences[GOLDEN_ZONE] = 2
+        # self.zones[GREEN_ZONE] = np.array([[918.62, 288.33],
+        #                                    [922.48, -271.63],
+        #                                    [1391.22, -262.14],
+        #                                    [1382.95, 269.04]])
+        # self.zone_confidences[GREEN_ZONE] = 2
+        # self.zones[RED_ZONE] = np.array([[2071.79, -26.68],
+        #                                  [1791.50, 311.42],
+        #                                  [1438.28, 7.33],
+        #                                  [1710.01, -324.33]])
+        # self.zone_confidences[RED_ZONE] = 2
+        # self.zones[GOLDEN_ZONE] = np.array([[1896.03, -681.89],
+        #                                     [1832.41, -610.53],
+        #                                     [1732.2, -675.07],
+        #                                     [1811.42, -762.24]])
+        # self.zone_confidences[GOLDEN_ZONE] = 2
 
         self.profiler.record("scanAndSetZones")
 
@@ -213,7 +214,7 @@ class RobotHandler():
             (self.result_bottom, self.frame_bottom, False)
         ]:
             locations, color_strings = getCans(result, frame, is_top)
-            print(locations)
+            # print(locations)
             colors = canNamesToNumbers(color_strings)
 
             # Transform to world coordinates
@@ -520,8 +521,8 @@ class RobotHandler():
             # else:  # GOLDEN_CAN
             #     self.targetZone = GOLDEN_ZONE
             #     zone_name = "GOLDEN"
-            self.targetZone = GREEN_ZONE
-            zone_name = "GREEN"
+            self.targetZone = RED_ZONE
+            zone_name = "RED"
             print(
                 f"State: {self.state.name} → PlaceInZone (target: {zone_name})")
             self.targetStackId = -1
@@ -928,7 +929,7 @@ class RobotHandler():
             return True
 
         # Check 2: Is point within rectangle in front of robot?
-        rect_length = CLAW_OFFSET + CAN_DIAMETER * 3 / 2
+        rect_length = APPROACH_OFFSET
         rect_width = CAN_DIAMETER
         in_rectangle = (
             0 <= local_x <= rect_length and
@@ -940,19 +941,16 @@ class RobotHandler():
     def send_waypoints_with_start(self, waypoints: List[Tuple[float, float]]):
         x, y, _ = unpackPose(self.robot_pose)
         command_args = [x, y]
+        print("adding waypoints")
         for x, y in waypoints:
+            print(x, y)
             command_args.append(x)
             command_args.append(y)
         self.robot_commander.override_waypoints(command_args)
 
     def thetaStarAndSend(self, x: float, y: float):
         # temporary while thetastar doesn't work
-        # dx, dy = world_to_relative((x, y), self.robot_pose)
-        # gx, gy = relative_to_world((max(dx - 80, 0), dy), self.robot_pose)
-        # self.robot_commander.override_world_xy(gx, gy)
-        # print(f"→ override_world_xy({x:.0f}, {y:.0f})")
-        # self.robot_commander.override_world_xy(x, y)
-        gx, gy = x, y
+        gx, gy = self.getWorldClawOffsetPosition((x, y))
         robot_x, robot_y, theta = unpackPose(self.robot_pose)
         self.thetaStar.set_start(robot_x, robot_y)
         self.thetaStar.set_goal(gx, gy)
@@ -993,11 +991,11 @@ class RobotHandler():
         for zone_id, zone in enumerate(self.zones):
             if zone is not None:
                 color = zone_colors.get(zone_id, "white")
-                # Draw 4 lines connecting the vertices in a closed loop
-                for i in range(4):
+                # Draw lines lines connecting the vertices in a closed loop
+                for i in range(len(zone)):
                     x1, y1 = zone[i]
-                    x2, y2 = zone[(i + 1) %
-                                  4]  # Wrap around to close the polygon
+                    # Wrap around to close the polygon
+                    x2, y2 = zone[(i + 1) % len(zone)]
                     lines.append((x1 * scaling, y1 * scaling,
                                  x2 * scaling, y2 * scaling, color))
 
@@ -1057,6 +1055,12 @@ class RobotHandler():
             self.robot_pose.theta()]
 
         return result
+
+    def getWorldClawOffsetPosition(self, point: Tuple[float, float]):
+        dx, dy = world_to_relative(point, self.robot_pose)
+        gx, gy = relative_to_world(
+            (max(dx - APPROACH_OFFSET + 10, 0), dy), self.robot_pose)
+        return gx, gy
 
 
 def getDistance(point1, point2):
