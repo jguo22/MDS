@@ -412,7 +412,7 @@ class RobotHandler:
         print(command_args)
         self.robot_commander.override_waypoints(command_args)
         self.robot_commander.waitFinishedMoving()
-        self.waiting_for_command_id
+        self.waiting_for_command_id = self.robot_commander.get_last_command_id()
 
     def updateTelemetry(self):
         scaling = 0.001
