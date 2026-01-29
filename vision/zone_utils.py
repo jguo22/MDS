@@ -15,6 +15,87 @@ from .relativeCoordinates import world_to_pixel
 from spatialmath import SE2
 
 
+def getZones(result, image, is_top=True, epsilon_factor=0.02):
+    """
+    Extract zones from YOLO result using mask.xy polygons and convert to world coordinates.
+
+    Args:
+        result: YOLO result object with masks
+        image: Original image (for reference, not used for coordinates)
+        is_top: True for top camera, False for bottom camera
+        epsilon_factor: Polygon simplification factor (default: 0.02)
+
+    Returns:
+        List of dicts with keys:
+        - 'polygon_xy': Zone polygon in world coordinates (mm), shape (N, 2)
+        - 'polygon_uv': Zone polygon in pixel coordinates, shape (N, 2)
+        - 'class_name': Zone class name (e.g., 'Green Zone')
+        - 'confidence': Detection confidence
+    """
+    zones = []
+    class_names = []
+    confidences = []
+
+    if result.masks is None or len(result.masks) == 0:
+        return zones, class_names, confidences
+
+    for i, mask in enumerate(result.masks):
+        # Get class info
+        class_id = int(result.boxes.cls[i])
+        class_name = result.names[class_id]
+        confidence = float(result.boxes.conf[i])
+
+        # Skip if not a zone
+        if class_name not in ZONE_CLASS_NAMES:
+            continue
+
+        # Get polygon from mask.xy
+        if not hasattr(mask, 'xy') or len(mask.xy) == 0:
+            continue
+
+        # Extract polygon in pixel coordinates
+        poly_uv = mask.xy[0]
+        if hasattr(poly_uv, 'cpu'):
+            poly_uv = poly_uv.cpu().numpy()
+        else:
+            poly_uv = np.array(poly_uv)
+
+        if len(poly_uv) < 3:
+            continue
+
+        # Simplify polygon
+        poly_uv_simplified = simplify_polygon(poly_uv, epsilon_factor)
+
+        # Transform to world coordinates
+        poly_xy = []
+        for point in poly_uv_simplified:
+            u, v = point[0], point[1]
+            xy = transform_uv_to_xy(u, v, is_top)
+            if xy is not None:
+                poly_xy.append(xy)
+
+        if len(poly_xy) < 3:
+            continue
+
+        poly_xy = np.array(poly_xy)
+
+        zones.append(poly_uv_simplified)
+        class_names.append(class_name)
+        confidences.append(confidence)
+
+        print(f"{class_name}: {len(poly_xy)} vertices (confidence: {confidence:.2f})")
+
+    return zones, class_names, confidences
+
+
+def simplify_polygon(polygon, epsilon_factor=0.02):
+    """Simplify polygon using Douglas-Peucker algorithm."""
+    perimeter = cv.arcLength(polygon.astype(np.float32), closed=True)
+    epsilon = epsilon_factor * perimeter
+    approx = cv.approxPolyDP(polygon.astype(np.float32), epsilon, closed=True)
+    return approx.reshape(-1, 2)
+
+
 def getPolygonCenter(polygon) -> Tuple[float, float]:
     """
     Calculates the center point (centroid) of a polygon.
@@ -35,12 +116,6 @@ def getPolygonCenter(polygon) -> Tuple[float, float]:
     center_y = np.mean(points[:, 1])
 
     return (center_x, center_y)
-
-
-# Backwards compatibility alias
-def getSquareCenter(square) -> Tuple[float, float]:
-    """Deprecated: Use getPolygonCenter instead."""
-    return getPolygonCenter(square)
 
 
 def isPointInPoly(point, polygon):
@@ -156,215 +231,6 @@ def annotate_poly(image, polygon, color=(0, 0, 255)):
     return image
 
 
-def approximateConvexHullWithSquare(convexHull, side_length):
-    """
-    Approximates a region defined by a contour with a rotated square.
-
-    The square is centered at the geometric centroid and has the specified side length.
-    The square's orientation is determined by testing multiple angles and choosing the
-    one with maximum overlap (intersection area) with the original contour.
-
-    Args:
-        contour: Contour/polygon vertices as numpy array with shape (N, 1, 2) or (N, 2)
-                 where N is the number of vertices. Can be in any coordinate system (pixels, mm, etc.)
-        side_length: Side length of the square in the same units as the contour
-        num_angles: Number of angles to test (default: 36, tests every 5 degrees)
-
-    Returns:
-        tuple: (square, iou)
-            - square: numpy array of shape (4, 2) representing the square's corners
-            - iou: float representing intersection area / hull area (0.0 to 1.0)
-        Returns (None, 0.0) if contour is empty, invalid, or if shapely operations fail.
-    """
-    if convexHull is None or len(convexHull) == 0:
-        return None, 0.0
-
-    try:
-        # Handle both (N, 1, 2) and (N, 2) shapes
-        if convexHull.ndim == 3:
-            convexHull = convexHull.reshape(-1, 2)
-
-        # Create shapely Polygon to compute geometric centroid
-        # and for overlap calculation
-        polygon = Polygon(convexHull)
-
-        # Skip invalid polygons instead of trying to fix them
-        # (buffer(0) can change shape significantly)
-        if not polygon.is_valid:
-            return None, 0.0
-
-        centroid = polygon.centroid
-        center_x = centroid.x
-        center_y = centroid.y
-
-        # Calculate half side length
-        half_side = side_length / 2.0
-
-        # Create square vertices in local coordinates (centered at origin)
-        local_square = np.array([
-            [-half_side, -half_side],
-            [half_side, -half_side],
-            [half_side, half_side],
-            [-half_side, half_side],
-        ])
-
-        # Test multiple angles and find the one with best overlap
-        best_angle = 0
-        best_overlap = 0
-        # 0 to 90 degrees (squares have 4-fold symmetry)
-        num_angles = 36
-        angles_to_test = np.linspace(0, np.pi / 2, num_angles)
-
-        for angle_rad in angles_to_test:
-            # Create rotation matrix
-            cos_angle = np.cos(angle_rad)
-            sin_angle = np.sin(angle_rad)
-            rotation_matrix = np.array([
-                [cos_angle, -sin_angle],
-                [sin_angle, cos_angle]
-            ])
-
-            # Rotate and translate the square
-            rotated_square = local_square @ rotation_matrix.T
-            square_vertices = rotated_square + np.array([center_x, center_y])
-
-            square_polygon = Polygon(square_vertices)
-
-            # Calculate intersection area
-            intersection = polygon.intersection(square_polygon)
-            overlap_area = intersection.area
-
-            # Track the best angle
-            if overlap_area > best_overlap:
-                best_overlap = overlap_area
-                best_angle = angle_rad
-
-        # Create the final square with the best angle
-        cos_angle = np.cos(best_angle)
-        sin_angle = np.sin(best_angle)
-        rotation_matrix = np.array([
-            [cos_angle, -sin_angle],
-            [sin_angle, cos_angle]
-        ])
-
-        rotated_square = local_square @ rotation_matrix.T
-        square = rotated_square + np.array([center_x, center_y])
-
-        # Calculate IoU between convex hull and square
-        square_polygon = Polygon(square)
-        iou = best_overlap / polygon.area if polygon.area > 0 else 0.0
-
-        return square, iou
-
-    except Exception:
-        # Return None if any shapely or numpy operations fail
-        return None, 0.0
-
-
-def getZones(result, image, is_top):
-    """
-    Extracts zones from YOLO results and approximates each as a square.
-
-    Transforms convex hull to world space and fits squares using known dimensions.
-    This approach eliminates perspective distortion effects on square fitting.
-
-    Args:
-        result: YOLO result object from inference
-        image: Original BGR image (used for fixSegmentation)
-        is_top: True for top camera, False for bottom camera
-
-    Returns:
-        tuple: (squares_xy, class_names, confidence_scores)
-            - squares_xy: List of numpy arrays (4, 2) with xy coordinates in mm
-                         Each array represents a square with known dimensions
-            - class_names: List of strings with class names for each square
-            - confidence_scores: List of floats (confidence from YOLO)
-    """
-    squares = []
-    class_names = []
-    confidence_scores = []
-
-    if result.masks is None:
-        return squares, class_names, confidence_scores
-
-    for i, mask_orig in enumerate(result.masks):
-        # Get class name and confidence for this detection
-        class_id = int(result.boxes.cls[i])
-        class_name = result.names[class_id]
-        confidence = float(result.boxes.conf[i])
-
-        # if its not a zone, continue to next mask
-        if class_name not in ZONE_CLASS_NAMES:
-            continue
-
-        # Convert mask to grayscale image
-        mask_array = mask_orig.data[0].cpu().numpy()
-        mask_uint8 = (mask_array * 255).astype(np.uint8)
-
-        # Resize mask to match original image size
-        mask_resized = cv.resize(
-            mask_uint8, (image.shape[1], image.shape[0]))
-
-        # Get convex hull in pixel coordinates (N, 1, 2)
-        try:
-            hull_uv = maskToConvexHull(mask_resized)
-            if hull_uv is None or len(hull_uv) == 0:
-                continue
-        except Exception:
-            continue
-
-        # Reshape from (N, 1, 2) to (N, 2)
-        hull_uv_reshaped = hull_uv.reshape(-1, 2)
-
-        # Transform all hull points to world coordinates
-        hull_xy = []
-        for point in hull_uv_reshaped:
-            u, v = point[0], point[1]
-            xy = transform_uv_to_xy(u, v, is_top)
-            if xy is None:
-                continue
-            hull_xy.append(xy)
-
-        # Need at least 3 valid points to form a convex hull
-        if len(hull_xy) < 3:
-            continue
-
-        # Convert to numpy array for convex hull in world space
-        hull_xy_array = np.array(hull_xy)
-
-        # Determine side length based on zone type
-        # Golden Zone is the big zone (20 inches), Green/Red are small (4
-        # inches)
-        if class_name == ZONE_CLASS_NAMES[GOLDEN_ZONE]:
-            side_length = BIG_ZONE_SIDE_LENGTH
-        else:
-            side_length = SMALL_ZONE_SIDE_LENGTH
-
-        # Debug: Print hull size and side length
-        hull_extent_x = np.max(
-            hull_xy_array[:, 0]) - np.min(hull_xy_array[:, 0])
-        hull_extent_y = np.max(
-            hull_xy_array[:, 1]) - np.min(hull_xy_array[:, 1])
-        # print(f"Zone {class_name}: hull points={len(hull_xy)}, extent=({hull_extent_x:.1f}, {hull_extent_y:.1f})mm, target_size={side_length:.1f}mm")
-
-        # Fit a square in world space using the transformed convex hull
-        square, iou = approximateConvexHullWithSquare(
-            hull_xy_array, side_length)
-
-        # Skip if square fitting failed
-        if square is None:
-            print("  -> Square fitting failed")
-            continue
-
-        # print(f"  -> Square fitted with IoU={iou:.2f}")
-
-        squares.append(square)
-        class_names.append(class_name)
-        confidence_scores.append(confidence)
-
-    return squares, class_names, confidence_scores
-
-
 def visualize_convex_hulls(
     image: np.ndarray,
     result,
@@ -398,8 +264,13 @@ def visualize_convex_hulls(
         mask_uint8 = (mask_array * 255).astype(np.uint8)
 
         # Resize mask to match original image size
+        # Use INTER_NEAREST for binary masks to avoid interpolation artifacts
+        # and shifts
         mask_resized = cv.resize(
-            mask_uint8, (image.shape[1], image.shape[0]))
+            mask_uint8,
+            (image.shape[1],
+             image.shape[0]),
+            interpolation=cv.INTER_NEAREST)
 
         # Get convex hull
         try:
@@ -416,10 +287,7 @@ def visualize_convex_hulls(
         hull_reshaped = hull.reshape(-1, 2) if hull.ndim == 3 else hull
         for point in hull_reshaped:
             cv.circle(
-                output_image, (int(
-                    point[0]), int(
-                    point[1])), 3, color, -1)
-
+                output_image, (int(point[0]), int(point[1])), 3, color, -1)
     return output_image
 
 

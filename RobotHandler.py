@@ -680,8 +680,7 @@ class RobotHandler():
             image: Original BGR image used for zone detection
         """
         # Get zones sorted by distance (closest first)
-        squares_xy, class_names, confidences = getZones(
-            result, image, is_top)
+        squares_xy, class_names, confidences = getZones(result, image, is_top)
 
         # Iterate through all detected zones
         for zone, name, conf in zip(squares_xy, class_names, confidences):
