@@ -1,24 +1,70 @@
-FT_TO_MM = 304.8
+import math
+import numpy as np
 
 # measurements are in mm
-CENTER_BORDER_X = 8 * FT_TO_MM
-BACK_BORDER_X = 0
-LEFT_BORDER_Y = 4 * FT_TO_MM
-RIGHT_BORDER_Y = - 4 * FT_TO_MM
+FT_TO_MM = 304.8
 
 CAN_DIAMETER = 76.2
+CAN_HEIGHT = 122.5  # Standard can height in mm
 
-CLASS_NAMES = [
-    'Boundary',
-    'Golden Can',
-    'Golden Zone',
-    'Green Can',
-    'Green Zone',
-    'Red Can',
-    'Red Zone',
-    'Robot'
-]
+ROBOT_DIAMETER = 250  # different from base_d, this is whole robot radius
+SCOOPER_LENGTH = 254
+CLAW_OFFSET = 47
+DS_TO_CLAW = 20
+APPROACH_OFFSET = 150
 
+TEMP_STACK_OFFSET = 200
+BACKING_TICKS = 500
+MIN_ROTATION = 0.5
+
+BIG_ZONE_SIDE_LENGTH = 20 / 12 * FT_TO_MM
+SMALL_ZONE_SIDE_LENGTH = 4 / 12 * FT_TO_MM
+
+PICKED_RECT = np.array([[295, 480], [295, 240], [540, 240], [540, 480]])
+TIPPED_RECT = np.array([[318, 338], [318, 480], [515, 480], [515, 338]])
+
+
+# --------------------- VISION ---------------------
+# Minimum mask area in pixels for can detection (filters out specs/noise)
+CAN_MIN_AREA_PIXELS = 200
+
+# --------------------- NAVIGATION ---------------------
 WHEEL_D = 101.6
 BASE_D = 237.236
-SCOOPER_LENGTH = 254
+
+TICK_ROTATION = 64 * 50
+# measurements in mm
+ANGLE_PROP = 5000
+ANGLE_D = 5000
+
+BASE_RATIO = WHEEL_D / BASE_D
+TURN_CONSTANT = BASE_RATIO * 2 * math.pi / TICK_ROTATION
+
+NAV_FRAME_TIME = 0.01  # 1/FPS
+
+# --------------------- NETWORKING ---------------------
+
+# Network settings
+PI_IP = "192.168.1.100"  # Change to your Pi's IP address
+COMPUTER_IP = "10.42.0.61"  # Change to your computer's IP address
+# COMPUTER_IP = "10.42.0.210"  # Change to your computer's IP address
+
+# Ports
+VIDEO_PORT = 9000  # Port for video streaming
+COMMAND_PORT = 9001  # Port for command data
+
+# Video settings
+# networking likes multiples of 32 for some reason,
+# when i put 854, it sent 864 instead
+FRAME_WIDTH = 864
+FRAME_HEIGHT = 480
+JPEG_QUALITY = 50  # 0-100, higher = better quality but more bandwidth
+FPS = 30.0  # Default maximum frames per second for streaming
+
+# Protocol settings
+HEADER_SIZE = 8  # bytes for message length header
+BUFFER_SIZE = 65536  # receive buffer size
+
+# Timeouts (seconds)
+SOCKET_TIMEOUT = 180.0  # 3 mins, longer than match time
+RECONNECT_DELAY = 3.0  # Delay between reconnection attempts

@@ -74,7 +74,7 @@ TCP-based bidirectional communication between Pi (client) and computer (server).
 - `ComputerReceiver.py`: Computer video receiver + movement sender
 - `protocol.py`: TCP messaging (8-byte headers, JPEG frames)
 - `message_types.py`: CLOSE (0), ADD_MOVEMENT (1), OVERRIDE_MOVEMENTS (2)
-- `frame_processor/`: ClickProcessor (click-to-move), SaveImageProcessor
+- `FrameSaver.py`: Frame saver (auto-save frames with cooldown)
 
 **Protocol:** TCP SOCK_STREAM, custom framing, 1-byte msg type + N floats
 - ADD_MOVEMENT: [left, right, dist] (3 floats)
@@ -113,9 +113,9 @@ receiver.add_movement(0.5, 0.5, 100.0)  # Add to queue
 receiver.send_xy(200.0, 150.0)          # Auto-plan: rotate + forward
 receiver.override_movement([1.0, 1.0, 500.0, -1.0, 1.0, 800.0])
 
-# Frame Processors (extend FrameProcessor base class)
-# - ClickProcessor: Pixel → ground plane → send_xy()
-# - SaveImageProcessor: Auto-save frames with cooldown
+# Frame Processors
+# - InputProcessor: Click-to-move (pixel → ground plane → send_xy())
+# - FrameSaver: Auto-save frames with cooldown
 ```
 
 ### Pixel-to-3D Transformation (`yolo/pixelTo3D.py`)
@@ -233,7 +233,6 @@ python3 yolo/yolo_detect.py --model yolo/last.pt --source usb0 --thresh 0.25 --r
 
 **Field Config** (`config.py`):
 ```python
-CENTER_BORDER_X = 2133.6  # Our side: x < CENTER_BORDER_X
 BACK_BORDER_X = -304.8 | LEFT_BORDER_Y = 1219.2 | RIGHT_BORDER_Y = -1219.2
 CAN_DIAMETER = 76.2
 ```
@@ -250,9 +249,8 @@ CAN_DIAMETER = 76.2
 
 **Key Methods:**
 - `handleFrame(frame, frame_id)`: Runs `segmentImage()` → `getZones()` → state logic
-- `getOurZones()`: Assigns 6 zones using `center_x < CENTER_BORDER_X`
+- `getOurZones()`: Assigns 6 zones 
 
-**Can Planning:** Filter our side (`x < CENTER_BORDER_X + CAN_DIAMETER`), sort by y-coord (sweep pattern)
 
 ```python
 handler = RobotHandler(computer_receiver)
@@ -316,11 +314,11 @@ MDS/
 ├── main_pi.py, main_comp.py       # Pi (Nav+PiStreamer), Computer (Receiver+Click)
 ├── raven.py, nav.py               # Motor controller, Navigation (IMU+odometry)
 ├── RobotHandler.py, config.py     # State machine, Field config
+├── InputProcessor.py              # Click-to-move input handler
 ├── pyproject.toml                 # Dependencies
 ├── connection/                    # TCP streaming
 │   ├── PiStreamer.py, ComputerReceiver.py, protocol.py, message_types.py
-│   ├── CameraCapture.py, config.py
-│   └── frame_processor/ (ClickProcessor, SaveImageProcessor)
+│   ├── CameraCapture.py, FrameSaver.py, config.py, frame_info.py
 ├── coordinates/relativeCoordinates.py  # **SE(2) transforms (ALWAYS use)**
 ├── calibration/ (distortion, manual, marking)
 └── yolo/

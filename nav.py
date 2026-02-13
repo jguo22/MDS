@@ -1,44 +1,44 @@
 import math
 import time
 import threading
-from typing import Tuple
-from coordinates.relativeCoordinates import world_to_relative
-from RavenWrapper import ravenWrapper, LEFT_MOTOR, RIGHT_MOTOR
-from config import WHEEL_D, BASE_D
+from vision.relativeCoordinates import world_to_relative
+from spatialmath import SE2
+from navHelpers import get_arc, get_forward_mm, get_rotate
+from config import CLAW_OFFSET, MIN_ROTATION, TICK_ROTATION, NAV_FRAME_TIME, ANGLE_D, ANGLE_PROP, TURN_CONSTANT
+from RavenWrapper import RAVEN_WRAPPER, LEFT_MOTOR, RIGHT_MOTOR
+from IMUWrapper import IMUWrapper
+
 
 # Miguel's Navigation movement class
-TICK_ROTATION = 64 * 50
-# measurements in mm
-ANGLE_PROP = 5000
-ANGLE_D = 5000
-
-BASE_RATIO = WHEEL_D / BASE_D
-TURN_CONSTANT = BASE_RATIO * 2 * math.pi / TICK_ROTATION
-
-FRAME_TIME = 0.03  # 1/FPS
-
-
 class NavMove:
-    def __init__(self, left: float, right: float, dist: float, smooth: bool):
+    def __init__(
+            self,
+            left: float,
+            right: float,
+            dist: float,
+            smooth: bool = True,
+            correct_angle: bool = True):
         self.left = left
         self.right = right
         self.dist = dist
         self.smooth = smooth
+        self.correct_angle = correct_angle
+        self.lookingDown = False
 
 
 class Nav:
-    def __init__(self):
+    def __init__(self, imuWrapper: IMUWrapper):
         # I put it here so that it doesn't run on computer
         # IMU SETUP MUST BE BEFORE RAVEN SETUP
-        from IMUWrapper import IMUWrapper
-        self.imu_wrapper = IMUWrapper()
+        self.imu_wrapper = imuWrapper
 
-        self.max_velocity = 3.0 * TICK_ROTATION  # ticks/s
-        self.acceleration = 5.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
+        self.max_velocity = 2.8 * TICK_ROTATION  # ticks/s
+        self.acceleration = 3.0 * TICK_ROTATION  # ticks/s^2. Reach max v in 1s
 
         self.moves: list[NavMove] = []
         self._lock = threading.Lock()
         self.moving = False
+        self.correct_angle = True
 
         # for imu
         self.last_angle = 0  # doesn't accumulate
@@ -57,8 +57,6 @@ class Nav:
         self.last_speed = 0
         self.current_distance = 0
 
-        self.ravenWrapper = ravenWrapper
-
         self._updateAngle()
         self.start_angle = self.angle
 
@@ -69,13 +67,10 @@ class Nav:
             while True:
                 # get delta_time and sleep
                 delta_time = time.time() - start_time
-                if (delta_time < FRAME_TIME):
-                    time.sleep(FRAME_TIME - delta_time)
-                    delta_time = FRAME_TIME
+                if (delta_time < NAV_FRAME_TIME):
+                    time.sleep(NAV_FRAME_TIME - delta_time)
+                    delta_time = NAV_FRAME_TIME
                 start_time = time.time()
-
-                # print(f'x, y is {self.raven.get_odometry()}')
-                # print(f'angle is {self.raven.get_angle()}')
 
                 self._updatePath(delta_time)
         except KeyboardInterrupt:
@@ -89,7 +84,6 @@ class Nav:
             self.moves.append(nav_move)
 
     def overridePaths(self, nav_moves: list[NavMove]):
-        print(nav_moves)
         # copy it to not modify original
         nav_moves = nav_moves[:]
         # immediately use startPath to override current path
@@ -108,14 +102,14 @@ class Nav:
         self.right_coef = nav_move.right
         self._updateAngle()
         self.start_angle = self.angle
-        self.start_left = self.ravenWrapper.get_motor_encoder(LEFT_MOTOR)
-        self.start_right = self.ravenWrapper.get_motor_encoder(RIGHT_MOTOR)
+        self.start_left = RAVEN_WRAPPER.get_motor_encoder(LEFT_MOTOR)
+        self.start_right = RAVEN_WRAPPER.get_motor_encoder(RIGHT_MOTOR)
 
     def _updateAngle(self):
         current_angle = self.imu_wrapper.get_heading()  # -pi to pi
 
         # set angle for odometry
-        self.ravenWrapper.set_angle(current_angle)
+        RAVEN_WRAPPER.set_angle(current_angle)
 
         self.diff_angle = current_angle - self.last_angle
         if self.diff_angle > math.pi:
@@ -131,6 +125,7 @@ class Nav:
             # if we're not moving, start next move
             if not self.moving and len(self.moves) > 0:
                 self.moving = True
+                self.correct_angle = self.moves[0].correct_angle
                 self._startPath(self.moves[0])
                 self.moves.pop(0)
 
@@ -156,18 +151,20 @@ class Nav:
                 2.0 * TURN_CONSTANT * self.current_distance
 
             self._updateAngle()
-            angle_error = (self.angle - self.start_angle) - target_angle
 
-            self.start_left -= angle_error * ANGLE_PROP * dt - self.diff_angle * ANGLE_D * dt
-            self.start_right -= angle_error * ANGLE_PROP * \
-                dt - self.diff_angle * ANGLE_D * dt
+            if self.correct_angle:
+                angle_error = (self.angle - self.start_angle) - target_angle
+
+                self.start_left -= angle_error * ANGLE_PROP * dt - self.diff_angle * ANGLE_D * dt
+                self.start_right -= angle_error * ANGLE_PROP * \
+                    dt - self.diff_angle * ANGLE_D * dt
 
             target_left = self.start_left + \
                 (self.current_distance * self.left_coef)
             target_right = self.start_right + \
                 (self.current_distance * self.right_coef)
-            self.ravenWrapper.set_motor_target(LEFT_MOTOR, target_left)
-            self.ravenWrapper.set_motor_target(RIGHT_MOTOR, target_right)
+            RAVEN_WRAPPER.set_motor_target(LEFT_MOTOR, target_left)
+            RAVEN_WRAPPER.set_motor_target(RIGHT_MOTOR, target_right)
 
             # move on to next thing if its done
             if distance_left <= 0:
@@ -200,14 +197,71 @@ class Nav:
                 y_rel: Lateral distance (positive = left)
         """
         # Get robot's current world position and orientation
-        robot_x, robot_y = self.ravenWrapper.get_odometry()
+        robot_x, robot_y = RAVEN_WRAPPER.get_odometry()
         robot_theta = self.angle
 
         # Use the centralized coordinate transformation function
         return world_to_relative(
-            world_x, world_y, robot_x, robot_y, robot_theta)
+            (world_x, world_y), SE2(robot_x, robot_y, robot_theta))
 
-    def override_paths_world_xy(self, world_x, world_y):
+    def override_paths_world_xy(self, world_x, world_y, use_claw=False):
+        """
+        Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
+
+        Args:
+            world_x: Target x position in world frame (mm)
+            world_y: Target y position in world frame (mm)
+        """
+        dx, dy = self.get_relative_position(world_x, world_y)
+
+        # Calculate angle to rotate to face the target
+        # atan2(y, x) gives the angle from robot's forward axis to the target
+        target_angle = math.atan2(dy, dx)
+
+        # Calculate distance to target
+        target_distance = math.sqrt(dx**2 + dy**2)
+
+        # Create movement path: rotate, then forward
+        movements = []
+
+        if abs(target_angle) > MIN_ROTATION:
+            movements.append(
+                NavMove(
+                    *get_rotate(target_angle),
+                    False,
+                    correct_angle=True))
+
+            distance = get_forward_mm(target_distance)[2]
+
+            movements.append(
+                NavMove(1, 1,
+                        distance if not use_claw else distance - CLAW_OFFSET,
+                        False))
+            # Override current path with new movements
+            self.overridePaths(movements)
+        else:
+            self.overridePaths([NavMove(*get_arc(dx, dy))])
+
+    def get_world_claw_position(self):
+        """
+        Get the position of the claw in world coordinates.
+        """
+        # Get robot's current world position
+        # NOTE: odometry uses ROS coordinates
+        # and get_heading uses theta=0 as forward
+        robot_x, robot_y = RAVEN_WRAPPER.get_odometry()
+
+        # Get claw offset in robot frame
+
+        cos_angle = math.cos(self.angle)
+        sin_angle = math.sin(self.angle)
+
+        x_world = robot_x + CLAW_OFFSET * cos_angle
+        y_world = robot_y + CLAW_OFFSET * sin_angle
+
+        return x_world, y_world
+
+    def override_rotate_world_xy(self, world_x, world_y):
         """
         Navigate to a world coordinate (x, y) by calculating rotation and forward movement.
 
@@ -229,27 +283,5 @@ class Nav:
 
         movements.append(NavMove(*get_rotate(target_angle), False))
 
-        movements.append(NavMove(*get_forward_mm(target_distance), False))
-
         # Override current path with new movements
         self.overridePaths(movements)
-
-
-def get_forward_mm(distance_mm: float) -> Tuple[float, float, float]:
-    distance = distance_mm / (WHEEL_D * math.pi) * TICK_ROTATION
-    return (1, 1, distance)
-
-
-def get_rotate(theta: float) -> Tuple[float, float, float]:
-    # make into range -pi to pi
-    theta = theta % (2 * math.pi)
-    if theta > math.pi:
-        theta -= 2 * math.pi
-    if theta < -math.pi:
-        theta += 2 * math.pi
-
-    # CCW is positive angle
-    if theta >= 0:
-        return (-1, 1, TICK_ROTATION / BASE_RATIO * theta / (2 * math.pi))
-    else:
-        return (1, -1, TICK_ROTATION / BASE_RATIO * -theta / (2 * math.pi))

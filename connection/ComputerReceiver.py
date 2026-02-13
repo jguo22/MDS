@@ -16,22 +16,20 @@ import threading
 import time
 from typing import Callable, Optional
 import cv2
-import numpy as np
 import traceback
-import math
-import nav
-
-from . import config, protocol, message_types
+import config
+from . import protocol
+from connection.frame_info import FrameInfo
+from connection.RemoteRobotCommander import RemoteRobotCommander
 from profiler import Profiler
 
 
-class ComputerReceiver():
+class ComputerReceiver:
     """
-    Video receiver and movement command sender for computer.
+    Video receiver for computer.
 
-    Handles the computer-side of the video streaming and movement control system.
-    Receives video frames from Raspberry Pi and sends back movement commands
-    consisting of left/right motor coefficients and distance.
+    Handles the computer-side of the video streaming system.
+    Receives video frames from Raspberry Pi.
 
     STARTING AND CLOSING CONNECTIONS IS NOT THREAD SAFE
     """
@@ -47,7 +45,6 @@ class ComputerReceiver():
             video_port: Port for video receiving
             command_port: Port for sending commands
         """
-        super().__init__()
         self.host = host
         self.video_port = video_port
         self.command_port = command_port
@@ -60,28 +57,38 @@ class ComputerReceiver():
         self.video_client_socket: Optional[socket.socket] = None
         self.command_client_socket: Optional[socket.socket] = None
 
-        # takes in frame, frame_id, x, y, theta, camera_angle
-        self.on_frame: Callable[[np.ndarray, int, float, float, float, float], None] = (
-            lambda frame, frame_id, x, y, theta, camera_angle: None)
+        # Remote commander for sending commands
+        self.commander = RemoteRobotCommander()
+
+        # takes in FrameInfo
+        self.on_frame: Callable[[FrameInfo], None] = lambda _: None
         self._lock = threading.Lock()
 
+        # Latest frame buffer for skip-ahead processing
+        self.latest_frame: Optional[FrameInfo] = None
+        self.frame_lock = threading.Lock()
+        self.receive_thread: Optional[threading.Thread] = None
+        self.should_stop = False
+        self.frames_skipped = 0
+
         # Profiler for receive loop performance
-        self.profiler = Profiler()
+        self.profiler = Profiler(False)
 
     def set_frame_callback(
-            self, callback: Callable[[np.ndarray, int, float, float, float, float], None]):
+            self, callback: Callable[[FrameInfo], None]):
         """
         Set callback for processing frames and generating movement commands.
         THIS BLOCKS THE RECEIVING FRAMES LOOP
 
         Args:
-            callback: Function(frame, frame_id, x, y, theta, camera_angle) -> None
-                - frame: Video frame as numpy array
-                - frame_id: Frame sequence number
-                - x: Robot x position in mm (world coordinates)
-                - y: Robot y position in mm (world coordinates)
-                - theta: Robot orientation in radians
-                - camera_angle: Camera servo angle in radians
+            callback: Function(frame_info) -> None
+                - frame_info: FrameInfo object containing:
+                    - frame_top: Top camera frame as numpy array
+                    - frame_bottom: Bottom camera frame as numpy array
+                    - frame_id: Frame sequence number
+                    - x, y, theta: Robot position and orientation
+                    - gripperHeight, gripperAngle, scooperAngle: Manipulator states
+                    - distanceSensed: Distance sensor reading
         """
         self.on_frame = callback
 
@@ -104,8 +111,7 @@ class ComputerReceiver():
                 socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.command_server_socket.bind((self.host, self.command_port))
             self.command_server_socket.listen(1)
-            print(
-                f"Movement command server listening on {self.host}:{self.command_port}")
+            print(f"Movement command server listening on {self.host}:{self.command_port}")
 
             return True
         except socket.error as e:
@@ -122,13 +128,14 @@ class ComputerReceiver():
         try:
             # Accept video connection
             self.video_client_socket, _ = self.video_server_socket.accept()
-            print(
-                f"Video connection from {self.video_client_socket.getpeername()}")
+            print(f"Video connection from {self.video_client_socket.getpeername()}")
 
             # Accept movement command connection
             self.command_client_socket, _ = self.command_server_socket.accept()
-            print(
-                f"Movement command connection from {self.command_client_socket.getpeername()}")
+            print(f"Movement command connection from {self.command_client_socket.getpeername()}")
+
+            # Update commander's socket
+            self.commander.set_socket(self.command_client_socket)
             return True
         except socket.error as e:
             print(f"Connection error: {e}")
@@ -141,113 +148,169 @@ class ComputerReceiver():
         Returns:
                 True if successful
         """
-        if not self.command_client_socket:
-            return False
+        return self.commander.close()
 
-        return protocol.send_command(
-            self.command_client_socket, message_types.CLOSE, [])
-
-    def receive_loop(self, show_video: bool = True,
-                     window_name: str = "Pi Camera"):
-        """
-        Main loop to receive and process frames.
-        Runs until keyboard interrupt
-
-        Args:
-            show_video: Whether to display video in window
-            window_name: OpenCV window name
-        """
-        if not self.video_client_socket:
-            print("No video connection")
-            return
-
-        fps_start = time.time()
-        frame_count = 0
-
-        print("Receiving frames. Press 'q' to quit.")
-        print("Press 'p' to save profiler data.")
-        failed_frames: int = 0
-        while True:
+    def _receive_frames_thread(self):
+        """Background thread that continuously receives frames and updates latest_frame."""
+        failed_frames = 0
+        while not self.should_stop:
             try:
-                self.profiler.start_frame()
+                if not self.video_client_socket:
+                    time.sleep(0.1)
+                    continue
 
-                # Receive frame
-                result = protocol.recv_frame(self.video_client_socket)
-                if result is None:
+                # Receive frame info
+                frame_info = protocol.recv_frame_info(self.video_client_socket)
+
+                # Check for graceful disconnect
+                if frame_info == 0:
+                    print("Pi disconnected gracefully (receive thread)")
+                    break
+
+                if frame_info is None:
                     failed_frames += 1
                     if (failed_frames & (failed_frames - 1) == 0):
                         print(
                             f"Didn't Receive Frame (Connection Lost) {failed_frames}")
                     time.sleep(0.5)
                     continue
-                elif result == 0:
-                    # Graceful disconnect from Pi
-                    print("Pi disconnected gracefully")
-                    break
                 else:
                     failed_frames = 0
 
-                self.profiler.record("recv_frame")
+                # Update latest frame
+                with self.frame_lock:
+                    if self.latest_frame is not None:
+                        self.frames_skipped += 1
+                    self.latest_frame = frame_info
 
-                frame_data, frame_id, x, y, theta, camera_angle = result
-
-                # Decode JPEG
-                np_arr = np.frombuffer(frame_data, dtype=np.uint8)
-                frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-                self.profiler.record("decode_jpeg")
-
-                if frame is None:
-                    continue
-
-                # Process frame with callback and get movement command
-                try:
-                    self.on_frame(frame, frame_id, x, y, theta, camera_angle)
-                    self.profiler.record("frame_callback")
-                except Exception as e:
-                    print("Error in frame callback")
-                    print(e)
-                    traceback.print_exc()
-
-                # Calculate FPS
-                frame_count += 1
-                elapsed = time.time() - fps_start
-                if elapsed >= 1.0:
-                    fps = frame_count / elapsed
-                    frame_count = 0
-                    fps_start = time.time()
-
-                    if show_video:
-                        cv2.setWindowTitle(
-                            window_name, f"{window_name} - {fps:.1f} FPS")
-
-                # Display
-                if show_video:
-                    cv2.imshow(window_name, frame)
-                    self.profiler.record("imshow")
-                    key = cv2.waitKey(1) & 0xFF
-                    self.profiler.record("waitKey")
-
-                    if key == ord('q'):
-                        break
-                    elif key == ord('s'):
-                        cv2.imwrite(f"capture_{frame_id}.jpg", frame)
-                        print(f"Saved capture_{frame_id}.jpg")
-                    elif key == ord('p'):
-                        print("Saving profiler data...")
-                        self.profiler.save_profile()
-                        print("Profiler data saved!")
-
-                self.profiler.end_frame()
-            except KeyboardInterrupt:
-                print("\nStopped by user")
-                self.close_client_connections()
-                if show_video:
-                    cv2.destroyAllWindows()
-                raise KeyboardInterrupt
             except Exception as e:
-                print(
-                    f"Unexpected error in receive video loop: {type(e).__name__}: {e}")
-                traceback.print_exc()
+                if not self.should_stop:
+                    print(f"Error in receive thread: {e}")
+                    traceback.print_exc()
+                time.sleep(0.5)
+
+    def receive_loop(self, show_video: bool = True,
+                     window_name_top: str = "Top Camera",
+                     window_name_bottom: str = "Bottom Camera"):
+        """
+        Main loop to receive and process frames.
+        Always processes the latest frame, skipping old frames if processing is slow.
+        Runs until keyboard interrupt
+
+        Args:
+            show_video: Whether to display video in windows
+            window_name_top: OpenCV window name for top camera
+            window_name_bottom: OpenCV window name for bottom camera
+        """
+        if not self.video_client_socket:
+            print("No video connection")
+            return
+
+        # Start background thread to receive frames
+        self.should_stop = False
+        self.receive_thread = threading.Thread(
+            target=self._receive_frames_thread, daemon=True)
+        self.receive_thread.start()
+
+        fps_start = time.time()
+        frame_count = 0
+        last_frame_id = -1
+        last_skipped_count = 0
+
+        print("Receiving frames. Press 'q' to quit.")
+        print("Press 'p' to save profiler data.")
+
+        try:
+            while True:
+                try:
+                    self.profiler.start_frame()
+
+                    # Get the latest frame
+                    frame_info = None
+                    with self.frame_lock:
+                        if self.latest_frame is not None:
+                            frame_info = self.latest_frame
+                            self.latest_frame = None  # Clear it so we know when a new one arrives
+
+                    # If no new frame available, wait a bit
+                    if frame_info is None:
+                        time.sleep(0.01)
+                        continue
+
+                    # Check if we skipped frames
+                    if self.frames_skipped > last_skipped_count:
+                        frames_skipped_this_cycle = self.frames_skipped - last_skipped_count
+                        # print(
+                        # f"Skipped {frames_skipped_this_cycle} frames (total:
+                        # {self.frames_skipped})")
+                        last_skipped_count = self.frames_skipped
+
+                    last_frame_id = frame_info.frame_id
+
+                    self.profiler.record("get_latest_frame")
+
+                    # Process frame with callback
+                    try:
+                        self.on_frame(frame_info)
+                        self.profiler.record("frame_callback")
+                    except Exception as e:
+                        print("Error in frame callback")
+                        print(e)
+                        traceback.print_exc()
+
+                    # Calculate FPS
+                    frame_count += 1
+                    elapsed = time.time() - fps_start
+                    if elapsed >= 1.0:
+                        fps = frame_count / elapsed
+                        frame_count = 0
+                        fps_start = time.time()
+
+                        if show_video:
+                            cv2.setWindowTitle(
+                                window_name_top, f"{window_name_top} - {fps:.1f} FPS")
+
+                    # Display both frames
+                    if show_video:
+                        cv2.imshow(window_name_top, frame_info.frame_top)
+                        cv2.imshow(window_name_bottom, frame_info.frame_bottom)
+                        self.profiler.record("imshow")
+                        key = cv2.waitKey(1) & 0xFF
+                        self.profiler.record("waitKey")
+
+                        if key == ord('q'):
+                            break
+                        elif key == ord('s'):
+                            cv2.imwrite(
+                                f"capture_top_{frame_info.frame_id}.jpg",
+                                frame_info.frame_top)
+                            cv2.imwrite(
+                                f"capture_bottom_{frame_info.frame_id}.jpg",
+                                frame_info.frame_bottom)
+                            print(f"Saved capture_top_{frame_info.frame_id}.jpg and capture_bottom_{frame_info.frame_id}.jpg")
+                        elif key == ord('p'):
+                            print("Saving profiler data...")
+                            self.profiler.save_profile()
+                            print("Profiler data saved!")
+
+                    self.profiler.end_frame()
+                except KeyboardInterrupt:
+                    print("\nStopped by user")
+                    self.should_stop = True
+                    if self.receive_thread:
+                        self.receive_thread.join(timeout=2.0)
+                    self.close_client_connections()
+                    if show_video:
+                        cv2.destroyAllWindows()
+                    raise KeyboardInterrupt
+                except Exception as e:
+                    print(f"Unexpected error in receive video loop: {type(e).__name__}: {e}")
+                    traceback.print_exc()
+        finally:
+            # Ensure thread is stopped
+            self.should_stop = True
+            if self.receive_thread:
+                self.receive_thread.join(timeout=2.0)
 
     def close_client_connections(self) -> None:
         """
@@ -255,112 +318,13 @@ class ComputerReceiver():
         """
         # tell pi that we're closing the connection
         # so that it can look for a new one and see when we restart the code
-        self.send_close()
+        self.commander.close()
 
         # Close client connections
         protocol.close_socket(self.video_client_socket)
         self.video_client_socket = None
 
         protocol.close_socket(self.command_client_socket)
+        self.commander.set_socket(None)
         self.command_client_socket = None
         print("client connection stopped")
-
-    # ------------------ SENDING COMMANDS ------------------
-    def send_world_xy(self, world_x: float, world_y: float) -> bool:
-        """
-        Send world coordinate navigation command to the Pi.
-
-        The Pi will calculate the rotation and forward movement needed
-        to reach the world coordinate based on its current position and heading.
-
-        Args:
-            world_x: Target x position in world frame (mm)
-            world_y: Target y position in world frame (mm)
-
-        Returns:
-            True if successful
-        """
-        if not self.command_client_socket:
-            return False
-
-        print(f'Sending world coordinates: x={world_x}, y={world_y}')
-
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.SEND_WORLD_XY,
-            [world_x, world_y]
-        )
-
-    def send_xy(self, x, y):
-        """
-        Send relative movement in ROS coordinates (x=forward, y=left).
-
-        Args:
-            x: Forward distance in mm (positive = forward, negative = backward)
-            y: Lateral distance in mm (positive = left, negative = right)
-        """
-        if not self.command_client_socket:
-            return False
-
-        distance = math.sqrt(x * x + y * y)
-
-        # ROS coordinates: x is forward, y is left
-        # atan2(y, x) gives angle from forward axis (x) to target
-        theta = math.atan2(y, x)
-
-        rotate = list(nav.get_rotate(theta))
-        forward = list(nav.get_forward_mm(distance))
-
-        print(
-            f'sent movement x={x} y={y} theta={theta} distance={distance} rotate={rotate} forward={forward}')
-
-        self.override_movement(rotate + forward)
-
-    def add_movement(
-            self,
-            left_coef: float,
-            right_coef: float,
-            distance: float) -> bool:
-        """
-        Send movement commands to the Pi.
-
-        Args:
-            left_coef: Left motor coefficient (-1.0 to 1.0)
-            right_coef: Right motor coefficient (-1.0 to 1.0)
-            distance: Distance to move (in ticks)
-
-        Returns:
-                True if successful
-        """
-        if not self.command_client_socket:
-            return False
-
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.ADD_MOVEMENT,
-            [left_coef, right_coef, distance]
-        )
-
-    def override_movement(self, movement_args: list[float]):
-        """
-        Send list of movement commands to the Pi.
-
-        Args:
-            movements: list of movement commands in groups of 3
-                left_coef: Left motor coefficient (-1.0 to 1.0)
-                right_coef: Right motor coefficient (-1.0 to 1.0)
-                distance: Distance to move (in ticks)
-
-        Returns:
-                True if successful
-        """
-        if not self.command_client_socket:
-            return False
-
-        assert (len(movement_args) % 3 == 0)
-
-        return protocol.send_command(
-            self.command_client_socket,
-            message_types.OVERRIDE_MOVEMENTS,
-            movement_args
-        )

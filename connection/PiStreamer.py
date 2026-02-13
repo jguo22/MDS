@@ -28,16 +28,17 @@ Run on the Raspberry Pi that will stream video and receive movement commands.
 import socket
 import threading
 import time
-import cv2
 from typing import Callable, Optional
 import traceback
 
 from IMUWrapper import IMUWrapper
 from RavenWrapper import RavenWrapper
 from connection import message_types
+from connection.frame_info import FrameInfo
+from connection import command_tracker
 from profiler import Profiler
 
-from . import config
+import config
 from . import protocol
 from .CameraCapture import CameraCapture
 
@@ -51,9 +52,12 @@ class PiStreamer():
     consisting of left/right motor coefficients and distance.
     """
 
-    def __init__(self, camera: CameraCapture,
+    def __init__(self, camera_top: CameraCapture,
+                 camera_bottom: CameraCapture,
                  ravenWrapper: RavenWrapper,
                  imuWrapper: IMUWrapper,
+                 nav,
+                 robot_commander,
                  host: str = config.COMPUTER_IP,
                  video_port: int = config.VIDEO_PORT,
                  command_port: int = config.COMMAND_PORT):
@@ -61,17 +65,23 @@ class PiStreamer():
         Initialize the streamer for a single-use connection.
 
         Args:
-            camera: CameraCapture instance (managed externally)
+            camera_top: Top CameraCapture instance (managed externally)
+            camera_bottom: Bottom CameraCapture instance (managed externally)
             raven: Raven motor controller instance (for odometry)
             imu_wrapper: IMUWrapper instance (for heading)
+            nav: Nav instance (for movement state)
+            robot_commander: Robot commander for command tracking
             host: Computer IP address to connect to
             video_port: Port for video streaming
             command_port: Port for receiving commands
         """
 
-        self.camera = camera
+        self.camera_top = camera_top
+        self.camera_bottom = camera_bottom
         self.ravenWrapper = ravenWrapper
         self.imu_wrapper = imuWrapper
+        self.nav = nav
+        self.robot_commander = robot_commander
         self.host = host
         self.video_port = video_port
         self.command_port = command_port
@@ -81,26 +91,56 @@ class PiStreamer():
         self.frame_id = 0
         self.running = False
 
+        # Sensor value getters (set these to get real sensor data)
+        self.get_gripper_height: Callable[[], float] = lambda: 0.0
+        self.get_gripper_angle: Callable[[], float] = lambda: 0.0
+        self.get_scooper_angle: Callable[[], float] = lambda: 0.0
+        self.get_distance_sensed: Callable[[], float] = lambda: 0.0
+
         # movement callback blocks the command receiving thread
-        # takes in msg_type and args and does the command
+        # takes in msg_type, command_id, and args and does the command
         self.command_callback: Callable[[
-            int, list[float]], None] = (lambda _, __: None)
+            int, int, list[float]], None] = (lambda _, __, ___: None)
 
         self._command_receiver_thread: Optional[threading.Thread] = None
 
         # Profiler for stream performance
-        self.profiler = Profiler()
+        self.profiler = Profiler(False)
 
     def set_command_callback(
-            self, callback: Callable[[int, list[float]], None]):
+            self, callback: Callable[[int, int, list[float]], None]):
         """
         Set callback for when movement commands are received.
         NOTE: movement callback blocks the command receiver thread
 
         Args:
-            callback: Function(x, y, frame_id, extra) called on movement command receipt
+            callback: Function(msg_type, command_id, args) called on command receipt
         """
         self.command_callback = callback
+
+    def set_sensor_callbacks(
+            self,
+            get_gripper_height: Optional[Callable[[], float]] = None,
+            get_gripper_angle: Optional[Callable[[], float]] = None,
+            get_scooper_angle: Optional[Callable[[], float]] = None,
+            get_distance_sensed: Optional[Callable[[], float]] = None):
+        """
+        Set callbacks for sensor data retrieval.
+
+        Args:
+            get_gripper_height: Function returning gripper height in mm
+            get_gripper_angle: Function returning gripper angle in radians
+            get_scooper_angle: Function returning scooper angle in radians
+            get_distance_sensed: Function returning distance sensor reading in mm
+        """
+        if get_gripper_height is not None:
+            self.get_gripper_height = get_gripper_height
+        if get_gripper_angle is not None:
+            self.get_gripper_angle = get_gripper_angle
+        if get_scooper_angle is not None:
+            self.get_scooper_angle = get_scooper_angle
+        if get_distance_sensed is not None:
+            self.get_distance_sensed = get_distance_sensed
 
     def connect(self) -> bool:
         """
@@ -125,8 +165,7 @@ class PiStreamer():
             self.command_client_socket.settimeout(config.SOCKET_TIMEOUT)
             self.command_client_socket.connect(
                 (self.host, self.command_port))
-            print(
-                f"Connected to command server at {self.host}:{self.command_port}")
+            print(f"Connected to command server at {self.host}:{self.command_port}")
 
             # Start command receiver thread
             self.running = True
@@ -160,7 +199,7 @@ class PiStreamer():
                     time.sleep(0.1)
                     continue
 
-                msg_type, args = result
+                msg_type, command_id, args = result
 
                 # Handle close command (type 0) - explicit shutdown signal
                 if msg_type == message_types.CLOSE:
@@ -169,15 +208,13 @@ class PiStreamer():
                     break
                 else:
                     try:
-                        self.command_callback(msg_type, args)
+                        self.command_callback(msg_type, command_id, args)
                     except Exception as e:
-                        print(
-                            f"Error in movement callback: {type(e).__name__}: {e}")
+                        print(f"Error in movement callback: {type(e).__name__}: {e}")
                         traceback.print_exc()
 
             except Exception as e:
-                print(
-                    f"Unexpected error in command receiver: {type(e).__name__}: {e}")
+                print(f"Unexpected error in command receiver: {type(e).__name__}: {e}")
                 traceback.print_exc()
                 # don't shut down entire robot from just one frame of failure
                 continue
@@ -191,8 +228,11 @@ class PiStreamer():
         Args:
             max_fps: Maximum frames per second to stream (default: config.DEFAULT_MAX_FPS)
         """
-        if self.camera is None or not self.camera.is_open():
-            print("Cannot start streaming: camera not available")
+        if self.camera_top is None or not self.camera_top.is_open():
+            print("Cannot start streaming: top camera not available")
+            return
+        if self.camera_bottom is None or not self.camera_bottom.is_open():
+            print("Cannot start streaming: bottom camera not available")
             return
         if not self.video_client_socket:
             print("Not connected to video server")
@@ -201,45 +241,63 @@ class PiStreamer():
         frame_interval = 1.0 / max_fps
 
         print("Streaming started. Press Ctrl+C to stop.")
-        print(
-            f"Target FPS: {max_fps} (frame interval: {frame_interval*1000:.1f}ms)")
+        print(f"Target FPS: {max_fps} (frame interval: {frame_interval * 1000:.1f}ms)")
 
         while self.running:
             try:
                 self.profiler.start_frame()
                 start_time = time.time()
 
-                # Capture frame
-                frame = self.camera.read()
-                if frame is None:
-                    print("failed to read frame from camera")
+                # Capture frames from both cameras
+                frame_top = self.camera_top.read()
+                self.profiler.record("camera_read_top")
+                frame_bottom = self.camera_bottom.read()
+                self.profiler.record("camera_read_bot")
+                if frame_top is None or frame_bottom is None:
+                    print("failed to read frame from cameras")
                     time.sleep(0.1)
                     continue
                 self.profiler.record("camera_read")
 
-                # Encode as JPEG
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY),
-                                config.JPEG_QUALITY]
-                success, encoded = cv2.imencode(
-                    '.jpg', frame, encode_param)
-                if not success:
-                    print("Failed to encode frame")
-                    continue
-                self.profiler.record("jpeg_encode")
-
                 # Get current robot pose
                 x, y = self.ravenWrapper.get_odometry()
                 theta = self.imu_wrapper.get_heading()
-                camera_angle = self.ravenWrapper.get_camera_angle()
                 self.profiler.record("get_pose")
 
-                # Send frame with pose data
-                if not protocol.send_frame(
+                # Get sensor data
+                gripper_height = self.get_gripper_height()
+                gripper_angle = self.get_gripper_angle()
+                scooper_angle = self.get_scooper_angle()
+                distance_sensed = self.get_distance_sensed()
+                is_moving = self.nav.moving
+
+                # Get last completed command ID from tracker
+                last_completed_command_id = command_tracker.get_last_completed_command_id()
+
+                self.profiler.record("get_sensors")
+
+                # Create FrameInfo object
+                frame_info = FrameInfo(
+                    frame_top=frame_top,
+                    frame_bottom=frame_bottom,
+                    frame_id=self.frame_id,
+                    x=x,
+                    y=y,
+                    theta=theta,
+                    gripperHeight=gripper_height,
+                    gripperAngle=gripper_angle,
+                    scooperAngle=scooper_angle,
+                    distanceSensed=distance_sensed,
+                    isMoving=is_moving,
+                    lastCompletedCommandId=last_completed_command_id
+                )
+
+                self.profiler.record("send_frame0")
+                # Send frame info
+                if not protocol.send_frame_info(
                         self.video_client_socket,
-                        encoded.tobytes(),
-                        self.frame_id,
-                        x, y, theta,
-                        camera_angle):
+                        frame_info,
+                        config.JPEG_QUALITY):
                     print("Failed to send frame. Continuing...")
                     continue
                 self.profiler.record("send_frame")
@@ -251,9 +309,7 @@ class PiStreamer():
                 if elapsed < frame_interval:
                     sleep_time = frame_interval - elapsed
                     time.sleep(sleep_time)
-                    self.profiler.record("rate_limit_sleep")
-                else:
-                    self.profiler.record("rate_limit_sleep")
+                self.profiler.record("rate_limit_sleep")
 
                 self.profiler.end_frame()
             except KeyboardInterrupt:
@@ -274,4 +330,5 @@ class PiStreamer():
         self.video_client_socket = None
         protocol.close_socket(self.command_client_socket)
         self.command_client_socket = None
+        self.profiler.save_profile()
         print("PiStreamer stopped")

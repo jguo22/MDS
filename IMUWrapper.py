@@ -36,11 +36,11 @@ class IMUWrapper():
         yaw_raw = math.atan2(t3, t4)
         return yaw_raw
 
-    def _get_internal_heading(self):
+    def _get_internal_heading(self) -> float:
         quat_i, quat_j, quat_k, quat_real = self.bno.quaternion
         return self._calculate_heading(quat_real, quat_i, quat_j, quat_k)
 
-    def get_heading(self):
+    def get_heading(self) -> float:
         return self._get_internal_heading() - self._offset
 
     def hard_reset(self):
