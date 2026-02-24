@@ -1,5 +1,5 @@
 # MASLAB 2026 Autonomous Robot
-https://maslab.mit.edu/2026/wiki/team02 \
+https://maslab.mit.edu/2026/wiki/team02
 
 Autonomous can-collecting robot for the MIT MASLAB 2026 competition. Features dual-camera vision, YOLOv11 segmentation, path planning with Theta*, and a distributed architecture with Pi-side execution and computer-side control.
 
